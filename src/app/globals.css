@@ -1,0 +1,15 @@
+@import "tailwindcss";
+
+/* System fonts only — a webfont would be a network dependency for two people. */
+@theme {
+  --font-sans: system-ui, "Segoe UI", "Noto Sans Hebrew", "Arial Hebrew", Arial, sans-serif;
+}
+
+html {
+  font-family: var(--font-sans);
+}
+
+/* Figures read as figures in either direction. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
