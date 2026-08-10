@@ -293,19 +293,25 @@ average it produces.
 
 ### Acceptance criteria
 
-- [ ] This month's חיסכון is visible as the amount available to move into projects
-- [ ] A monthly trend of הכנסות, הוצאות and חיסכון shows the previous year alongside
-- [ ] Each category's current month is compared to its own trailing average, ranked by
+- [x] This month's חיסכון is visible as the amount available to move into projects
+- [x] A monthly trend of הכנסות, הוצאות and חיסכון shows the previous year alongside
+- [x] Each category's current month is compared to its own trailing average, ranked by
       largest deviation first
-- [ ] Current-year averages divide by elapsed months; complete years divide by twelve
-- [ ] Every displayed average shows the denominator used
-- [ ] Category breakdowns are available for a month or a year, at household and per-person
+      <!-- A category with no trailing history is reported as having none rather than
+           compared against an invented zero, and one with history but no figure this
+           month is reported rather than ranked as a fall to zero. Both sit below the
+           measured deviations. -->
+- [x] Current-year averages divide by elapsed months; complete years divide by twelve
+- [x] Every displayed average shows the denominator used
+- [x] Category breakdowns are available for a month or a year, at household and per-person
       level
-- [ ] חיסכון as a percentage of income is charted over time
-- [ ] Each category is comparable against the same period last year, including categories
+- [x] חיסכון as a percentage of income is charted over time
+- [x] Each category is comparable against the same period last year, including categories
       that did not exist in the comparison year
-- [ ] Deviation ranking is stable across repeated computation
-- [ ] `LedgerAnalytics` is pure functions with no database in its tests
+      <!-- Both sides are trimmed to the same span, so a partial year is never set
+           against a full one. A category absent last year reads "לא הייתה קיימת". -->
+- [x] Deviation ranking is stable across repeated computation
+- [x] `LedgerAnalytics` is pure functions with no database in its tests
 
 ---
 

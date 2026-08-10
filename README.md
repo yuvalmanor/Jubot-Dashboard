@@ -87,7 +87,10 @@ addition across currencies throws, conversion requires an explicit rate that nam
 currency pair, and rounding happens at the minor-unit boundary, half away from zero. Rates
 are read as exact decimals rather than doubles, so 3.65 means 365/100. It also owns the
 boundary with a keyboard: `parseMoneyInput` reads what a person typed and `toDecimalString`
-writes it back, and a field left untouched round-trips to the same minor units.
+writes it back, and a field left untouched round-trips to the same minor units. `divide` is
+exact in the same way — a three-month average of 1,000₪ is 333.33 and not a drifting float —
+and `ratio` answers `null` rather than a percentage when there is nothing to be a percentage
+of.
 
 ## מאזן
 
@@ -133,6 +136,43 @@ filled and some empty reads as *חודש חלקי*, never as a cheap month.
 
 Household lines belong to both People, so either may rename or merge them. A personal
 category is one Person's own naming, so only its owner may move or retire it.
+
+### Reading the trend
+
+`src/domain/ledger/ledger-analytics.ts` is the reading half: pure functions over the entries,
+with the clock always a parameter. `/balance/insights` renders them. Nothing on that screen is
+writable and no figure there is stored.
+
+The screen is driven by one control — a focus month — so no figure is ever ambiguous about
+which month it belongs to. The trend is the twelve months ending there with the same month of
+the previous year beside each one; the deviations are that month against the six before it;
+the breakdown and the year-over-year comparison are that month's year.
+
+Three rules run through the module, and each exists because the alternative would be a lie:
+
+- **Every average states its denominator.** `Average` cannot be built without one and there is
+  no field holding a bare mean, so nothing can reach the screen without saying whether it
+  divided by 6 or by 12.
+- **A share of nothing is `null`.** A month with no income did not save 0% of it; an average
+  over no months is undefined, not nought. The screen prints the absence.
+- **Two denominators, two questions.** A *period* average divides by elapsed months — twelve
+  for a past year, eight for August of the current one — so a partial year compares against a
+  full one. A *trailing* average divides by the months that actually hold a figure, because
+  the ledger says an absent month was never recorded rather than recorded as zero.
+
+The same distinction decides what may be ranked. A category with a figure this month and a
+trailing average is a measurement. A category with no history is reported as having none
+rather than compared against an invented zero, which would put every new category at the top;
+a category with history and nothing this month is reported too, rather than ranked as a fall
+to zero that might only be an unfinished month. The order is total and tie-broken by id, so
+two reads of the same month always produce the same list. Year-over-year trims both sides to
+the same span — Jan–Aug against Jan–Aug — so no category appears to collapse every January,
+and a category that did not exist last year reads *לא הייתה קיימת* rather than a rise from
+nothing.
+
+Both charts are inline SVG, server-rendered, with no client JavaScript and no charting
+dependency. Every figure in them is repeated in the table beneath, so no number lives only in
+a picture.
 
 ### Importing the sheet
 

@@ -344,6 +344,13 @@ function MonthNavigator({ month, view }: { month: CalendarMonth; view: string | 
           </button>
         </form>
 
+        <Link
+          href={`/balance/insights?month=${monthKey(month)}` as Route}
+          className="text-sm text-stone-600 underline-offset-4 hover:underline"
+        >
+          מגמות וממוצעים
+        </Link>
+
         <Link href="/balance/categories" className="text-sm text-stone-600 underline-offset-4 hover:underline">
           ניהול קטגוריות
         </Link>

@@ -181,6 +181,39 @@ export function multiply(amount: Money, factor: number | string): Money {
   );
 }
 
+/**
+ * Divide by a plain divisor — a total over a count of months. Exact: the divisor
+ * is read as a fraction and the result rounded at the minor unit, so an average
+ * of three months does not drift by an agora.
+ */
+export function divide(amount: Money, divisor: number | string): Money {
+  const fraction = decimalToFraction(divisor);
+  if (fraction.numerator === 0n) {
+    throw new InvalidMoneyError("Cannot divide an amount by zero");
+  }
+  let numerator = BigInt(amount.minorUnits) * fraction.denominator;
+  let denominator = fraction.numerator;
+  if (denominator < 0n) {
+    numerator = -numerator;
+    denominator = -denominator;
+  }
+  return money(Number(divideRoundingHalfAwayFromZero(numerator, denominator)), amount.currency);
+}
+
+/**
+ * One amount as a share of another — חיסכון against הכנסות, a category against a
+ * month's total. Returns a plain number because a ratio is not money.
+ *
+ * A share of nothing is `null`, never zero: a month with no income did not save
+ * 0% of it, it has no percentage to state. The caller is left to say so rather
+ * than print a figure that reads as a measurement.
+ */
+export function ratio(numerator: Money, denominator: Money): number | null {
+  assertSameCurrency(numerator, denominator);
+  if (denominator.minorUnits === 0) return null;
+  return numerator.minorUnits / denominator.minorUnits;
+}
+
 export function compare(left: Money, right: Money): -1 | 0 | 1 {
   assertSameCurrency(left, right);
   if (left.minorUnits < right.minorUnits) return -1;
