@@ -1,7 +1,10 @@
 import {
   type Categories,
   type CategoryAssignment,
+  type CategoryLifespan,
+  type CategoryMerge,
   type HouseholdCategory,
+  type HouseholdCategoryRename,
   type PersonalCategory,
   type PersonalCategoryCreation,
   buildCategories,
@@ -132,4 +135,62 @@ export async function insertPersonalCategory(creation: PersonalCategoryCreation)
       [creation.assignment.personalCategoryId, creation.assignment.householdCategoryId, creation.personal.type],
     );
   });
+}
+
+/** One column on one row. No personal category and no entry is touched. */
+export async function renameHouseholdCategory(rename: HouseholdCategoryRename): Promise<void> {
+  await query(`update household_categories set name = $2 where id = $1`, [
+    rename.householdCategoryId,
+    rename.name,
+  ]);
+}
+
+/**
+ * Write a merge. The assignments are *updated* rather than deleted and reinserted:
+ * an assignment row that briefly does not exist would trip the deferred constraint
+ * that says every personal category has one, and — more to the point — there is no
+ * moment in this operation at which a personal category is unassigned.
+ *
+ * `entries` is not mentioned here. A merge moves which household line a category
+ * feeds; the amounts underneath are the same rows before and after.
+ */
+export async function applyCategoryMerge(merge: CategoryMerge): Promise<void> {
+  await withTransaction(async (run) => {
+    if (merge.householdIsNew) {
+      await run(
+        `insert into household_categories (id, name, type) values ($1, $2, $3)`,
+        [merge.household.id, merge.household.name, merge.household.type],
+      );
+    }
+
+    for (const assignment of merge.assignments) {
+      await run(
+        `update category_assignments
+            set household_category_id = $2
+          where personal_category_id = $1`,
+        [assignment.personalCategoryId, assignment.householdCategoryId],
+      );
+    }
+
+    // Deleted last, once nothing points at them. A household category holds no
+    // amounts, so an emptied one is a name and nothing else.
+    for (const id of merge.emptiedHouseholdCategoryIds) {
+      await run(`delete from household_categories where id = $1`, [id]);
+    }
+  });
+}
+
+/** Retire, reopen, or move the start of a lifespan. The row itself stays forever. */
+export async function setPersonalCategoryLifespan(change: CategoryLifespan): Promise<void> {
+  await query(
+    `update personal_categories
+        set active_from  = $2::date,
+            active_until = $3::date
+      where id = $1`,
+    [
+      change.personalCategoryId,
+      firstOfMonth(change.activeFrom),
+      change.activeUntil === null ? null : firstOfMonth(change.activeUntil),
+    ],
+  );
 }

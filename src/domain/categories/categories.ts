@@ -16,6 +16,12 @@
  * category it joins, and the assignment as one indivisible result. There is no
  * shape this module can produce that leaves money recorded personally and
  * missing from the household.
+ *
+ * The lifecycle operations obey the same rule. A merge moves an assignment from
+ * one Household Category to another and never removes it; retirement closes a
+ * lifespan and never deletes a row. Nothing here can make a recorded amount
+ * unreachable, which is why every one of them is safe to run over four years of
+ * history.
  */
 
 import { type CalendarMonth, compareMonths } from "@/domain/time/calendar-month";
@@ -36,7 +42,11 @@ export interface PersonalCategory {
   /** Fixed at creation. A category does not change direction from month to month. */
   readonly type: CategoryType;
   readonly activeFrom: CalendarMonth;
-  /** Retirement is a lifespan, never a delete. Always null until Phase 3 sets it. */
+  /**
+   * Retirement is a lifespan, never a delete: the last month the category is
+   * offered for entry, inclusive. `null` means it is still in use. A retired
+   * category keeps resolving for every month it appears in.
+   */
   readonly activeUntil: CalendarMonth | null;
 }
 
@@ -95,6 +105,20 @@ export class InvalidCategoryNameError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "InvalidCategoryNameError";
+  }
+}
+
+export class InvalidLifespanError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidLifespanError";
+  }
+}
+
+export class InvalidMergeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidMergeError";
   }
 }
 
@@ -216,21 +240,53 @@ function sortByName<T extends { readonly name: string }>(items: readonly T[]): T
   return [...items].sort((left, right) => left.name.localeCompare(right.name, "he"));
 }
 
-/** One Person's categories, income first then expense, each alphabetical in Hebrew. */
+export interface CategoryFilter {
+  readonly type?: CategoryType;
+  /** Keep only categories whose lifespan covers this month. */
+  readonly activeIn?: CalendarMonth;
+}
+
+function matches(category: PersonalCategory, filter: CategoryFilter): boolean {
+  if (filter.type !== undefined && category.type !== filter.type) return false;
+  if (filter.activeIn !== undefined && !isActiveIn(category, filter.activeIn)) return false;
+  return true;
+}
+
+/** Both People's categories, alphabetical in Hebrew. The household level reads from here. */
+export function allPersonalCategories(
+  categories: Categories,
+  filter: CategoryFilter = {},
+): readonly PersonalCategory[] {
+  return sortByName(categories.personal.filter((category) => matches(category, filter)));
+}
+
+/** One Person's categories, alphabetical in Hebrew. */
 export function personalCategoriesFor(
   categories: Categories,
   personId: string,
-  options: { readonly type?: CategoryType } = {},
+  filter: CategoryFilter = {},
 ): readonly PersonalCategory[] {
-  const owned = categories.personal.filter(
-    (category) => category.personId === personId && (options.type === undefined || category.type === options.type),
+  return sortByName(
+    categories.personal.filter((category) => category.personId === personId && matches(category, filter)),
   );
-  return sortByName(owned);
 }
 
-/** A category not yet retired. Retirement itself arrives in Phase 3. */
+/** A category with a retirement month set, whether or not that month has arrived. */
 export function isRetired(category: PersonalCategory): boolean {
   return category.activeUntil !== null;
+}
+
+/**
+ * Whether the category's lifespan covers a month. `activeUntil` is inclusive: a
+ * category retired at 2025-06 is active in June and not in July.
+ *
+ * This decides what is offered for *entry*. It deliberately does not decide what
+ * is readable — a month that already holds a figure always shows it, or retiring
+ * a category would hide money (see the ledger's `personMonthLines`).
+ */
+export function isActiveIn(category: PersonalCategory, month: CalendarMonth): boolean {
+  if (compareMonths(month, category.activeFrom) < 0) return false;
+  return category.activeUntil === null || compareMonths(month, category.activeUntil) <= 0;
 }
 
 export function householdCategoriesFor(
@@ -352,5 +408,220 @@ export function applyCreation(categories: Categories, creation: PersonalCategory
     personal: [...categories.personal, creation.personal],
     household: creation.householdIsNew ? [...categories.household, creation.household] : categories.household,
     assignments: [...categories.assignments, creation.assignment],
+  });
+}
+
+// --- renaming a household category -------------------------------------------
+
+export interface HouseholdCategoryRename {
+  readonly householdCategoryId: string;
+  readonly name: string;
+}
+
+/**
+ * The Household Category owns its name. Renaming it touches no Personal Category
+ * and no Entry: it is one column on one row, which is the whole point of the
+ * household name being its own field rather than borrowed from whichever personal
+ * category happened to come first.
+ */
+export function planHouseholdRename(
+  categories: Categories,
+  householdCategoryId: string,
+  name: string,
+): HouseholdCategoryRename {
+  const target = findHouseholdCategory(categories, householdCategoryId);
+  if (target === undefined) {
+    throw new UnknownCategoryError(householdCategoryId);
+  }
+  const next = requireName(name);
+
+  const clash = categories.household.find(
+    (category) => category.id !== target.id && category.type === target.type && sameName(category.name, next),
+  );
+  if (clash !== undefined) {
+    throw new DuplicateCategoryNameError(next);
+  }
+
+  return { householdCategoryId: target.id, name: next };
+}
+
+export function applyHouseholdRename(categories: Categories, rename: HouseholdCategoryRename): Categories {
+  return buildCategories({
+    ...categories,
+    household: categories.household.map((category) =>
+      category.id === rename.householdCategoryId ? { ...category, name: rename.name } : category,
+    ),
+  });
+}
+
+// --- merging personal categories under one household line --------------------
+
+export interface CategoryMergeRequest {
+  /** The Personal Categories to route into one Household Category. */
+  readonly personalCategoryIds: readonly string[];
+  readonly household: HouseholdTarget;
+}
+
+export interface CategoryMerge {
+  readonly household: HouseholdCategory;
+  readonly householdIsNew: boolean;
+  /** One per requested personal category, all pointing at `household`. */
+  readonly assignments: readonly CategoryAssignment[];
+  /**
+   * Household Categories the merge leaves with nothing feeding them. A Household
+   * Category holds no amounts of its own, so an empty one is a name and nothing
+   * else — keeping it would clutter every picker and reserve a name for no data.
+   */
+  readonly emptiedHouseholdCategoryIds: readonly string[];
+}
+
+/**
+ * Route several Personal Categories into one Household Category — the operation
+ * behind "`אוכל APPLE` and `העברות EPP` are the same spend, show them as one line".
+ *
+ * It moves assignments and nothing else. No Entry is read, written or considered,
+ * so no historical personal figure can change: the household breakdown is
+ * recomputed from the new assignments at read time, and the household totals are
+ * the same money counted under a different heading.
+ */
+export function planCategoryMerge(
+  categories: Categories,
+  request: CategoryMergeRequest,
+  ids: { readonly householdCategoryId: string },
+): CategoryMerge {
+  const requested = [...new Set(request.personalCategoryIds)];
+  if (requested.length === 0) {
+    throw new InvalidMergeError("A merge needs at least one personal category");
+  }
+
+  const members = requested.map((id) => {
+    const category = findPersonalCategory(categories, id);
+    if (category === undefined) {
+      throw new UnknownCategoryError(id);
+    }
+    return category;
+  });
+
+  const { household, householdIsNew } = resolveMergeTarget(categories, request, members, ids.householdCategoryId);
+
+  for (const member of members) {
+    if (member.type !== household.type) {
+      throw new CategoryTypeMismatchError(member.type, household.type);
+    }
+  }
+
+  const moved = new Set(requested);
+  const sources = new Set(members.map((member) => householdCategoryOf(categories, member.id).id));
+  sources.delete(household.id);
+
+  // A source is emptied when every assignment still pointing at it is one this
+  // merge moves away.
+  const emptiedHouseholdCategoryIds = [...sources].filter((sourceId) =>
+    categories.assignments.every(
+      (assignment) => assignment.householdCategoryId !== sourceId || moved.has(assignment.personalCategoryId),
+    ),
+  );
+
+  return {
+    household,
+    householdIsNew,
+    assignments: members.map((member) => ({
+      personalCategoryId: member.id,
+      householdCategoryId: household.id,
+    })),
+    emptiedHouseholdCategoryIds,
+  };
+}
+
+function resolveMergeTarget(
+  categories: Categories,
+  request: CategoryMergeRequest,
+  members: readonly PersonalCategory[],
+  newHouseholdId: string,
+): { household: HouseholdCategory; householdIsNew: boolean } {
+  if (request.household.kind === "existing") {
+    const existing = findHouseholdCategory(categories, request.household.id);
+    if (existing === undefined) {
+      throw new UnknownCategoryError(request.household.id);
+    }
+    return { household: existing, householdIsNew: false };
+  }
+
+  const first = members[0];
+  if (first === undefined) {
+    throw new InvalidMergeError("A merge needs at least one personal category");
+  }
+
+  const requested = request.household.name.trim().length === 0 ? first.name : request.household.name;
+  const name = requireName(requested);
+
+  const clash = categories.household.find(
+    (category) => category.type === first.type && sameName(category.name, name),
+  );
+  if (clash !== undefined) {
+    throw new DuplicateCategoryNameError(name);
+  }
+
+  return { household: { id: newHouseholdId, name, type: first.type }, householdIsNew: true };
+}
+
+export function applyMerge(categories: Categories, merge: CategoryMerge): Categories {
+  const moved = new Map(
+    merge.assignments.map((assignment) => [assignment.personalCategoryId, assignment.householdCategoryId]),
+  );
+  const emptied = new Set(merge.emptiedHouseholdCategoryIds);
+  const household = merge.householdIsNew ? [...categories.household, merge.household] : categories.household;
+
+  return buildCategories({
+    personal: categories.personal,
+    household: household.filter((category) => !emptied.has(category.id)),
+    assignments: categories.assignments.map((assignment) => {
+      const target = moved.get(assignment.personalCategoryId);
+      return target === undefined ? assignment : { ...assignment, householdCategoryId: target };
+    }),
+  });
+}
+
+// --- retiring, and reopening, a personal category ----------------------------
+
+export interface CategoryLifespan {
+  readonly personalCategoryId: string;
+  readonly activeFrom: CalendarMonth;
+  /** Inclusive last month, or `null` to put the category back in use. */
+  readonly activeUntil: CalendarMonth | null;
+}
+
+/**
+ * Move a Personal Category's lifespan. Retirement is `activeUntil`; a start
+ * earlier than the month of creation is what makes backfilling an old month
+ * possible. Neither end deletes anything, so every month the category appears in
+ * keeps reading exactly as it did.
+ */
+export function planLifespanChange(
+  categories: Categories,
+  personalCategoryId: string,
+  lifespan: { readonly activeFrom?: CalendarMonth; readonly activeUntil: CalendarMonth | null },
+): CategoryLifespan {
+  const category = findPersonalCategory(categories, personalCategoryId);
+  if (category === undefined) {
+    throw new UnknownCategoryError(personalCategoryId);
+  }
+
+  const activeFrom = lifespan.activeFrom ?? category.activeFrom;
+  if (lifespan.activeUntil !== null && compareMonths(lifespan.activeUntil, activeFrom) < 0) {
+    throw new InvalidLifespanError("A category cannot be retired before the month it starts in");
+  }
+
+  return { personalCategoryId, activeFrom, activeUntil: lifespan.activeUntil };
+}
+
+export function applyLifespan(categories: Categories, change: CategoryLifespan): Categories {
+  return buildCategories({
+    ...categories,
+    personal: categories.personal.map((category) =>
+      category.id === change.personalCategoryId
+        ? { ...category, activeFrom: change.activeFrom, activeUntil: change.activeUntil }
+        : category,
+    ),
   });
 }

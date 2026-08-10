@@ -20,8 +20,13 @@
 import {
   type CategoryType,
   type Categories,
+  type HouseholdCategory,
   type PersonalCategory,
+  allPersonalCategories,
+  householdCategoriesFor,
+  isActiveIn,
   personalCategoriesFor,
+  personalCategoriesOf,
 } from "@/domain/categories/categories";
 import { type Currency, type Money, add, subtract, sum, zero } from "@/domain/money/money";
 import { type CalendarMonth, compareMonths, monthKey, parseMonthKey } from "@/domain/time/calendar-month";
@@ -157,6 +162,29 @@ export interface CategoryLine {
   readonly reading: LedgerReading | null;
 }
 
+/**
+ * Whether a category belongs on a month's screen.
+ *
+ * A category's lifespan decides what is *offered* — a retired one drops off the
+ * current month, and one created last year does not appear before it existed. A
+ * recorded figure overrides that entirely: money that was written down is always
+ * shown, whatever the lifespan since became. Retiring a category can therefore
+ * never make a past month read differently than it did.
+ */
+function appearsIn(ledger: Ledger, category: PersonalCategory, month: CalendarMonth): boolean {
+  return isActiveIn(category, month) || isRecorded(ledger, category.id, month);
+}
+
+function linesFor(
+  ledger: Ledger,
+  personal: readonly PersonalCategory[],
+  month: CalendarMonth,
+): readonly CategoryLine[] {
+  return personal
+    .filter((category) => appearsIn(ledger, category, month))
+    .map((category) => ({ category, reading: readAmount(ledger, category.id, month) }));
+}
+
 /** One person's categories for a month, each with its reading or the absence of one. */
 export function personMonthLines(
   ledger: Ledger,
@@ -165,10 +193,17 @@ export function personMonthLines(
   month: CalendarMonth,
   options: { readonly type?: CategoryType } = {},
 ): readonly CategoryLine[] {
-  return personalCategoriesFor(categories, personId, options).map((category) => ({
-    category,
-    reading: readAmount(ledger, category.id, month),
-  }));
+  return linesFor(ledger, personalCategoriesFor(categories, personId, options), month);
+}
+
+/** Both people's categories for a month. What the household level is derived from. */
+export function householdMonthLines(
+  ledger: Ledger,
+  categories: Categories,
+  month: CalendarMonth,
+  options: { readonly type?: CategoryType } = {},
+): readonly CategoryLine[] {
+  return linesFor(ledger, allPersonalCategories(categories, options), month);
 }
 
 export interface MonthSummary {
@@ -182,20 +217,11 @@ export interface MonthSummary {
   readonly categoryCount: number;
 }
 
-/**
- * חיסכון for one Person for one month. The currency is explicit because an empty
- * month has no currency of its own, and a total that guessed one would be a lie
- * about which money it counted.
- */
-export function personMonthSummary(
-  ledger: Ledger,
-  categories: Categories,
-  personId: string,
+function summarise(
+  lines: readonly CategoryLine[],
   month: CalendarMonth,
   currency: Currency,
 ): MonthSummary {
-  const lines = personMonthLines(ledger, categories, personId, month);
-
   let income = zero(currency);
   let expenses = zero(currency);
   let recordedCount = 0;
@@ -218,4 +244,89 @@ export function personMonthSummary(
     recordedCount,
     categoryCount: lines.length,
   };
+}
+
+/**
+ * חיסכון for one Person for one month. The currency is explicit because an empty
+ * month has no currency of its own, and a total that guessed one would be a lie
+ * about which money it counted.
+ */
+export function personMonthSummary(
+  ledger: Ledger,
+  categories: Categories,
+  personId: string,
+  month: CalendarMonth,
+  currency: Currency,
+): MonthSummary {
+  return summarise(personMonthLines(ledger, categories, personId, month), month, currency);
+}
+
+/**
+ * חיסכון for the Household for one month — the same arithmetic over both People's
+ * categories. It is derived here and nowhere stored: there is no household ledger
+ * to write to, and no path in this module that would accept one.
+ */
+export function householdMonthSummary(
+  ledger: Ledger,
+  categories: Categories,
+  month: CalendarMonth,
+  currency: Currency,
+): MonthSummary {
+  return summarise(householdMonthLines(ledger, categories, month), month, currency);
+}
+
+/**
+ * Whether a month has been fully recorded. A month with some categories filled and
+ * some not is `partial` — it must never be read as a cheap month, only as an
+ * unfinished one.
+ */
+export type MonthCompleteness = "empty" | "partial" | "complete";
+
+export function completenessOf(summary: MonthSummary): MonthCompleteness {
+  if (summary.recordedCount === 0) return "empty";
+  return summary.recordedCount === summary.categoryCount ? "complete" : "partial";
+}
+
+/** One Household Category's figure for a month, and the personal ones that produced it. */
+export interface HouseholdCategoryLine {
+  readonly household: HouseholdCategory;
+  /** The sum of the contributions below. Never stored, never entered. */
+  readonly amount: Money;
+  /** The drill-down: every contributing Personal Category, recorded or not. */
+  readonly contributions: readonly CategoryLine[];
+  readonly recordedCount: number;
+  readonly categoryCount: number;
+}
+
+/**
+ * The household reading of a month, one line per Household Category, each
+ * carrying the Personal Categories underneath it. A household figure is never
+ * anything but the sum of what is shown beneath it, so drilling into one can
+ * always account for it exactly.
+ *
+ * A Household Category with nothing feeding it in this month is left out rather
+ * than shown as a zero: an empty line is not a fact about the month.
+ */
+export function householdCategoryLines(
+  ledger: Ledger,
+  categories: Categories,
+  month: CalendarMonth,
+  currency: Currency,
+  options: { readonly type?: CategoryType } = {},
+): readonly HouseholdCategoryLine[] {
+  return householdCategoriesFor(categories, options).flatMap((household) => {
+    const contributions = linesFor(ledger, personalCategoriesOf(categories, household.id), month);
+    if (contributions.length === 0) return [];
+
+    const amounts = contributions.flatMap((line) => (line.reading === null ? [] : [line.reading.amount]));
+    return [
+      {
+        household,
+        amount: sum(amounts, currency),
+        contributions,
+        recordedCount: amounts.length,
+        categoryCount: contributions.length,
+      },
+    ];
+  });
 }

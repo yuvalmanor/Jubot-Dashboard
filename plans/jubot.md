@@ -211,17 +211,17 @@ Any household number can be drilled into to see the personal categories that pro
 
 ### Acceptance criteria
 
-- [ ] A month can be read as personal (either person) or household
-- [ ] Two personal categories can be merged into one household category, and both
+- [x] A month can be read as personal (either person) or household
+- [x] Two personal categories can be merged into one household category, and both
       contribute to the same household line afterwards
-- [ ] Merging preserves all prior entries; no historical figure changes
-- [ ] A household category can be renamed without changing any personal category name
-- [ ] A retired category no longer appears for current months but still resolves for past
+- [x] Merging preserves all prior entries; no historical figure changes
+- [x] A household category can be renamed without changing any personal category name
+- [x] A retired category no longer appears for current months but still resolves for past
       months, which read exactly as they did before
-- [ ] A household category figure can be drilled into to reveal its contributing personal
+- [x] A household category figure can be drilled into to reveal its contributing personal
       categories and their amounts
-- [ ] Incomplete months are visibly marked as such
-- [ ] Household totals are derived at read time; no writable household ledger exists
+- [x] Incomplete months are visibly marked as such
+- [x] Household totals are derived at read time; no writable household ledger exists
 
 ---
 

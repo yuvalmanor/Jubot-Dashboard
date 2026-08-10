@@ -9,18 +9,29 @@ import {
   DuplicateCategoryNameError,
   EMPTY_CATEGORIES,
   InvalidCategoryNameError,
+  InvalidLifespanError,
+  InvalidMergeError,
   MalformedCategoriesError,
   UnassignedPersonalCategoryError,
   UnknownCategoryError,
+  allPersonalCategories,
   applyCreation,
+  applyHouseholdRename,
+  applyLifespan,
+  applyMerge,
   buildCategories,
+  findHouseholdCategory,
   findPersonalCategory,
   householdCategoriesFor,
   householdCategoryOf,
+  isActiveIn,
   isRetired,
   normaliseCategoryName,
   personalCategoriesFor,
   personalCategoriesOf,
+  planCategoryMerge,
+  planHouseholdRename,
+  planLifespanChange,
   planPersonalCategoryCreation,
 } from "./categories";
 
@@ -356,5 +367,301 @@ describe("reading the model", () => {
 
   it("throws rather than losing money when asked for an unassigned category's household", () => {
     expect(() => householdCategoryOf(EMPTY_CATEGORIES, "p-1")).toThrow(UnassignedPersonalCategoryError);
+  });
+
+  it("lists both people's categories together for the household level", () => {
+    expect(allPersonalCategories(healthHousehold()).map((category) => category.name)).toEqual([
+      "בריאות",
+      "רפואה",
+    ]);
+  });
+});
+
+/** The state before a merge: one real spend, two personal names, two household lines. */
+function separateHealth(): Categories {
+  const yuval = planPersonalCategoryCreation(
+    EMPTY_CATEGORIES,
+    request({ personId: "yuval", name: "אוכל APPLE", household: { kind: "new", name: "אוכל APPLE" } }),
+    ids("yuval-food"),
+  );
+  const afterYuval = applyCreation(EMPTY_CATEGORIES, yuval);
+  const eden = planPersonalCategoryCreation(
+    afterYuval,
+    request({ personId: "eden", name: "העברות EPP", household: { kind: "new", name: "העברות EPP" } }),
+    ids("eden-food"),
+  );
+  return applyCreation(afterYuval, eden);
+}
+
+describe("merging personal categories under one household line", () => {
+  it("puts both personal categories under the same household category", () => {
+    const before = separateHealth();
+
+    const merge = planCategoryMerge(
+      before,
+      { personalCategoryIds: ["p-eden-food"], household: { kind: "existing", id: "h-yuval-food" } },
+      { householdCategoryId: "unused" },
+    );
+    const after = applyMerge(before, merge);
+
+    expect(householdCategoryOf(after, "p-yuval-food").id).toBe("h-yuval-food");
+    expect(householdCategoryOf(after, "p-eden-food").id).toBe("h-yuval-food");
+    expect(personalCategoriesOf(after, "h-yuval-food").map((category) => category.name)).toEqual([
+      "אוכל APPLE",
+      "העברות EPP",
+    ]);
+  });
+
+  it("changes no personal name and retires nothing", () => {
+    const before = separateHealth();
+    const after = applyMerge(
+      before,
+      planCategoryMerge(
+        before,
+        { personalCategoryIds: ["p-eden-food"], household: { kind: "existing", id: "h-yuval-food" } },
+        { householdCategoryId: "unused" },
+      ),
+    );
+
+    expect(after.personal).toEqual(before.personal);
+  });
+
+  it("drops the household category the merge leaves empty", () => {
+    const before = separateHealth();
+    const merge = planCategoryMerge(
+      before,
+      { personalCategoryIds: ["p-eden-food"], household: { kind: "existing", id: "h-yuval-food" } },
+      { householdCategoryId: "unused" },
+    );
+
+    expect(merge.emptiedHouseholdCategoryIds).toEqual(["h-eden-food"]);
+    expect(householdCategoriesFor(applyMerge(before, merge)).map((category) => category.name)).toEqual([
+      "אוכל APPLE",
+    ]);
+  });
+
+  it("keeps a source household category that still has another personal category feeding it", () => {
+    const before = applyCreation(
+      separateHealth(),
+      planPersonalCategoryCreation(
+        separateHealth(),
+        request({ personId: "yuval", name: "אוכל בחוץ", household: { kind: "existing", id: "h-eden-food" } }),
+        ids("yuval-eating-out"),
+      ),
+    );
+
+    const merge = planCategoryMerge(
+      before,
+      { personalCategoryIds: ["p-eden-food"], household: { kind: "existing", id: "h-yuval-food" } },
+      { householdCategoryId: "unused" },
+    );
+
+    expect(merge.emptiedHouseholdCategoryIds).toEqual([]);
+    expect(householdCategoriesFor(applyMerge(before, merge))).toHaveLength(2);
+  });
+
+  it("can merge into a household category named after neither personal one", () => {
+    const before = separateHealth();
+    const merge = planCategoryMerge(
+      before,
+      {
+        personalCategoryIds: ["p-yuval-food", "p-eden-food"],
+        household: { kind: "new", name: "הטבת אוכל" },
+      },
+      { householdCategoryId: "h-food" },
+    );
+    const after = applyMerge(before, merge);
+
+    expect(merge.householdIsNew).toBe(true);
+    expect(householdCategoriesFor(after).map((category) => category.name)).toEqual(["הטבת אוכל"]);
+    expect(personalCategoriesOf(after, "h-food")).toHaveLength(2);
+  });
+
+  it("refuses to merge across category types", () => {
+    const before = applyCreation(
+      separateHealth(),
+      planPersonalCategoryCreation(
+        separateHealth(),
+        request({ personId: "yuval", name: "משכורת", type: "income" }),
+        ids("salary"),
+      ),
+    );
+
+    expect(() =>
+      planCategoryMerge(
+        before,
+        { personalCategoryIds: ["p-salary"], household: { kind: "existing", id: "h-yuval-food" } },
+        { householdCategoryId: "unused" },
+      ),
+    ).toThrow(CategoryTypeMismatchError);
+  });
+
+  it("refuses an unknown personal category, an unknown target, and an empty merge", () => {
+    const before = separateHealth();
+
+    expect(() =>
+      planCategoryMerge(
+        before,
+        { personalCategoryIds: ["nope"], household: { kind: "existing", id: "h-yuval-food" } },
+        { householdCategoryId: "unused" },
+      ),
+    ).toThrow(UnknownCategoryError);
+
+    expect(() =>
+      planCategoryMerge(
+        before,
+        { personalCategoryIds: ["p-eden-food"], household: { kind: "existing", id: "nope" } },
+        { householdCategoryId: "unused" },
+      ),
+    ).toThrow(UnknownCategoryError);
+
+    expect(() =>
+      planCategoryMerge(before, { personalCategoryIds: [], household: { kind: "new", name: "x" } }, {
+        householdCategoryId: "unused",
+      }),
+    ).toThrow(InvalidMergeError);
+  });
+
+  it("leaves a model that still validates, with nobody unassigned", () => {
+    const before = separateHealth();
+    const after = applyMerge(
+      before,
+      planCategoryMerge(
+        before,
+        { personalCategoryIds: ["p-eden-food"], household: { kind: "existing", id: "h-yuval-food" } },
+        { householdCategoryId: "unused" },
+      ),
+    );
+
+    expect(() => buildCategories(after)).not.toThrow();
+    expect(after.assignments).toHaveLength(after.personal.length);
+  });
+
+  it("is pure — planning changes nothing", () => {
+    const before = separateHealth();
+    planCategoryMerge(
+      before,
+      { personalCategoryIds: ["p-eden-food"], household: { kind: "existing", id: "h-yuval-food" } },
+      { householdCategoryId: "unused" },
+    );
+    expect(householdCategoryOf(before, "p-eden-food").id).toBe("h-eden-food");
+  });
+});
+
+describe("renaming a household category", () => {
+  it("changes the household name and no personal name", () => {
+    const before = healthHousehold();
+    const after = applyHouseholdRename(before, planHouseholdRename(before, "h-yuval-health", "  בריאות ורפואה "));
+
+    expect(findHouseholdCategory(after, "h-yuval-health")?.name).toBe("בריאות ורפואה");
+    expect(after.personal.map((category) => category.name)).toEqual(
+      before.personal.map((category) => category.name),
+    );
+  });
+
+  it("keeps every assignment pointing where it did", () => {
+    const before = healthHousehold();
+    const after = applyHouseholdRename(before, planHouseholdRename(before, "h-yuval-health", "בריאות ורפואה"));
+
+    expect(after.assignments).toEqual(before.assignments);
+  });
+
+  it("refuses a name already used by another household category of the same type", () => {
+    const before = separateHealth();
+    expect(() => planHouseholdRename(before, "h-eden-food", "אוכל APPLE")).toThrow(DuplicateCategoryNameError);
+  });
+
+  it("allows a household category to be renamed to what it already is", () => {
+    const before = separateHealth();
+    expect(planHouseholdRename(before, "h-eden-food", "העברות EPP").name).toBe("העברות EPP");
+  });
+
+  it("refuses an empty name and an unknown category", () => {
+    const before = healthHousehold();
+    expect(() => planHouseholdRename(before, "h-yuval-health", "  ")).toThrow(InvalidCategoryNameError);
+    expect(() => planHouseholdRename(before, "nope", "בריאות")).toThrow(UnknownCategoryError);
+  });
+});
+
+describe("a lifespan, never a delete", () => {
+  const category = () => healthHousehold().personal[0]!;
+
+  it("covers the months from activeFrom onwards while not retired", () => {
+    const open = { ...category(), activeFrom: calendarMonth(2025, 1), activeUntil: null };
+
+    expect(isActiveIn(open, calendarMonth(2024, 12))).toBe(false);
+    expect(isActiveIn(open, calendarMonth(2025, 1))).toBe(true);
+    expect(isActiveIn(open, calendarMonth(2030, 8))).toBe(true);
+  });
+
+  it("treats the retirement month as the last active one", () => {
+    const retired = { ...category(), activeFrom: calendarMonth(2025, 1), activeUntil: calendarMonth(2025, 6) };
+
+    expect(isActiveIn(retired, calendarMonth(2025, 5))).toBe(true);
+    expect(isActiveIn(retired, calendarMonth(2025, 6))).toBe(true);
+    expect(isActiveIn(retired, calendarMonth(2025, 7))).toBe(false);
+  });
+
+  it("removes a retired category from a later month and keeps it in the months it covered", () => {
+    const before = healthHousehold();
+    const after = applyLifespan(
+      before,
+      planLifespanChange(before, "p-yuval-health", { activeUntil: calendarMonth(2025, 6) }),
+    );
+
+    expect(
+      personalCategoriesFor(after, "yuval", { activeIn: calendarMonth(2025, 7) }).map((c) => c.name),
+    ).toEqual([]);
+    expect(
+      personalCategoriesFor(after, "yuval", { activeIn: calendarMonth(2025, 6) }).map((c) => c.name),
+    ).toEqual(["בריאות"]);
+  });
+
+  it("keeps the retired category's row, its name and its assignment", () => {
+    const before = healthHousehold();
+    const after = applyLifespan(
+      before,
+      planLifespanChange(before, "p-yuval-health", { activeUntil: calendarMonth(2025, 6) }),
+    );
+
+    expect(findPersonalCategory(after, "p-yuval-health")?.name).toBe("בריאות");
+    expect(householdCategoryOf(after, "p-yuval-health").id).toBe("h-yuval-health");
+    expect(isRetired(findPersonalCategory(after, "p-yuval-health")!)).toBe(true);
+  });
+
+  it("puts a retired category back in use", () => {
+    const before = healthHousehold();
+    const retired = applyLifespan(
+      before,
+      planLifespanChange(before, "p-yuval-health", { activeUntil: calendarMonth(2025, 6) }),
+    );
+    const reopened = applyLifespan(retired, planLifespanChange(retired, "p-yuval-health", { activeUntil: null }));
+
+    expect(findPersonalCategory(reopened, "p-yuval-health")?.activeUntil).toBeNull();
+  });
+
+  it("moves the start earlier so an older month can be backfilled", () => {
+    const before = healthHousehold();
+    const after = applyLifespan(
+      before,
+      planLifespanChange(before, "p-yuval-health", {
+        activeFrom: calendarMonth(2022, 1),
+        activeUntil: null,
+      }),
+    );
+
+    expect(isActiveIn(findPersonalCategory(after, "p-yuval-health")!, calendarMonth(2022, 3))).toBe(true);
+  });
+
+  it("refuses a retirement before the start and an unknown category", () => {
+    const before = healthHousehold();
+
+    expect(() =>
+      planLifespanChange(before, "p-yuval-health", {
+        activeFrom: calendarMonth(2025, 6),
+        activeUntil: calendarMonth(2025, 5),
+      }),
+    ).toThrow(InvalidLifespanError);
+    expect(() => planLifespanChange(before, "nope", { activeUntil: null })).toThrow(UnknownCategoryError);
   });
 });

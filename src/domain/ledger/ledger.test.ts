@@ -4,6 +4,10 @@ import {
   type Categories,
   EMPTY_CATEGORIES,
   applyCreation,
+  applyLifespan,
+  applyMerge,
+  planCategoryMerge,
+  planLifespanChange,
   planPersonalCategoryCreation,
 } from "@/domain/categories/categories";
 import { CurrencyMismatchError, money } from "@/domain/money/money";
@@ -14,6 +18,9 @@ import {
   DuplicateEntryError,
   EMPTY_LEDGER,
   buildLedger,
+  completenessOf,
+  householdCategoryLines,
+  householdMonthSummary,
   isRecorded,
   personMonthLines,
   personMonthSummary,
@@ -51,6 +58,32 @@ function yuvalCategories(): Categories {
         ),
       ),
     EMPTY_CATEGORIES,
+  );
+}
+
+/** Both People. Health is one household line under two personal names; power is Yuval's alone. */
+function bothPeople(): Categories {
+  const specs = [
+    { name: "רפואה", type: "expense" as const, household: "h-health", key: "eden-health" },
+    { name: "משכורת עדן", type: "income" as const, household: "h-salary", key: "eden-salary" },
+  ];
+  return specs.reduce<Categories>(
+    (categories, spec) =>
+      applyCreation(
+        categories,
+        planPersonalCategoryCreation(
+          categories,
+          {
+            personId: "eden",
+            name: spec.name,
+            type: spec.type,
+            activeFrom: calendarMonth(2022, 1),
+            household: { kind: "existing", id: spec.household },
+          },
+          { personalCategoryId: `p-${spec.key}`, householdCategoryId: "unused" },
+        ),
+      ),
+    yuvalCategories(),
   );
 }
 
@@ -346,5 +379,210 @@ describe("חיסכון", () => {
 
     expect(personMonthSummary(ledger, shared, "yuval", JAN_2025, "ILS").expenses.minorUnits).toBe(10_000);
     expect(personMonthSummary(ledger, shared, "eden", JAN_2025, "ILS").expenses.minorUnits).toBe(70_000);
+  });
+});
+
+describe("the household reading of a month", () => {
+  const monthLedger = () =>
+    buildLedger({
+      entered: [
+        { personalCategoryId: "p-salary", month: JAN_2025, amount: money(28_500_00, "ILS") },
+        { personalCategoryId: "p-eden-salary", month: JAN_2025, amount: money(19_000_00, "ILS") },
+        { personalCategoryId: "p-health", month: JAN_2025, amount: money(1_250_40, "ILS") },
+        { personalCategoryId: "p-eden-health", month: JAN_2025, amount: money(310_60, "ILS") },
+        { personalCategoryId: "p-power", month: JAN_2025, amount: money(430_00, "ILS") },
+      ],
+    });
+
+  it("is both people's figures, in exact minor units", () => {
+    const summary = householdMonthSummary(monthLedger(), bothPeople(), JAN_2025, "ILS");
+
+    expect(summary.income).toEqual({ minorUnits: 4_750_000, currency: "ILS" });
+    expect(summary.expenses).toEqual({ minorUnits: 199_100, currency: "ILS" });
+    expect(summary.saving).toEqual({ minorUnits: 4_550_900, currency: "ILS" });
+  });
+
+  it("is exactly the two personal readings added together", () => {
+    const ledger = monthLedger();
+    const categories = bothPeople();
+    const household = householdMonthSummary(ledger, categories, JAN_2025, "ILS");
+    const yuval = personMonthSummary(ledger, categories, "yuval", JAN_2025, "ILS");
+    const eden = personMonthSummary(ledger, categories, "eden", JAN_2025, "ILS");
+
+    expect(household.saving.minorUnits).toBe(yuval.saving.minorUnits + eden.saving.minorUnits);
+  });
+
+  it("puts two personal names under one household line", () => {
+    const lines = householdCategoryLines(monthLedger(), bothPeople(), JAN_2025, "ILS", { type: "expense" });
+
+    const health = lines.find((line) => line.household.id === "h-health");
+    expect(health?.amount).toEqual({ minorUnits: 156_100, currency: "ILS" });
+    expect(health?.contributions.map((line) => line.category.name)).toEqual(["בריאות", "רפואה"]);
+  });
+
+  it("drills into a household figure and accounts for it exactly", () => {
+    const lines = householdCategoryLines(monthLedger(), bothPeople(), JAN_2025, "ILS");
+
+    for (const line of lines) {
+      const contributed = line.contributions.reduce(
+        (running, contribution) => running + (contribution.reading?.amount.minorUnits ?? 0),
+        0,
+      );
+      expect(line.amount.minorUnits).toBe(contributed);
+    }
+  });
+
+  it("is derived on read — correcting a personal figure moves the household one", () => {
+    const categories = bothPeople();
+    const corrected = buildLedger({
+      entered: [{ personalCategoryId: "p-eden-health", month: JAN_2025, amount: money(1_000_00, "ILS") }],
+    });
+
+    expect(householdMonthSummary(corrected, categories, JAN_2025, "ILS").expenses.minorUnits).toBe(100_000);
+  });
+
+  it("leaves out a household category with nothing feeding it in this month", () => {
+    const categories = bothPeople();
+    const retired = applyLifespan(
+      categories,
+      planLifespanChange(categories, "p-power", { activeUntil: calendarMonth(2024, 12) }),
+    );
+
+    const lines = householdCategoryLines(EMPTY_LEDGER, retired, JAN_2025, "ILS", { type: "expense" });
+    expect(lines.map((line) => line.household.id)).toEqual(["h-health"]);
+  });
+
+  it("reports a household line with nothing recorded as zero in the stated currency", () => {
+    const lines = householdCategoryLines(EMPTY_LEDGER, bothPeople(), JAN_2025, "ILS", { type: "income" });
+
+    expect(lines[0]?.amount).toEqual({ minorUnits: 0, currency: "ILS" });
+    expect(lines[0]?.recordedCount).toBe(0);
+    expect(lines[0]?.categoryCount).toBe(2);
+  });
+});
+
+describe("merging changes the household breakdown and not the money", () => {
+  const ledger = buildLedger({
+    entered: [
+      { personalCategoryId: "p-health", month: JAN_2025, amount: money(400_00, "ILS") },
+      { personalCategoryId: "p-power", month: JAN_2025, amount: money(430_00, "ILS") },
+    ],
+  });
+
+  const merged = () => {
+    const before = bothPeople();
+    return applyMerge(
+      before,
+      planCategoryMerge(
+        before,
+        { personalCategoryIds: ["p-power"], household: { kind: "existing", id: "h-health" } },
+        { householdCategoryId: "unused" },
+      ),
+    );
+  };
+
+  it("reads as one household line afterwards, with both amounts under it", () => {
+    const lines = householdCategoryLines(ledger, merged(), JAN_2025, "ILS", { type: "expense" });
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]?.household.id).toBe("h-health");
+    expect(lines[0]?.amount).toEqual({ minorUnits: 83_000, currency: "ILS" });
+    expect(lines[0]?.contributions.map((line) => line.category.name)).toEqual(["בריאות", "חשמל", "רפואה"]);
+  });
+
+  it("changes no personal figure and no household total", () => {
+    expect(householdMonthSummary(ledger, merged(), JAN_2025, "ILS")).toEqual(
+      householdMonthSummary(ledger, bothPeople(), JAN_2025, "ILS"),
+    );
+    expect(personMonthLines(ledger, merged(), "yuval", JAN_2025)).toEqual(
+      personMonthLines(ledger, bothPeople(), "yuval", JAN_2025),
+    );
+    expect(readAmount(ledger, "p-power", JAN_2025)?.amount.minorUnits).toBe(43_000);
+  });
+});
+
+describe("a retired category", () => {
+  const retiredAtDecember = () => {
+    const categories = bothPeople();
+    return applyLifespan(
+      categories,
+      planLifespanChange(categories, "p-power", { activeUntil: DEC_2024 }),
+    );
+  };
+
+  it("is no longer offered for a current month", () => {
+    const lines = personMonthLines(EMPTY_LEDGER, retiredAtDecember(), "yuval", JAN_2025);
+    expect(lines.map((line) => line.category.name)).not.toContain("חשמל");
+  });
+
+  it("still resolves for the months it covered, reading exactly as before", () => {
+    const ledger = buildLedger({
+      entered: [{ personalCategoryId: "p-power", month: DEC_2024, amount: money(512_35, "ILS") }],
+    });
+
+    // The retirement month itself is still covered, so December reads exactly as
+    // it did: the same categories, the same figures, the same denominator.
+    const read = (categories: Categories) =>
+      personMonthLines(ledger, categories, "yuval", DEC_2024).map((line) => [
+        line.category.name,
+        line.reading?.amount.minorUnits ?? null,
+      ]);
+
+    expect(read(retiredAtDecember())).toEqual(read(bothPeople()));
+    expect(personMonthSummary(ledger, retiredAtDecember(), "yuval", DEC_2024, "ILS")).toEqual(
+      personMonthSummary(ledger, bothPeople(), "yuval", DEC_2024, "ILS"),
+    );
+  });
+
+  it("keeps showing a figure recorded after its retirement rather than hiding money", () => {
+    const ledger = buildLedger({
+      entered: [{ personalCategoryId: "p-power", month: JAN_2025, amount: money(99_00, "ILS") }],
+    });
+
+    const lines = personMonthLines(ledger, retiredAtDecember(), "yuval", JAN_2025);
+    expect(lines.find((line) => line.category.name === "חשמל")?.reading?.amount.minorUnits).toBe(9_900);
+    expect(personMonthSummary(ledger, retiredAtDecember(), "yuval", JAN_2025, "ILS").expenses.minorUnits).toBe(
+      9_900,
+    );
+  });
+
+  it("is left out of the month's denominator once retired", () => {
+    expect(personMonthSummary(EMPTY_LEDGER, retiredAtDecember(), "yuval", JAN_2025, "ILS").categoryCount).toBe(2);
+    expect(personMonthSummary(EMPTY_LEDGER, bothPeople(), "yuval", JAN_2025, "ILS").categoryCount).toBe(3);
+  });
+
+  it("does not appear before the month its lifespan starts", () => {
+    expect(personMonthLines(EMPTY_LEDGER, bothPeople(), "yuval", calendarMonth(2021, 12))).toEqual([]);
+  });
+});
+
+describe("an incomplete month is visible as incomplete", () => {
+  it("is empty when nothing has been recorded", () => {
+    expect(completenessOf(householdMonthSummary(EMPTY_LEDGER, bothPeople(), JAN_2025, "ILS"))).toBe("empty");
+  });
+
+  it("is partial when only some categories have a figure", () => {
+    const ledger = buildLedger({
+      entered: [{ personalCategoryId: "p-salary", month: JAN_2025, amount: money(28_500_00, "ILS") }],
+    });
+    const summary = householdMonthSummary(ledger, bothPeople(), JAN_2025, "ILS");
+
+    expect(completenessOf(summary)).toBe("partial");
+    expect(summary.recordedCount).toBe(1);
+    expect(summary.categoryCount).toBe(5);
+  });
+
+  it("is complete only when every category has one, and a recorded zero counts", () => {
+    const ledger = buildLedger({
+      entered: [
+        { personalCategoryId: "p-salary", month: JAN_2025, amount: ils(28_500) },
+        { personalCategoryId: "p-eden-salary", month: JAN_2025, amount: ils(19_000) },
+        { personalCategoryId: "p-health", month: JAN_2025, amount: ils(0) },
+        { personalCategoryId: "p-eden-health", month: JAN_2025, amount: ils(300) },
+        { personalCategoryId: "p-power", month: JAN_2025, amount: ils(430) },
+      ],
+    });
+
+    expect(completenessOf(householdMonthSummary(ledger, bothPeople(), JAN_2025, "ILS"))).toBe("complete");
   });
 });

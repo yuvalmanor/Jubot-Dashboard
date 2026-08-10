@@ -103,3 +103,33 @@ derived from transactions ([ADR 0001](docs/adr/0001-monthly-amounts-with-optiona
 a category-month carrying both is refused. A month that was never recorded reads as `null`,
 which is not the same fact as a month recorded as zero. חיסכון is `הכנסות − הוצאות`,
 computed on read, with nowhere to write it.
+
+### Reading a month at three levels
+
+`/balance` reads one month as either Person or as the Household. Only the signed-in
+Person's own view has inputs: the other's is readable and not writable, and the household
+view has nothing to write to at all — `householdMonthSummary` and `householdCategoryLines`
+derive every household figure from the personal ones on each read, and each household line
+opens onto the personal categories that produced it, so a figure and its drill-down cannot
+disagree.
+
+Every view states how much of the month has been recorded. A month with some categories
+filled and some empty reads as *חודש חלקי*, never as a cheap month.
+
+### Category lifecycle
+
+`/balance/categories` administers the taxonomy over the amounts. None of it touches
+`entries`, which is why any of it is safe to run over four years of history.
+
+- **Renaming** a household category changes one column on one row. Personal names are the
+  Person's own and are never touched by it.
+- **Merging** moves assignments from one household line to another and drops the emptied
+  one — a household category holds no amounts, so an empty one is a name and nothing else.
+  Household totals before and after a merge are the same money under a different heading.
+- **Retiring** closes a lifespan (`active_until`, inclusive) rather than deleting a row. A
+  retired category drops off the months outside its lifespan, and any month that already
+  holds a figure for it keeps showing that figure — retiring can never hide money. Moving
+  `active_from` earlier is what makes an older month enterable.
+
+Household lines belong to both People, so either may rename or merge them. A personal
+category is one Person's own naming, so only its owner may move or retire it.

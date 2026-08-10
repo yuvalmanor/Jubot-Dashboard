@@ -5,22 +5,15 @@ import { AppHeader } from "@/components/app-header";
 import { DatabaseNotConfiguredError } from "@/db/client";
 import { loadCategories } from "@/db/categories";
 import { loadLedgerForMonth } from "@/db/ledger";
-import { type Person, findPersonByEmail } from "@/db/people";
+import { type Person, findPersonByEmail, listPeople } from "@/db/people";
+import { type Categories } from "@/domain/categories/categories";
 import {
-  type Categories,
-  type CategoryType,
-  type HouseholdCategory,
-  householdCategoriesFor,
-  householdCategoryOf,
-} from "@/domain/categories/categories";
-import {
-  type CategoryLine,
   type Ledger,
-  type MonthSummary,
+  householdCategoryLines,
+  householdMonthSummary,
   personMonthLines,
   personMonthSummary,
 } from "@/domain/ledger/ledger";
-import { format, toDecimalString } from "@/domain/money/money";
 import {
   type CalendarMonth,
   addMonths,
@@ -31,14 +24,20 @@ import {
 } from "@/domain/time/calendar-month";
 import { requireHouseholdEmail } from "@/session";
 
-import { type BalanceErrorCode, createCategoryAndSaveMonth, saveMonth } from "./actions";
+import { type BalanceErrorCode } from "./actions";
+import { MonthEntry } from "./month-entry";
+import { HouseholdReadingTable, PersonReadingTable, SummaryPanel } from "./month-panels";
 
 export const dynamic = "force-dynamic";
 
+/** The ledger is kept in shekels. Explicit, never assumed from context. */
 const LEDGER_CURRENCY = "ILS" as const;
+
+const HOUSEHOLD_VIEW = "household";
 
 interface SearchParams {
   month?: string | string[];
+  view?: string | string[];
   saved?: string | string[];
   created?: string | string[];
   error?: string | string[];
@@ -67,7 +66,7 @@ export default async function BalancePage({ searchParams }: { searchParams: Prom
       />
 
       <main className="mt-6 space-y-6 sm:mt-8">
-        <MonthNavigator month={month} />
+        <MonthNavigator month={month} view={first(params.view)} />
 
         <Notices
           saved={first(params.saved) === "1"}
@@ -77,7 +76,22 @@ export default async function BalancePage({ searchParams }: { searchParams: Prom
         />
 
         {loaded.kind === "ok" ? (
-          <MonthEditor month={month} person={loaded.person} categories={loaded.categories} ledger={loaded.ledger} />
+          <>
+            <ViewTabs
+              month={month}
+              people={loaded.people}
+              signedInPersonId={loaded.person.id}
+              selected={first(params.view)}
+            />
+            <MonthView
+              month={month}
+              view={resolveView(first(params.view), loaded.person, loaded.people)}
+              signedInPersonId={loaded.person.id}
+              people={loaded.people}
+              categories={loaded.categories}
+              ledger={loaded.ledger}
+            />
+          </>
         ) : (
           <UnavailablePanel reason={loaded.reason} />
         )}
@@ -89,7 +103,7 @@ export default async function BalancePage({ searchParams }: { searchParams: Prom
 // --- loading -----------------------------------------------------------------
 
 type LoadedBalance =
-  | { kind: "ok"; person: Person; categories: Categories; ledger: Ledger }
+  | { kind: "ok"; person: Person; people: readonly Person[]; categories: Categories; ledger: Ledger }
   | { kind: "unavailable"; reason: string };
 
 async function loadBalance(month: CalendarMonth, email: string): Promise<LoadedBalance> {
@@ -101,8 +115,12 @@ async function loadBalance(month: CalendarMonth, email: string): Promise<LoadedB
         reason: `הכתובת ${email} אינה משויכת לאף אדם בטבלת people. יש לעדכן את שתי הכתובות במסד (ראו README).`,
       };
     }
-    const [categories, ledger] = await Promise.all([loadCategories(), loadLedgerForMonth(month)]);
-    return { kind: "ok", person, categories, ledger };
+    const [people, categories, ledger] = await Promise.all([
+      listPeople(),
+      loadCategories(),
+      loadLedgerForMonth(month),
+    ]);
+    return { kind: "ok", person, people, categories, ledger };
   } catch (error) {
     if (error instanceof DatabaseNotConfiguredError) {
       return { kind: "unavailable", reason: "משתנה הסביבה DATABASE_URL אינו מוגדר." };
@@ -111,9 +129,185 @@ async function loadBalance(month: CalendarMonth, email: string): Promise<LoadedB
   }
 }
 
+// --- which of the three readings ---------------------------------------------
+
+type View = { kind: "person"; person: Person } | { kind: "household" };
+
+function resolveView(
+  requested: string | undefined,
+  signedIn: Person,
+  people: readonly Person[],
+): View {
+  if (requested === HOUSEHOLD_VIEW) return { kind: "household" };
+  const person = people.find((candidate) => candidate.id === requested);
+  return { kind: "person", person: person ?? signedIn };
+}
+
+function balanceHref(month: CalendarMonth, view: string | undefined): Route {
+  const params = new URLSearchParams({ month: monthKey(month) });
+  if (view !== undefined) params.set("view", view);
+  return `/balance?${params.toString()}` as Route;
+}
+
+function ViewTabs({
+  month,
+  people,
+  signedInPersonId,
+  selected,
+}: {
+  month: CalendarMonth;
+  people: readonly Person[];
+  signedInPersonId: string;
+  selected: string | undefined;
+}) {
+  const current = selected === HOUSEHOLD_VIEW ? HOUSEHOLD_VIEW : (selected ?? signedInPersonId);
+
+  const tabs = [
+    ...people.map((person) => ({
+      key: person.id,
+      label: person.id === signedInPersonId ? `${person.displayName} (אני)` : person.displayName,
+    })),
+    { key: HOUSEHOLD_VIEW, label: "משותף" },
+  ];
+
+  return (
+    <nav aria-label="רמת קריאה" className="flex flex-wrap gap-2">
+      {tabs.map((tab) => {
+        const active = tab.key === current;
+        return (
+          <Link
+            key={tab.key}
+            href={balanceHref(month, tab.key)}
+            aria-current={active ? "page" : undefined}
+            className={`rounded-md border px-3 py-1.5 text-sm font-medium ${
+              active
+                ? "border-stone-900 bg-stone-900 text-white"
+                : "border-stone-300 bg-white hover:bg-stone-50"
+            }`}
+          >
+            {tab.label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+function MonthView({
+  month,
+  view,
+  signedInPersonId,
+  people,
+  categories,
+  ledger,
+}: {
+  month: CalendarMonth;
+  view: View;
+  signedInPersonId: string;
+  people: readonly Person[];
+  categories: Categories;
+  ledger: Ledger;
+}) {
+  if (view.kind === "household") {
+    return <HouseholdMonth month={month} people={people} categories={categories} ledger={ledger} />;
+  }
+
+  if (view.person.id === signedInPersonId) {
+    return <MonthEntry month={month} personId={signedInPersonId} categories={categories} ledger={ledger} />;
+  }
+
+  return <OtherPersonMonth month={month} person={view.person} categories={categories} ledger={ledger} />;
+}
+
+/**
+ * The other Person's month. Readable, never writable: a Person records their own
+ * spending under their own names, and reading each other's is what the household
+ * view is for.
+ */
+function OtherPersonMonth({
+  month,
+  person,
+  categories,
+  ledger,
+}: {
+  month: CalendarMonth;
+  person: Person;
+  categories: Categories;
+  ledger: Ledger;
+}) {
+  const income = personMonthLines(ledger, categories, person.id, month, { type: "income" });
+  const expenses = personMonthLines(ledger, categories, person.id, month, { type: "expense" });
+  const summary = personMonthSummary(ledger, categories, person.id, month, LEDGER_CURRENCY);
+
+  return (
+    <div className="space-y-6">
+      <SummaryPanel summary={summary} note={`הקטגוריות של ${person.displayName}, לקריאה בלבד.`} />
+
+      {income.length + expenses.length === 0 ? (
+        <EmptyPanel>אין ל{person.displayName} קטגוריות בחודש הזה.</EmptyPanel>
+      ) : (
+        <>
+          <PersonReadingTable title="הכנסות" lines={income} />
+          <PersonReadingTable title="הוצאות" lines={expenses} />
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The household's month. Every figure here is derived from the personal ones at
+ * read time — there is no household ledger to write to, and nothing on this
+ * screen accepts input.
+ */
+function HouseholdMonth({
+  month,
+  people,
+  categories,
+  ledger,
+}: {
+  month: CalendarMonth;
+  people: readonly Person[];
+  categories: Categories;
+  ledger: Ledger;
+}) {
+  const summary = householdMonthSummary(ledger, categories, month, LEDGER_CURRENCY);
+  const income = householdCategoryLines(ledger, categories, month, LEDGER_CURRENCY, { type: "income" });
+  const expenses = householdCategoryLines(ledger, categories, month, LEDGER_CURRENCY, { type: "expense" });
+
+  return (
+    <div className="space-y-6">
+      <SummaryPanel
+        summary={summary}
+        note="כל מספר כאן נגזר מהקטגוריות האישיות בזמן הקריאה. אין מאזן משותף שנכתב אליו."
+      />
+
+      {income.length + expenses.length === 0 ? (
+        <EmptyPanel>אין קטגוריות משותפות בחודש הזה.</EmptyPanel>
+      ) : (
+        <>
+          <HouseholdReadingTable title="הכנסות" lines={income} total={summary.income} people={people} />
+          <HouseholdReadingTable title="הוצאות" lines={expenses} total={summary.expenses} people={people} />
+          <p className="text-sm text-stone-500">
+            פתיחת שורה משותפת מציגה את הקטגוריות האישיות שמרכיבות אותה ואת הסכום של כל אחת.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+function EmptyPanel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="rounded-lg border border-dashed border-stone-300 bg-white/60 p-5 text-stone-600">
+      {children}
+    </p>
+  );
+}
+
 // --- month navigation --------------------------------------------------------
 
-function MonthNavigator({ month }: { month: CalendarMonth }) {
+function MonthNavigator({ month, view }: { month: CalendarMonth; view: string | undefined }) {
   const previous = addMonths(month, -1);
   const next = addMonths(month, 1);
 
@@ -121,32 +315,39 @@ function MonthNavigator({ month }: { month: CalendarMonth }) {
     <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-300 bg-white p-4">
       <div className="flex items-center gap-2">
         {/* In RTL the previous month sits to the right, so the arrows point outward. */}
-        <MonthStep href={`/balance?month=${monthKey(next)}`} label={formatMonth(next)} glyph="‹" />
+        <MonthStep href={balanceHref(next, view)} label={formatMonth(next)} glyph="‹" />
         <h2 className="min-w-40 text-center text-lg font-semibold">{formatMonth(month)}</h2>
-        <MonthStep href={`/balance?month=${monthKey(previous)}`} label={formatMonth(previous)} glyph="›" />
+        <MonthStep href={balanceHref(previous, view)} label={formatMonth(previous)} glyph="›" />
       </div>
 
-      {/* Any month in any year — a four-year-old typo is reachable in one step. */}
-      <form className="flex items-center gap-2" action="/balance" method="get">
-        <label htmlFor="month-picker" className="text-sm text-stone-600">
-          מעבר לחודש
-        </label>
-        <input
-          id="month-picker"
-          type="month"
-          name="month"
-          defaultValue={monthKey(month)}
-          min="2000-01"
-          max="2100-12"
-          className="rounded-md border border-stone-300 px-2 py-1.5 text-sm"
-        />
-        <button
-          type="submit"
-          className="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-stone-50"
-        >
-          הצגה
-        </button>
-      </form>
+      <div className="flex flex-wrap items-center gap-4">
+        {/* Any month in any year — a four-year-old typo is reachable in one step. */}
+        <form className="flex items-center gap-2" action="/balance" method="get">
+          {view === undefined ? null : <input type="hidden" name="view" value={view} />}
+          <label htmlFor="month-picker" className="text-sm text-stone-600">
+            מעבר לחודש
+          </label>
+          <input
+            id="month-picker"
+            type="month"
+            name="month"
+            defaultValue={monthKey(month)}
+            min="2000-01"
+            max="2100-12"
+            className="rounded-md border border-stone-300 px-2 py-1.5 text-sm"
+          />
+          <button
+            type="submit"
+            className="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-stone-50"
+          >
+            הצגה
+          </button>
+        </form>
+
+        <Link href="/balance/categories" className="text-sm text-stone-600 underline-offset-4 hover:underline">
+          ניהול קטגוריות
+        </Link>
+      </div>
     </section>
   );
 }
@@ -231,228 +432,5 @@ function UnavailablePanel({ reason }: { reason: string }) {
       <p className="font-medium text-amber-900">לא ניתן לקרוא את המאזן</p>
       <p className="mt-1 text-sm text-amber-800">{reason}</p>
     </div>
-  );
-}
-
-// --- the month itself --------------------------------------------------------
-
-function MonthEditor({
-  month,
-  person,
-  categories,
-  ledger,
-}: {
-  month: CalendarMonth;
-  person: Person;
-  categories: Categories;
-  ledger: Ledger;
-}) {
-  const income = personMonthLines(ledger, categories, person.id, month, { type: "income" });
-  const expenses = personMonthLines(ledger, categories, person.id, month, { type: "expense" });
-  const summary = personMonthSummary(ledger, categories, person.id, month, LEDGER_CURRENCY);
-
-  return (
-    <form className="space-y-6">
-      <input type="hidden" name="month" value={monthKey(month)} />
-
-      <SavingPanel summary={summary} />
-
-      {income.length + expenses.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-stone-300 bg-white/60 p-5 text-stone-600">
-          עדיין אין לך קטגוריות. אפשר ליצור את הראשונה כאן למטה, בלי לצאת מהמסך.
-        </p>
-      ) : (
-        <>
-          <CategoryTable title="הכנסות" lines={income} categories={categories} />
-          <CategoryTable title="הוצאות" lines={expenses} categories={categories} />
-
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="submit"
-              formAction={saveMonth}
-              className="rounded-md bg-stone-900 px-4 py-2.5 font-medium text-white hover:bg-stone-800"
-            >
-              שמירת החודש
-            </button>
-            <p className="text-sm text-stone-500">שדה ריק פירושו שהחודש לא נרשם — אין זה אותו דבר כמו 0.</p>
-          </div>
-        </>
-      )}
-
-      <NewCategoryPanel categories={categories} />
-    </form>
-  );
-}
-
-function SavingPanel({ summary }: { summary: MonthSummary }) {
-  return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Figure label="הכנסות" value={format(summary.income)} />
-        <Figure label="הוצאות" value={format(summary.expenses)} />
-        <Figure label="חיסכון" value={format(summary.saving)} emphasis />
-      </div>
-      <p className="mt-4 text-sm text-stone-500">
-        חיסכון = הכנסות − הוצאות, מחושב בכל קריאה ואינו ניתן לעריכה. נרשמו{" "}
-        <bdi className="tabular">{summary.recordedCount}</bdi> מתוך{" "}
-        <bdi className="tabular">{summary.categoryCount}</bdi> קטגוריות.
-      </p>
-    </section>
-  );
-}
-
-function Figure({ label, value, emphasis = false }: { label: string; value: string; emphasis?: boolean }) {
-  return (
-    <div>
-      <p className="text-sm font-semibold tracking-wide text-stone-500">{label}</p>
-      <bdi className={`tabular block ${emphasis ? "text-3xl font-semibold" : "text-2xl"}`}>{value}</bdi>
-    </div>
-  );
-}
-
-function CategoryTable({
-  title,
-  lines,
-  categories,
-}: {
-  title: string;
-  lines: readonly CategoryLine[];
-  categories: Categories;
-}) {
-  if (lines.length === 0) return null;
-
-  return (
-    <section className="rounded-lg border border-stone-300 bg-white">
-      <h3 className="border-b border-stone-200 px-5 py-3 text-sm font-semibold tracking-wide text-stone-500">
-        {title}
-      </h3>
-      <ul className="divide-y divide-stone-200">
-        {lines.map((line) => (
-          <li key={line.category.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3">
-            <div className="min-w-0 flex-1">
-              <p className="font-medium">
-                <bdi>{line.category.name}</bdi>
-              </p>
-              <p className="text-xs text-stone-500">
-                משותפת: <bdi>{householdCategoryOf(categories, line.category.id).name}</bdi>
-                {line.reading === null ? " · לא נרשם" : null}
-              </p>
-            </div>
-            <input
-              aria-label={line.category.name}
-              name={`amount:${line.category.id}`}
-              type="text"
-              inputMode="decimal"
-              dir="ltr"
-              autoComplete="off"
-              placeholder="—"
-              defaultValue={line.reading === null ? "" : toDecimalString(line.reading.amount)}
-              className="tabular w-36 rounded-md border border-stone-300 px-3 py-1.5 text-left"
-            />
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-// --- creating a category without leaving the screen --------------------------
-
-function NewCategoryPanel({ categories }: { categories: Categories }) {
-  const householdOptions: readonly HouseholdCategory[] = householdCategoriesFor(categories);
-
-  return (
-    <details className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <summary className="cursor-pointer font-medium">קטגוריה חדשה</summary>
-
-      <p className="mt-3 text-sm text-stone-500">
-        קטגוריה אישית תמיד נכנסת לקטגוריה משותפת — או חדשה, או קיימת. כסף שנרשם אצלך אינו יכול להיעלם
-        מהמאזן המשותף. סוג הקטגוריה נקבע כאן פעם אחת ואינו משתנה מחודש לחודש.
-      </p>
-
-      <div className="mt-4 grid gap-4 sm:grid-cols-2">
-        <div>
-          <label htmlFor="newCategoryName" className="block text-sm font-medium">
-            שם הקטגוריה שלי
-          </label>
-          <input
-            id="newCategoryName"
-            name="newCategoryName"
-            type="text"
-            autoComplete="off"
-            maxLength={60}
-            className="mt-1 w-full rounded-md border border-stone-300 px-3 py-1.5"
-          />
-        </div>
-
-        <fieldset>
-          <legend className="block text-sm font-medium">סוג</legend>
-          <div className="mt-1 flex gap-4">
-            <TypeChoice value="expense" label="הוצאה" defaultChecked />
-            <TypeChoice value="income" label="הכנסה" />
-          </div>
-        </fieldset>
-
-        <div>
-          <label htmlFor="newCategoryHousehold" className="block text-sm font-medium">
-            קטגוריה משותפת
-          </label>
-          <select
-            id="newCategoryHousehold"
-            name="newCategoryHousehold"
-            defaultValue="new"
-            className="mt-1 w-full rounded-md border border-stone-300 px-3 py-1.5"
-          >
-            <option value="new">חדשה</option>
-            {householdOptions.map((household) => (
-              <option key={household.id} value={household.id}>
-                {household.name} ({household.type === "income" ? "הכנסה" : "הוצאה"})
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label htmlFor="newHouseholdName" className="block text-sm font-medium">
-            שם הקטגוריה המשותפת החדשה
-          </label>
-          <input
-            id="newHouseholdName"
-            name="newHouseholdName"
-            type="text"
-            autoComplete="off"
-            maxLength={60}
-            placeholder="ברירת מחדל: אותו שם"
-            className="mt-1 w-full rounded-md border border-stone-300 px-3 py-1.5"
-          />
-        </div>
-      </div>
-
-      <button
-        type="submit"
-        formAction={createCategoryAndSaveMonth}
-        className="mt-4 rounded-md border border-stone-900 px-4 py-2 font-medium hover:bg-stone-50"
-      >
-        יצירה והמשך רישום
-      </button>
-      <p className="mt-2 text-sm text-stone-500">הסכומים שכבר הוקלדו יישמרו יחד עם היצירה.</p>
-    </details>
-  );
-}
-
-function TypeChoice({
-  value,
-  label,
-  defaultChecked = false,
-}: {
-  value: CategoryType;
-  label: string;
-  defaultChecked?: boolean;
-}) {
-  return (
-    <label className="flex items-center gap-2 text-sm">
-      <input type="radio" name="newCategoryType" value={value} defaultChecked={defaultChecked} />
-      {label}
-    </label>
   );
 }
