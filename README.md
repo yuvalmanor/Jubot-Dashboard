@@ -210,3 +210,41 @@ household figure is derived at read time.
 
 Running it twice is safe. Every statement is an upsert, and a re-run never undoes a merge
 or a retirement made afterwards.
+
+## מיפוי
+
+`src/domain/snapshot` holds Accounts and Snapshots. An Account is *where* value is held —
+a Person, a native currency, a Value Basis, a קטגוריה and a סוג נכס. It never holds an
+amount: how much is in it is a fact with a date on it, and that is what a Snapshot is for.
+`/accounts` defines them and `/snapshots` reads them.
+
+Three rules do the work, and each exists because the spreadsheet broke without it:
+
+- **A snapshot is complete by construction.** Taking one seeds a line for every Account open
+  on its date, carried forward from the previous snapshot, so restating means correcting
+  what changed rather than re-typing everything — and no account can be left out by being
+  forgotten. An Account defined *after* a snapshot was taken is reported on that snapshot as
+  missing rather than quietly absent, and can be added as a never-measured row.
+- **Every figure says whether it was measured.** A line is `entered` — someone stated it for
+  this snapshot's date — or `carried`, and `measuredOn` names the day it was last actually
+  stated. A pension untouched for five months reads *נגרר — נמדד לאחרונה ב־31 בינואר* rather
+  than as a measured flat line. Changing a figure records it as measured; resubmitting the
+  form unchanged does not, because re-sending a form is not a measurement. The `נמדד`
+  checkbox is how an unchanged figure is confirmed as one.
+- **One rate per snapshot.** Each snapshot carries its own `USD/ILS` rate and every
+  conversion inside it uses that and nothing else. The same $100,000 reads as 365,000₪ in
+  the January snapshot and 320,000₪ in the July one, and neither moves when today's rate
+  does — the direct fix for the sheet's hardcoded 3.602. `convertWithin` is the only
+  conversion path, and it throws rather than reaching for a rate from elsewhere.
+
+Balances are held in the account's own currency and never pre-converted; `snapshotReadings`
+is the read path that needs no rate at all, and `convertedReadings` is the one that restates
+them. Rollups run off the Account's own קטגוריה (נזילות / השקעות / פנסיה / נדל"ן, a closed
+set, because a rollup over free text is a typo away from being wrong) and its סוג נכס, and
+each bucket opens onto exactly the readings its total was computed from. Every bucket also
+states how many of its figures were carried rather than measured.
+
+Closing an account is a lifespan (`closed_on`), never a delete: a closed account drops out
+of later snapshots and keeps resolving in every snapshot it already appears in. Its currency
+is not editable at all — changing it would re-denominate every figure already recorded
+against it.

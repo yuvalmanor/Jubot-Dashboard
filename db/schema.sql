@@ -146,3 +146,103 @@ comment on table entries is
   'not the same fact as a row holding zero.';
 
 create index if not exists entries_month_idx on entries (year, month);
+
+-- --------------------------------------------------------------------------
+-- מיפוי
+-- --------------------------------------------------------------------------
+
+-- A single place value is held. Belongs to a Person, carries a native currency,
+-- and must state how its value was arrived at — `value_basis` is `not null` with
+-- no default, so an account whose provenance nobody chose cannot be written.
+--
+-- Closing is a lifespan (`closed_on`), never a delete: every snapshot the account
+-- appears in must keep resolving.
+create table if not exists accounts (
+  id          uuid primary key default gen_random_uuid(),
+  person_id   text not null references people (id),
+  name        text not null,
+  currency    text not null check (char_length(currency) = 3),
+  value_basis text not null check (value_basis in ('market', 'cost', 'estimate')),
+  category    text not null check (category in ('liquid', 'investments', 'pension', 'property')),
+  asset_kind  text not null,
+  opened_on   date not null,
+  closed_on   date,
+  check (closed_on is null or closed_on >= opened_on),
+  unique (person_id, name)
+);
+
+comment on column accounts.category is
+  'קטגוריה — the rollup bucket (נזילות / השקעות / פנסיה / נדל"ן). Closed, because a '
+  'rollup over free text is one typo away from being wrong.';
+comment on column accounts.asset_kind is
+  'סוג נכס — the finer grouping, in the household''s own words.';
+
+-- A complete dated restatement of every Account. `taken_on` is unique so "the
+-- previous snapshot" is never ambiguous; there is no cadence beyond that.
+create table if not exists snapshots (
+  id         uuid        primary key default gen_random_uuid(),
+  taken_on   date        not null unique,
+  note       text,
+  created_at timestamptz not null default now()
+);
+
+-- The snapshot's own rate. The primary key is what makes it exactly one per pair,
+-- so every dollar figure inside one snapshot converts identically — and a
+-- historical snapshot never re-converts at today's rate.
+create table if not exists snapshot_rates (
+  snapshot_id uuid           not null references snapshots (id) on delete cascade,
+  base        char(3)        not null,
+  quote       char(3)        not null,
+  rate        numeric(18, 6) not null check (rate > 0),
+  check (base <> quote),
+  primary key (snapshot_id, base, quote)
+);
+
+-- One row per Account open on the snapshot's date. `source` says whether anyone
+-- stated this figure at that date; `measured_on` says when it was last stated at
+-- all, and is null for an account nobody has ever valued.
+create table if not exists snapshot_lines (
+  snapshot_id  uuid   not null references snapshots (id) on delete cascade,
+  account_id   uuid   not null references accounts (id),
+  amount_minor bigint not null,
+  currency     text   not null check (char_length(currency) = 3),
+  source       text   not null check (source in ('entered', 'carried')),
+  measured_on  date,
+  primary key (snapshot_id, account_id)
+);
+
+create index if not exists snapshot_lines_account_idx on snapshot_lines (account_id);
+
+-- `source` and `measured_on` must agree, or a line could claim to be measured on
+-- a day nobody measured it. The check needs the snapshot's own date, which a
+-- column check cannot reach, so it is a trigger. The foreign key guarantees the
+-- snapshot row already exists by the time this runs.
+create or replace function jubot_snapshot_line_source_agrees() returns trigger as $fn$
+declare
+  snapshot_date date;
+begin
+  select taken_on into snapshot_date from snapshots where id = new.snapshot_id;
+
+  if new.source = 'entered' and new.measured_on is distinct from snapshot_date then
+    raise exception 'snapshot line % is entered but not measured on %', new.account_id, snapshot_date
+      using errcode = 'integrity_constraint_violation';
+  end if;
+
+  if new.source = 'carried' and new.measured_on is not null and new.measured_on >= snapshot_date then
+    raise exception 'snapshot line % is carried but claims a measurement on %', new.account_id, new.measured_on
+      using errcode = 'integrity_constraint_violation';
+  end if;
+
+  return null;
+end;
+$fn$ language plpgsql;
+
+do $do$
+begin
+  if not exists (select 1 from pg_trigger where tgname = 'snapshot_line_source_must_agree') then
+    create constraint trigger snapshot_line_source_must_agree
+      after insert or update on snapshot_lines
+      for each row execute function jubot_snapshot_line_source_agrees();
+  end if;
+end;
+$do$;

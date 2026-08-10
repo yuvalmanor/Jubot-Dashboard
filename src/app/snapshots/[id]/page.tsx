@@ -1,0 +1,492 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+
+import { AppHeader } from "@/components/app-header";
+import { loadAccounts } from "@/db/accounts";
+import { DatabaseNotConfiguredError } from "@/db/client";
+import { type Person, findPersonByEmail, listPeople } from "@/db/people";
+import { findSnapshot, findSnapshotHeader } from "@/db/snapshots";
+import { format, toDecimalString } from "@/domain/money/money";
+import {
+  type Account,
+  type ConvertedReading,
+  type RollupDimension,
+  type RollupLine,
+  type Snapshot,
+  type SnapshotReading,
+  ASSET_CATEGORIES,
+  ASSET_CATEGORY_LABELS,
+  VALUE_BASIS_LABELS,
+  accountsMissingFrom,
+  completenessOf,
+  convertedReadings,
+  hasRateWithin,
+  isAssetCategory,
+  rateWithin,
+  readingsIn,
+  rollupBy,
+  snapshotReadings,
+  snapshotTotal,
+} from "@/domain/snapshot/snapshot";
+import { formatDate } from "@/domain/time/calendar-date";
+import { requireHouseholdEmail } from "@/session";
+
+import { fillMissingAccounts, restateSnapshot } from "../actions";
+import { Notices, UnavailablePanel } from "../panels";
+
+export const dynamic = "force-dynamic";
+
+/**
+ * One snapshot: every account open on its date, in the currency each is held in,
+ * with the figure that was recorded and whether anybody measured it that day.
+ *
+ * Every converted figure on this page goes through the snapshot's own rate. There
+ * is no path from here to today's rate, which is what makes re-reading a 2024
+ * snapshot produce the numbers it produced in 2024.
+ */
+
+const READING_CURRENCY = "ILS" as const;
+
+interface SearchParams {
+  error?: string | string[];
+  detail?: string | string[];
+  done?: string | string[];
+}
+
+function first(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+export default async function SnapshotPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<SearchParams>;
+}) {
+  const email = await requireHouseholdEmail();
+  const { id } = await params;
+  const query = await searchParams;
+  const loaded = await loadPage(email, id);
+
+  if (loaded.kind === "missing") notFound();
+
+  return (
+    <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
+      <AppHeader
+        email={email}
+        person={loaded.kind === "ok" ? loaded.person : null}
+        title={loaded.kind === "ok" ? formatDate(loaded.snapshot.takenOn) : "צילום"}
+        subtitle={
+          loaded.kind === "ok" && loaded.note !== null ? loaded.note : "מיפוי — כל החשבונות ביום אחד"
+        }
+        back={{ href: "/snapshots", label: "חזרה לרשימת הצילומים" }}
+      />
+
+      <main className="mt-6 space-y-6 sm:mt-8">
+        <Notices error={first(query.error)} detail={first(query.detail)} done={first(query.done)} />
+
+        {loaded.kind === "ok" ? (
+          <SnapshotView
+            snapshot={loaded.snapshot}
+            accounts={loaded.accounts}
+            people={loaded.people}
+          />
+        ) : (
+          <UnavailablePanel reason={loaded.reason} />
+        )}
+      </main>
+    </div>
+  );
+}
+
+// --- loading -----------------------------------------------------------------
+
+type Loaded =
+  | {
+      kind: "ok";
+      person: Person;
+      people: readonly Person[];
+      accounts: readonly Account[];
+      snapshot: Snapshot;
+      note: string | null;
+    }
+  | { kind: "missing" }
+  | { kind: "unavailable"; reason: string };
+
+async function loadPage(email: string, id: string): Promise<Loaded> {
+  try {
+    const person = await findPersonByEmail(email);
+    if (person === null) {
+      return {
+        kind: "unavailable",
+        reason: `הכתובת ${email} אינה משויכת לאף אדם בטבלת people. יש לעדכן את שתי הכתובות במסד (ראו README).`,
+      };
+    }
+    const [people, accounts, snapshot, header] = await Promise.all([
+      listPeople(),
+      loadAccounts(),
+      findSnapshot(id),
+      findSnapshotHeader(id),
+    ]);
+    if (snapshot === null) return { kind: "missing" };
+    return { kind: "ok", person, people, accounts, snapshot, note: header?.note ?? null };
+  } catch (error) {
+    if (error instanceof DatabaseNotConfiguredError) {
+      return { kind: "unavailable", reason: "משתנה הסביבה DATABASE_URL אינו מוגדר." };
+    }
+    return { kind: "unavailable", reason: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+// --- the snapshot ------------------------------------------------------------
+
+function SnapshotView({
+  snapshot,
+  accounts,
+  people,
+}: {
+  snapshot: Snapshot;
+  accounts: readonly Account[];
+  people: readonly Person[];
+}) {
+  // Every screen figure is converted at the snapshot's own rate, so a snapshot
+  // without one is readable in native currencies and rolls up to nothing. Taking
+  // a snapshot always records a rate; this is the shape, not the usual case.
+  const convertible = hasRateWithin(snapshot, "USD", READING_CURRENCY);
+  const missing = accountsMissingFrom(snapshot, accounts);
+
+  return (
+    <div className="space-y-6">
+      <SummaryPanel snapshot={snapshot} accounts={accounts} convertible={convertible} />
+
+      {missing.length === 0 ? null : (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-4" role="status">
+          <p className="font-medium text-amber-900">
+            <bdi className="tabular">{missing.length}</bdi> חשבונות הוגדרו אחרי שהצילום הזה נלקח, ולכן
+            אינם בו
+          </p>
+          <p className="mt-1 text-sm text-amber-800">
+            {missing.map((account) => account.name).join(" · ")} — הוספה תכניס אותם כשורות שלא נמדדו
+            מעולם, לא כאפסים שמישהו קבע.
+          </p>
+          <form action={fillMissingAccounts} className="mt-3">
+            <input type="hidden" name="snapshotId" value={snapshot.id} />
+            <button
+              type="submit"
+              className="rounded-md border border-amber-400 bg-white px-3 py-1.5 text-sm font-medium hover:bg-amber-100"
+            >
+              הוספת החשבונות החסרים
+            </button>
+          </form>
+        </div>
+      )}
+
+      {convertible ? (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <RollupPanel
+            title="לפי קטגוריה"
+            note="נזילות, השקעות, פנסיה, נדל״ן — הריכוזים שהמשק חושב בהם"
+            readings={convertedReadings(snapshot, accounts, READING_CURRENCY)}
+            lines={rollupBy(snapshot, accounts, READING_CURRENCY, "category")}
+            dimension="category"
+          />
+          <RollupPanel
+            title="לפי סוג נכס"
+            note="החלוקה הדקה יותר, במילים של המשק"
+            readings={convertedReadings(snapshot, accounts, READING_CURRENCY)}
+            lines={rollupBy(snapshot, accounts, READING_CURRENCY, "assetKind")}
+            dimension="assetKind"
+          />
+        </div>
+      ) : (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-4">
+          <p className="text-sm text-amber-900">
+            לצילום הזה אין שער <bdi>USD/ILS</bdi>, ולכן אין דרך לרכז אותו לשקלים. כל סכום נקרא למטה
+            במטבע שלו.
+          </p>
+        </div>
+      )}
+
+      <RestateForm readings={snapshotReadings(snapshot, accounts)} snapshotId={snapshot.id} people={people} />
+    </div>
+  );
+}
+
+function SummaryPanel({
+  snapshot,
+  accounts,
+  convertible,
+}: {
+  snapshot: Snapshot;
+  accounts: readonly Account[];
+  convertible: boolean;
+}) {
+  const completeness = completenessOf(snapshot);
+
+  return (
+    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
+      <div className="grid gap-4 sm:grid-cols-3">
+        <div>
+          <p className="text-sm font-semibold tracking-wide text-stone-500">סך הכול</p>
+          <bdi className="tabular block text-3xl font-semibold">
+            {convertible ? format(snapshotTotal(snapshot, accounts, READING_CURRENCY)) : "—"}
+          </bdi>
+        </div>
+        <div>
+          <p className="text-sm font-semibold tracking-wide text-stone-500">
+            שער <bdi>USD/ILS</bdi> בצילום
+          </p>
+          <bdi className="tabular block text-2xl">
+            {convertible ? rateWithin(snapshot, "USD", "ILS").rate : "—"}
+          </bdi>
+        </div>
+        <div>
+          <p className="text-sm font-semibold tracking-wide text-stone-500">נמדדו בתאריך הזה</p>
+          <bdi className="tabular block text-2xl">
+            {completeness.entered}/{completeness.total}
+          </bdi>
+        </div>
+      </div>
+
+      <div className="mt-4 space-y-2">
+        {completeness.carried === 0 ? (
+          <p className="inline-flex flex-wrap items-center gap-x-2 rounded-md bg-emerald-50 px-3 py-1.5 text-sm text-emerald-900">
+            <span className="font-medium">כל השורות נמדדו בתאריך הצילום</span>
+          </p>
+        ) : (
+          <p
+            className="inline-flex flex-wrap items-center gap-x-2 rounded-md bg-amber-50 px-3 py-1.5 text-sm text-amber-900"
+            role="status"
+          >
+            <span className="font-medium">
+              <bdi className="tabular">{completeness.carried}</bdi> שורות נגררו
+            </span>
+            <span>
+              — הערך שלהן הובא מצילום קודם ואיש לא מדד אותן ביום הזה
+              {completeness.unmeasured === 0 ? null : (
+                <>
+                  , ומתוכן <bdi className="tabular">{completeness.unmeasured}</bdi> מעולם לא נמדדו
+                </>
+              )}
+            </span>
+          </p>
+        )}
+        <p className="text-sm text-stone-500">
+          הצילום שלם מעצם בנייתו: יש בו שורה לכל חשבון שהיה פתוח ב־{formatDate(snapshot.takenOn)}. כל
+          המרה בעמוד הזה נעשית בשער השמור על הצילום, לא בשער של היום.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+// --- rollups -----------------------------------------------------------------
+
+function labelFor(dimension: RollupDimension, key: string): string {
+  if (dimension === "category" && isAssetCategory(key)) return ASSET_CATEGORY_LABELS[key];
+  return key;
+}
+
+function RollupPanel({
+  title,
+  note,
+  readings,
+  lines,
+  dimension,
+}: {
+  title: string;
+  note: string;
+  readings: readonly ConvertedReading[];
+  lines: readonly RollupLine[];
+  dimension: RollupDimension;
+}) {
+  if (lines.length === 0) return null;
+
+  return (
+    <section className="rounded-lg border border-stone-300 bg-white">
+      <div className="border-b border-stone-200 px-5 py-3">
+        <h2 className="text-sm font-semibold tracking-wide text-stone-500">{title}</h2>
+        <p className="text-xs text-stone-500">{note}</p>
+      </div>
+
+      <ul className="divide-y divide-stone-200">
+        {lines.map((line) => (
+          <li key={line.key}>
+            <details className="group">
+              <summary className="flex cursor-pointer flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3">
+                <span className="min-w-0 flex-1 font-medium">
+                  <span aria-hidden="true" className="text-stone-400 group-open:hidden">
+                    ▸{" "}
+                  </span>
+                  <span aria-hidden="true" className="hidden text-stone-400 group-open:inline">
+                    ▾{" "}
+                  </span>
+                  <bdi>{labelFor(dimension, line.key)}</bdi>
+                </span>
+                <bdi className="tabular font-medium">{format(line.total)}</bdi>
+                {line.carriedCount === 0 ? null : (
+                  <span className="w-full text-xs text-amber-800 sm:w-auto">
+                    <bdi className="tabular">{line.carriedCount}</bdi> נגררו
+                  </span>
+                )}
+              </summary>
+
+              <ul className="divide-y divide-stone-100 border-t border-stone-100 bg-stone-50/60">
+                {readingsIn(readings, dimension, line.key).map((reading) => (
+                  <li
+                    key={reading.account.id}
+                    className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-2 ps-9"
+                  >
+                    <span className="min-w-0 flex-1 text-sm">
+                      <bdi>{reading.account.name}</bdi>
+                    </span>
+                    <NativeAndConverted reading={reading} />
+                  </li>
+                ))}
+              </ul>
+            </details>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** A foreign figure reads in its own currency first — that is what was recorded. */
+function NativeAndConverted({ reading }: { reading: ConvertedReading }) {
+  if (reading.account.currency === READING_CURRENCY) {
+    return <bdi className="tabular text-sm">{format(reading.native)}</bdi>;
+  }
+  return (
+    <span className="text-sm">
+      <bdi className="tabular font-medium">{format(reading.native)}</bdi>
+      <span className="text-stone-500">
+        {" ≈ "}
+        <bdi className="tabular">{format(reading.converted)}</bdi>
+      </span>
+    </span>
+  );
+}
+
+// --- restating ---------------------------------------------------------------
+
+function RestateForm({
+  readings,
+  snapshotId,
+  people,
+}: {
+  readings: readonly SnapshotReading[];
+  snapshotId: string;
+  people: readonly Person[];
+}) {
+  const nameOf = (personId: string) =>
+    people.find((person) => person.id === personId)?.displayName ?? personId;
+
+  return (
+    <form action={restateSnapshot} className="space-y-6">
+      <input type="hidden" name="snapshotId" value={snapshotId} />
+
+      <p className="text-sm text-stone-600">
+        עדכון הצילום הוא תיקון של מה שהשתנה, לא הקלדה מחדש. סכום ששונה נרשם כנמדד בתאריך הצילום; סכום
+        שנשלח כמו שהוא נשאר גרור — אלא אם סימנתם <span className="font-medium">נמדד</span>, שזו הדרך
+        להגיד ״הסתכלתי, וזה באמת הערך״.
+      </p>
+
+      {/* Grouped from the readings themselves, so the form renders with no rate at all. */}
+      {ASSET_CATEGORIES.flatMap((category) => {
+        const inBucket = readingsIn(readings, "category", category);
+        if (inBucket.length === 0) return [];
+
+        return (
+        <section key={category} className="rounded-lg border border-stone-300 bg-white">
+          <h2 className="border-b border-stone-200 px-5 py-3 text-sm font-semibold tracking-wide text-stone-500">
+            {ASSET_CATEGORY_LABELS[category]}
+          </h2>
+
+          <ul className="divide-y divide-stone-200">
+            {inBucket.map((reading) => (
+              <li key={reading.account.id} className="px-5 py-4">
+                <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
+                  <div className="min-w-48 flex-1">
+                    <p className="font-medium">
+                      <bdi>{reading.account.name}</bdi>
+                    </p>
+                    <p className="text-xs text-stone-500">
+                      {nameOf(reading.account.personId)} · <bdi>{reading.account.assetKind}</bdi> ·{" "}
+                      {VALUE_BASIS_LABELS[reading.account.valueBasis]}
+                    </p>
+                    <SourceBadge reading={reading} />
+                  </div>
+
+                  <label className="block">
+                    <span className="block text-xs text-stone-500">
+                      יתרה ב־<bdi>{reading.account.currency}</bdi>
+                    </span>
+                    {/* The exact decimal goes back in, so a row nobody touches
+                        round-trips to the same minor units and stays carried. */}
+                    <input
+                      name={`amount:${reading.account.id}`}
+                      defaultValue={toDecimalString(reading.native)}
+                      inputMode="decimal"
+                      dir="ltr"
+                      className="tabular mt-1 w-40 rounded-md border border-stone-300 px-3 py-2 text-end"
+                    />
+                  </label>
+
+                  <label className="flex items-center gap-2 pb-2 text-sm">
+                    <input
+                      type="checkbox"
+                      name={`measured:${reading.account.id}`}
+                      className="size-4 rounded border-stone-300"
+                    />
+                    <span>נמדד</span>
+                  </label>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+        );
+      })}
+
+      <div className="flex flex-wrap items-center gap-4">
+        <button
+          type="submit"
+          className="rounded-md border border-stone-900 bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
+        >
+          שמירת הצילום
+        </button>
+        <Link href="/accounts" className="text-sm text-stone-600 underline-offset-4 hover:underline">
+          חסר חשבון? הגדרתו כאן
+        </Link>
+      </div>
+    </form>
+  );
+}
+
+function SourceBadge({ reading }: { reading: SnapshotReading }) {
+  const { line } = reading;
+
+  if (line.source === "entered") {
+    return (
+      <p className="mt-1 inline-flex items-center rounded bg-emerald-50 px-2 py-0.5 text-xs text-emerald-900">
+        נמדד בתאריך הצילום
+      </p>
+    );
+  }
+
+  if (line.measuredOn === null) {
+    return (
+      <p className="mt-1 inline-flex items-center rounded bg-stone-100 px-2 py-0.5 text-xs text-stone-700">
+        לא נמדד מעולם — הסכום הוא מציין מקום ולא מדידה
+      </p>
+    );
+  }
+
+  return (
+    <p className="mt-1 inline-flex items-center rounded bg-amber-50 px-2 py-0.5 text-xs text-amber-900">
+      נגרר — נמדד לאחרונה ב־{formatDate(line.measuredOn)}
+    </p>
+  );
+}

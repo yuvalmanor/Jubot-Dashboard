@@ -336,19 +336,30 @@ historical snapshots never re-convert.
 
 ### Acceptance criteria
 
-- [ ] An account carries a person, a native currency, a Value Basis, a קטגוריה and a
+- [x] An account carries a person, a native currency, a Value Basis, a קטגוריה and a
       סוג נכס
-- [ ] Value Basis is required on every account
-- [ ] Creating a snapshot seeds every active account from the previous snapshot's value
-- [ ] A snapshot has a date and can be taken at any time with no enforced cadence
-- [ ] Each row records whether its value was entered or carried forward, and this is
+- [x] Value Basis is required on every account
+- [x] Creating a snapshot seeds every active account from the previous snapshot's value
+      <!-- An account with no line in the previous snapshot — a newly defined one, or the
+           first snapshot ever — seeds as never measured rather than as a zero somebody
+           stated. An account defined after a snapshot was taken is reported on it as
+           missing rather than silently absent. -->
+- [x] A snapshot has a date and can be taken at any time with no enforced cadence
+      <!-- One snapshot per date, so "the previous snapshot" is never ambiguous. That is
+           the only constraint on when: a day later and a year later are both accepted. -->
+- [x] Each row records whether its value was entered or carried forward, and this is
       visible when reading the snapshot
-- [ ] Balances are held in the account's native currency and are not pre-converted
-- [ ] A snapshot stores exactly one FX rate per currency pair, and every conversion inside
+      <!-- A carried row also states the day it was last actually measured. Changing a
+           figure records it as measured; resubmitting the form unchanged does not, which
+           is what the נמדד checkbox is for. -->
+- [x] Balances are held in the account's native currency and are not pre-converted
+- [x] A snapshot stores exactly one FX rate per currency pair, and every conversion inside
       it uses that rate
-- [ ] Re-reading a historical snapshot produces the same converted figures it produced when
+- [x] Re-reading a historical snapshot produces the same converted figures it produced when
       taken
-- [ ] Rollups by נזילות, השקעות and פנסיה work from קטגוריה and סוג נכס
+      <!-- Verified live: $100,000 reads as 365,000₪ in the January snapshot and 320,000₪
+           in the July one, at each snapshot's own rate, both after the other was written. -->
+- [x] Rollups by נזילות, השקעות and פנסיה work from קטגוריה and סוג נכס
 
 ---
 

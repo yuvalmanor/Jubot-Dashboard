@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 /** The areas this shell will grow into. Listed so the shape is visible from day one. */
 const AREAS = [
   { title: "מאזן הכנסות-הוצאות", note: "רישום חודשי, קטגוריות, מגמות", href: "/balance" },
-  { title: "מיפוי", note: "צילום מלא של כל החשבונות", href: null },
+  { title: "מיפוי", note: "צילום מלא של כל החשבונות", href: "/snapshots" },
   { title: "שווי נטו", note: "מסלול, חשיפה למט״ח, הקצאה", href: null },
   { title: "נכסים ופרוייקטים", note: "רגלי מימון, הוצאות, יתרה", href: null },
   { title: "מחשבון RSU", note: "מניות לפני ואחרי התקופה, מס", href: null },
