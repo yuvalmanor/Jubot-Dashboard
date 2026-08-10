@@ -249,19 +249,25 @@ sheet's surprises surface while the category model is still cheap to change.
 
 - [ ] 2022–2026 income and expense history is imported and readable through the Phase 2/3
       screens
-- [ ] The importer produces *proposed* category assignments; nothing is finalised without
+      <!-- 2024-07 – 2026-07 is imported and verified readable. 2022–2023 is not: the only
+           tab holding it is the 2023 tab, which the PRD puts out of scope and whose layout
+           differs from the three the importer reads. Surfaced rather than reinterpreted. -->
+- [x] The importer produces *proposed* category assignments; nothing is finalised without
       human confirmation
-- [ ] Proposed assignments can be reviewed and corrected before commit
-- [ ] Each overlapping Jan–Jun 2025 month resolves to exactly one entry
-- [ ] Per-person categories land under the correct person
-- [ ] Totals recomputed from imported entries match the sheet's own stated totals for a
+- [x] Proposed assignments can be reviewed and corrected before commit
+- [x] Each overlapping Jan–Jun 2025 month resolves to exactly one entry
+- [x] Per-person categories land under the correct person
+- [x] Totals recomputed from imported entries match the sheet's own stated totals for a
       sampled set of months
-- [ ] `#REF!` and `#DIV/0!` cells are flagged for human correction rather than imported as
+      <!-- 61 of 62 stated monthly totals match to the agora. The 62nd is the sheet
+           disagreeing with itself: עדן's ארנונה for 2025-06 is 477 on the 2024 tab and
+           blank on the 2025 tab. Reported on the review screen, not absorbed. -->
+- [x] `#REF!` and `#DIV/0!` cells are flagged for human correction rather than imported as
       values
-- [ ] `EPP` is treated as Apple's food benefit — an ordinary expense pairing with
+- [x] `EPP` is treated as Apple's food benefit — an ordinary expense pairing with
       `אוכל APPLE` under one household category — not as ESPP
-- [ ] Importer tests run against fixtures taken from the real sheet export
-- [ ] The importer imports nothing from Next.js, React or the database client
+- [x] Importer tests run against fixtures taken from the real sheet export
+- [x] The importer imports nothing from Next.js, React or the database client
 
 ---
 

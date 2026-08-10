@@ -133,3 +133,40 @@ filled and some empty reads as *חודש חלקי*, never as a cheap month.
 
 Household lines belong to both People, so either may rename or merge them. A personal
 category is one Person's own naming, so only its owner may move or retire it.
+
+### Importing the sheet
+
+`docs/source/maazan-sheet-export.md` is the מאזן half of the household's Google Sheet,
+exported verbatim — errors included. `src/domain/import` reads it: `sheet-export.ts` knows
+the shape of the file and `sheet-importer.ts` knows what the rows mean. Both are
+framework-free, and both are disposable once the history is in.
+
+The importer **proposes**. `/balance/import` shows every proposal with the reason behind
+it, and the button at the bottom is the only thing that writes. What it will not decide on
+its own:
+
+- **Which rows are categories.** `סה"כ הוצאות` and `חיסכון` are computed by the sheet, so
+  importing them would double-count the first and contradict the invariant behind the
+  second. `הפקדות לחיסכון` is money moved rather than spent — the sheet leaves it out of
+  its own expense total, and the household records no transfers — so it is proposed as
+  excluded, with that reason attached.
+- **Which household line a category joins.** Matching names are proposed together, `EPP`
+  is paired with `אוכל APPLE` because the household said so, and two names one character
+  apart (`הלוואות` / `הלווואות`) are reported and left alone.
+- **Which tab is right.** Jan–Jun 2025 appears on two tabs. Where they agree the month
+  collapses to one entry silently; where they disagree both figures are shown with the tab
+  each came from, and the choice is a radio button.
+
+Every month's expenses are recomputed from the rows that would be written and compared
+against the sheet's own `סה"כ הוצאות`. 61 of the 62 stated totals match to the agora; the
+62nd is the sheet contradicting itself, and it is displayed rather than absorbed.
+
+Two things the sheet does that are worth knowing when reading the import: the current
+year's tab carries formula zeros for months that have not happened, which are dropped
+because a zero is a recorded fact and would otherwise be indistinguishable from a real one;
+and its own משותף block nets `EPP` out of both sides, so that block's expense total is not
+the sum of the two personal ones. The משותף blocks are not imported at all — every
+household figure is derived at read time.
+
+Running it twice is safe. Every statement is an upsert, and a re-run never undoes a merge
+or a retirement made afterwards.

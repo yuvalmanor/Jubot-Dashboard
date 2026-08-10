@@ -347,6 +347,11 @@ function MonthNavigator({ month, view }: { month: CalendarMonth; view: string | 
         <Link href="/balance/categories" className="text-sm text-stone-600 underline-offset-4 hover:underline">
           ניהול קטגוריות
         </Link>
+
+        {/* Run once, not used. Reachable from the מאזן and from nowhere else. */}
+        <Link href="/balance/import" className="text-sm text-stone-600 underline-offset-4 hover:underline">
+          ייבוא מהגיליון
+        </Link>
       </div>
     </section>
   );
