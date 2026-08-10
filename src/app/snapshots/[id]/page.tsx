@@ -1,3 +1,4 @@
+import type { Route } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -5,11 +6,12 @@ import { AppHeader } from "@/components/app-header";
 import { loadAccounts } from "@/db/accounts";
 import { DatabaseNotConfiguredError } from "@/db/client";
 import { type Person, findPersonByEmail, listPeople } from "@/db/people";
-import { findSnapshot, findSnapshotHeader } from "@/db/snapshots";
-import { format, toDecimalString } from "@/domain/money/money";
+import { type SnapshotHeader, findSnapshot, findSnapshotHeader, loadSnapshotHeaders } from "@/db/snapshots";
+import { type Currency, format, toDecimalString } from "@/domain/money/money";
 import {
   type Account,
   type ConvertedReading,
+  type CurrencyTable,
   type RollupDimension,
   type RollupLine,
   type Snapshot,
@@ -18,8 +20,11 @@ import {
   ASSET_CATEGORY_LABELS,
   VALUE_BASIS_LABELS,
   accountsMissingFrom,
+  basisSplitOf,
+  canConvertWithin,
   completenessOf,
   convertedReadings,
+  currencyTable,
   hasRateWithin,
   isAssetCategory,
   rateWithin,
@@ -28,11 +33,11 @@ import {
   snapshotReadings,
   snapshotTotal,
 } from "@/domain/snapshot/snapshot";
-import { formatDate } from "@/domain/time/calendar-date";
+import { compareDates, formatDate } from "@/domain/time/calendar-date";
 import { requireHouseholdEmail } from "@/session";
 
 import { fillMissingAccounts, restateSnapshot } from "../actions";
-import { Notices, UnavailablePanel } from "../panels";
+import { BasisNote, Notices, UnavailablePanel } from "../panels";
 
 export const dynamic = "force-dynamic";
 
@@ -87,11 +92,14 @@ export default async function SnapshotPage({
         <Notices error={first(query.error)} detail={first(query.detail)} done={first(query.done)} />
 
         {loaded.kind === "ok" ? (
-          <SnapshotView
-            snapshot={loaded.snapshot}
-            accounts={loaded.accounts}
-            people={loaded.people}
-          />
+          <>
+            <NeighbourNav snapshot={loaded.snapshot} history={loaded.history} />
+            <SnapshotView
+              snapshot={loaded.snapshot}
+              accounts={loaded.accounts}
+              people={loaded.people}
+            />
+          </>
         ) : (
           <UnavailablePanel reason={loaded.reason} />
         )}
@@ -110,6 +118,8 @@ type Loaded =
       accounts: readonly Account[];
       snapshot: Snapshot;
       note: string | null;
+      /** Every snapshot's date, so this one can be read as part of a history rather than alone. */
+      history: readonly SnapshotHeader[];
     }
   | { kind: "missing" }
   | { kind: "unavailable"; reason: string };
@@ -123,20 +133,73 @@ async function loadPage(email: string, id: string): Promise<Loaded> {
         reason: `הכתובת ${email} אינה משויכת לאף אדם בטבלת people. יש לעדכן את שתי הכתובות במסד (ראו README).`,
       };
     }
-    const [people, accounts, snapshot, header] = await Promise.all([
+    const [people, accounts, snapshot, header, history] = await Promise.all([
       listPeople(),
       loadAccounts(),
       findSnapshot(id),
       findSnapshotHeader(id),
+      loadSnapshotHeaders(),
     ]);
     if (snapshot === null) return { kind: "missing" };
-    return { kind: "ok", person, people, accounts, snapshot, note: header?.note ?? null };
+    return { kind: "ok", person, people, accounts, snapshot, note: header?.note ?? null, history };
   } catch (error) {
     if (error instanceof DatabaseNotConfiguredError) {
       return { kind: "unavailable", reason: "משתנה הסביבה DATABASE_URL אינו מוגדר." };
     }
     return { kind: "unavailable", reason: error instanceof Error ? error.message : String(error) };
   }
+}
+
+// --- browsing the history by date --------------------------------------------
+
+/**
+ * The snapshot before and after this one by date. A snapshot is a reading in a
+ * series, so the series is walkable from inside it — and the comparison with the
+ * previous one is one click from here rather than a form to fill in.
+ */
+function NeighbourNav({
+  snapshot,
+  history,
+}: {
+  snapshot: Snapshot;
+  history: readonly SnapshotHeader[];
+}) {
+  const earlier = history.filter((header) => compareDates(header.takenOn, snapshot.takenOn) < 0);
+  const later = history.filter((header) => compareDates(header.takenOn, snapshot.takenOn) > 0);
+  // `history` is newest first, so the nearest neighbour on each side is the last
+  // of the earlier ones and the last of the later ones.
+  const previous = earlier[0] ?? null;
+  const next = later[later.length - 1] ?? null;
+
+  return (
+    <nav className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm" aria-label="ניווט בין צילומים">
+      {previous === null ? (
+        <span className="text-stone-400">אין צילום קודם</span>
+      ) : (
+        <Link href={`/snapshots/${previous.id}` as Route} className="underline-offset-4 hover:underline">
+          <span aria-hidden="true">→ </span>הצילום הקודם, {formatDate(previous.takenOn)}
+        </Link>
+      )}
+
+      {next === null ? (
+        <span className="text-stone-400">זה הצילום האחרון</span>
+      ) : (
+        <Link href={`/snapshots/${next.id}` as Route} className="underline-offset-4 hover:underline">
+          הצילום הבא, {formatDate(next.takenOn)}
+          <span aria-hidden="true"> ←</span>
+        </Link>
+      )}
+
+      {previous === null ? null : (
+        <Link
+          href={`/snapshots/compare?from=${previous.id}&to=${snapshot.id}` as Route}
+          className="font-medium underline-offset-4 hover:underline"
+        >
+          השוואה לצילום הקודם
+        </Link>
+      )}
+    </nav>
+  );
 }
 
 // --- the snapshot ------------------------------------------------------------
@@ -153,7 +216,7 @@ function SnapshotView({
   // Every screen figure is converted at the snapshot's own rate, so a snapshot
   // without one is readable in native currencies and rolls up to nothing. Taking
   // a snapshot always records a rate; this is the shape, not the usual case.
-  const convertible = hasRateWithin(snapshot, "USD", READING_CURRENCY);
+  const convertible = canConvertWithin(snapshot, "USD", READING_CURRENCY);
   const missing = accountsMissingFrom(snapshot, accounts);
 
   return (
@@ -181,6 +244,13 @@ function SnapshotView({
           </form>
         </div>
       )}
+
+      {convertible ? (
+        <CurrencyTables
+          shekels={currencyTable(snapshot, accounts, "ILS")}
+          dollars={currencyTable(snapshot, accounts, "USD")}
+        />
+      ) : null}
 
       {convertible ? (
         <div className="grid gap-6 lg:grid-cols-2">
@@ -232,13 +302,20 @@ function SummaryPanel({
           <bdi className="tabular block text-3xl font-semibold">
             {convertible ? format(snapshotTotal(snapshot, accounts, READING_CURRENCY)) : "—"}
           </bdi>
+          {convertible ? (
+            <BasisNote
+              className="mt-1"
+              split={basisSplitOf(convertedReadings(snapshot, accounts, READING_CURRENCY), READING_CURRENCY)}
+            />
+          ) : null}
         </div>
         <div>
           <p className="text-sm font-semibold tracking-wide text-stone-500">
             שער <bdi>USD/ILS</bdi> בצילום
           </p>
           <bdi className="tabular block text-2xl">
-            {convertible ? rateWithin(snapshot, "USD", "ILS").rate : "—"}
+            {/* The stored quote itself, which is why this reads the pair as it was written. */}
+            {hasRateWithin(snapshot, "USD", "ILS") ? rateWithin(snapshot, "USD", "ILS").rate : "—"}
           </bdi>
         </div>
         <div>
@@ -281,6 +358,93 @@ function SummaryPanel({
   );
 }
 
+// --- the שקל and דולר tables -------------------------------------------------
+
+const CURRENCY_TITLES: Record<Currency, { title: string; note: string }> = {
+  ILS: { title: "טבלת שקל", note: "כל חשבון, מוצג בשקלים" },
+  USD: { title: "טבלת דולר", note: "אותם חשבונות, מוצגים בדולרים" },
+};
+
+/**
+ * The two tables the sheet maintained by hand, computed. Neither is stored and
+ * neither has an input in it: they are the same lines read through the same rate,
+ * so an account cannot read 519,088 in one and 450,376 in the other.
+ */
+function CurrencyTables({ shekels, dollars }: { shekels: CurrencyTable; dollars: CurrencyTable }) {
+  return (
+    <section className="space-y-3">
+      <p className="text-sm text-stone-600">
+        שתי הטבלאות מחושבות מאותן שורות ובאותו שער של הצילום — הן אינן נשמרות ואי אפשר לערוך אף אחת
+        מהן בנפרד. תיקון נעשה פעם אחת בלבד, בטופס שלמטה, במטבע שהחשבון מוחזק בו.
+      </p>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <CurrencyTablePanel table={shekels} />
+        <CurrencyTablePanel table={dollars} />
+      </div>
+    </section>
+  );
+}
+
+function CurrencyTablePanel({ table }: { table: CurrencyTable }) {
+  const { title, note } = CURRENCY_TITLES[table.currency];
+
+  return (
+    <section className="rounded-lg border border-stone-300 bg-white">
+      <div className="border-b border-stone-200 px-5 py-3">
+        <h2 className="text-sm font-semibold tracking-wide text-stone-500">{title}</h2>
+        <p className="text-xs text-stone-500">{note}</p>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="text-xs text-stone-500">
+            <tr className="border-b border-stone-200">
+              <th scope="col" className="px-5 py-2 text-start font-medium">
+                חשבון
+              </th>
+              <th scope="col" className="px-5 py-2 text-start font-medium">
+                בסיס השווי
+              </th>
+              <th scope="col" className="px-5 py-2 text-end font-medium">
+                <bdi>{table.currency}</bdi>
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-stone-100">
+            {table.rows.map((row) => (
+              <tr key={row.account.id}>
+                <th scope="row" className="px-5 py-2 text-start font-normal">
+                  <bdi>{row.account.name}</bdi>
+                  {row.line.source === "carried" ? (
+                    <span className="ms-2 text-xs text-amber-800">נגרר</span>
+                  ) : null}
+                </th>
+                <td className="px-5 py-2 text-stone-500">{VALUE_BASIS_LABELS[row.account.valueBasis]}</td>
+                <td className="px-5 py-2 text-end">
+                  <bdi className="tabular">{format(row.converted)}</bdi>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-stone-200 font-medium">
+              <th scope="row" colSpan={2} className="px-5 py-2 text-start">
+                סך הכול
+              </th>
+              <td className="px-5 py-2 text-end">
+                <bdi className="tabular">{format(table.total)}</bdi>
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <BasisNote split={table.basis} className="border-t border-stone-200 px-5 py-3" />
+    </section>
+  );
+}
+
 // --- rollups -----------------------------------------------------------------
 
 function labelFor(dimension: RollupDimension, key: string): string {
@@ -311,43 +475,52 @@ function RollupPanel({
       </div>
 
       <ul className="divide-y divide-stone-200">
-        {lines.map((line) => (
-          <li key={line.key}>
-            <details className="group">
-              <summary className="flex cursor-pointer flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3">
-                <span className="min-w-0 flex-1 font-medium">
-                  <span aria-hidden="true" className="text-stone-400 group-open:hidden">
-                    ▸{" "}
-                  </span>
-                  <span aria-hidden="true" className="hidden text-stone-400 group-open:inline">
-                    ▾{" "}
-                  </span>
-                  <bdi>{labelFor(dimension, line.key)}</bdi>
-                </span>
-                <bdi className="tabular font-medium">{format(line.total)}</bdi>
-                {line.carriedCount === 0 ? null : (
-                  <span className="w-full text-xs text-amber-800 sm:w-auto">
-                    <bdi className="tabular">{line.carriedCount}</bdi> נגררו
-                  </span>
-                )}
-              </summary>
+        {lines.map((line) => {
+          // The bucket's readings, used for both the drill-down and the split, so
+          // a total, its parts and what it is made of cannot disagree.
+          const inBucket = readingsIn(readings, dimension, line.key);
 
-              <ul className="divide-y divide-stone-100 border-t border-stone-100 bg-stone-50/60">
-                {readingsIn(readings, dimension, line.key).map((reading) => (
-                  <li
-                    key={reading.account.id}
-                    className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-2 ps-9"
-                  >
-                    <span className="min-w-0 flex-1 text-sm">
-                      <bdi>{reading.account.name}</bdi>
+          return (
+            <li key={line.key}>
+              <details className="group">
+                <summary className="flex cursor-pointer flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3">
+                  <span className="min-w-0 flex-1 font-medium">
+                    <span aria-hidden="true" className="text-stone-400 group-open:hidden">
+                      ▸{" "}
                     </span>
-                    <NativeAndConverted reading={reading} />
-                  </li>
-                ))}
-              </ul>
-            </details>
-          </li>
-        ))}
+                    <span aria-hidden="true" className="hidden text-stone-400 group-open:inline">
+                      ▾{" "}
+                    </span>
+                    <bdi>{labelFor(dimension, line.key)}</bdi>
+                  </span>
+                  <div className="text-end">
+                    <bdi className="tabular font-medium">{format(line.total)}</bdi>
+                    <BasisNote split={basisSplitOf(inBucket, line.total.currency)} />
+                  </div>
+                  {line.carriedCount === 0 ? null : (
+                    <span className="w-full text-xs text-amber-800 sm:w-auto">
+                      <bdi className="tabular">{line.carriedCount}</bdi> נגררו
+                    </span>
+                  )}
+                </summary>
+
+                <ul className="divide-y divide-stone-100 border-t border-stone-100 bg-stone-50/60">
+                  {inBucket.map((reading) => (
+                    <li
+                      key={reading.account.id}
+                      className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-2 ps-9"
+                    >
+                      <span className="min-w-0 flex-1 text-sm">
+                        <bdi>{reading.account.name}</bdi>
+                      </span>
+                      <NativeAndConverted reading={reading} />
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

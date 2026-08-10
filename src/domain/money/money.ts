@@ -265,6 +265,34 @@ export function convert(amount: Money, rate: ExchangeRate): Money {
   return money(Number(divideRoundingHalfAwayFromZero(numerator, denominator)), rate.to);
 }
 
+/**
+ * Convert against the direction a rate is quoted in — shekels read back as dollars
+ * at a `USD/ILS` rate. Dividing by the stored rate rather than multiplying by an
+ * inverted one is what keeps one rate authoritative: an inverse rounded to a few
+ * decimals is a second rate, and two rates for one pair is precisely how a שקל
+ * table and a דולר table drift apart from each other.
+ */
+export function convertBack(amount: Money, rate: ExchangeRate): Money {
+  if (amount.currency !== rate.to) {
+    throw new CurrencyMismatchError(amount.currency, rate.to);
+  }
+  const fraction = decimalToFraction(rate.rate);
+  if (fraction.numerator <= 0n) {
+    throw new InvalidMoneyError(`Cannot convert back at a rate of ${String(rate.rate)}`);
+  }
+  let numerator = BigInt(amount.minorUnits) * fraction.denominator;
+  let denominator = fraction.numerator;
+
+  const scaleShift = minorUnitDigits(rate.from) - minorUnitDigits(rate.to);
+  if (scaleShift > 0) {
+    numerator *= 10n ** BigInt(scaleShift);
+  } else if (scaleShift < 0) {
+    denominator *= 10n ** BigInt(-scaleShift);
+  }
+
+  return money(Number(divideRoundingHalfAwayFromZero(numerator, denominator)), rate.from);
+}
+
 export interface FormatOptions {
   /** Defaults to Hebrew — the UI language. */
   readonly locale?: string;

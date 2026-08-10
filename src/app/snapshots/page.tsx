@@ -12,6 +12,7 @@ import {
   type Account,
   type Snapshot,
   accountsOpenOn,
+  canConvertWithin,
   completenessOf,
   hasRateWithin,
   rateWithin,
@@ -232,14 +233,23 @@ function HistoryTable({
 }) {
   return (
     <section className="rounded-lg border border-stone-300 bg-white">
-      <h2 className="border-b border-stone-200 px-5 py-3 text-sm font-semibold tracking-wide text-stone-500">
-        היסטוריית צילומים
-      </h2>
+      <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-stone-200 px-5 py-3">
+        <h2 className="text-sm font-semibold tracking-wide text-stone-500">
+          היסטוריית צילומים — <bdi className="tabular">{snapshots.length}</bdi> במלואם, מהחדש לישן
+        </h2>
+        {snapshots.length < 2 ? null : (
+          <Link href="/snapshots/compare" className="text-sm underline-offset-4 hover:underline">
+            השוואה בין שני צילומים
+          </Link>
+        )}
+      </div>
 
       <ul className="divide-y divide-stone-200">
-        {snapshots.map((snapshot) => {
+        {snapshots.map((snapshot, index) => {
           const completeness = completenessOf(snapshot);
-          const convertible = hasRateWithin(snapshot, "USD", READING_CURRENCY);
+          const convertible = canConvertWithin(snapshot, "USD", READING_CURRENCY);
+          // The list is newest first, so the next row down is the previous reading.
+          const previous = snapshots[index + 1] ?? null;
 
           return (
             <li key={snapshot.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3">
@@ -264,11 +274,24 @@ function HistoryTable({
               </span>
 
               <span className="text-xs text-stone-500 sm:min-w-24 sm:text-end">
-                {convertible ? (
+                {hasRateWithin(snapshot, "USD", "ILS") ? (
                   <>
                     שער <bdi className="tabular">{rateWithin(snapshot, "USD", "ILS").rate}</bdi>
                   </>
                 ) : null}
+              </span>
+
+              <span className="text-xs sm:min-w-28 sm:text-end">
+                {previous === null ? (
+                  <span className="text-stone-400">הצילום הראשון</span>
+                ) : (
+                  <Link
+                    href={`/snapshots/compare?from=${previous.id}&to=${snapshot.id}` as Route}
+                    className="text-stone-600 underline-offset-4 hover:underline"
+                  >
+                    השוואה לקודם
+                  </Link>
+                )}
               </span>
             </li>
           );

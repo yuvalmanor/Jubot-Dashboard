@@ -379,13 +379,29 @@ browsable, and any two snapshots can be placed side by side to see exactly what 
 
 ### Acceptance criteria
 
-- [ ] The שקל and דולר tables are computed from the snapshot; neither is separately
+- [x] The שקל and דולר tables are computed from the snapshot; neither is separately
       editable
-- [ ] The same account reads identically in both tables
-- [ ] Every total states how much of it is held at cost versus measured
-- [ ] The complete snapshot history is browsable by date
-- [ ] Any two snapshots can be compared side by side with per-account differences shown
-- [ ] A comparison distinguishes rows that changed from rows that were carried forward
+      <!-- One function with a different currency argument. Both directions run off the
+           snapshot's single rate — shekels read back as dollars by dividing by it, never
+           by an inverse rounded to a few decimals, which would be a second rate. -->
+- [x] The same account reads identically in both tables
+      <!-- Verified live: the pension is 450,376₪ and $123,390.68 in the January snapshot
+           — one recorded figure, two readings of it. -->
+- [x] Every total states how much of it is held at cost versus measured
+      <!-- The snapshot total, both table totals and every rollup bucket. A share of
+           nothing prints as nothing rather than as 0%. -->
+- [x] The complete snapshot history is browsable by date
+      <!-- The list states how many it holds; each snapshot carries the previous and next
+           dates, so the series is walkable from inside one reading. -->
+- [x] Any two snapshots can be compared side by side with per-account differences shown
+      <!-- Differences are in the account's own currency, so a rate move cannot look like
+           money moving. The totals are each read at their own snapshot's rate, and the
+           screen says when those rates differ rather than decomposing the difference,
+           which is Phase 10's work. -->
+- [x] A comparison distinguishes rows that changed from rows that were carried forward
+      <!-- The two are orthogonal and both are reported: a row carrying April's figure
+           against a January reading has changed and was not measured, and reads as both.
+           A side nobody ever measured yields no difference rather than an invented one. -->
 
 ---
 

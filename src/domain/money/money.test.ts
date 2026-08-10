@@ -6,6 +6,7 @@ import {
   add,
   compare,
   convert,
+  convertBack,
   divide,
   equals,
   exchangeRate,
@@ -200,6 +201,39 @@ describe("conversion at an explicit rate", () => {
     expect(() => exchangeRate("USD", "ILS", 0)).toThrow(InvalidMoneyError);
     expect(() => exchangeRate("USD", "ILS", -3.65)).toThrow(InvalidMoneyError);
     expect(() => exchangeRate("USD", "ILS", Number.NaN)).toThrow(InvalidMoneyError);
+  });
+
+  it("reads a rate backwards by dividing, not by inverting it", () => {
+    const rate = exchangeRate("USD", "ILS", 3.65);
+
+    // 365,000₪ is exactly $100,000 at 3.65. An inverse rounded to six decimals
+    // (0.273973) lands fifteen cents above; dividing by the stored rate is exact.
+    expect(convertBack(fromMajorUnits(365_000, "ILS"), rate)).toEqual({
+      minorUnits: 100_000_00,
+      currency: "USD",
+    });
+    expect(convertBack(money(1_234_567, "ILS"), rate).minorUnits).toBe(338_238);
+  });
+
+  it("rounds a backwards conversion at the minor unit, half away from zero", () => {
+    const rate = exchangeRate("USD", "ILS", 3.65);
+    expect(convertBack(fromMajorUnits(50_000, "ILS"), rate)).toEqual({
+      minorUnits: 13_698_63, // 50,000 ÷ 3.65 = 13,698.6301…
+      currency: "USD",
+    });
+    expect(convertBack(money(-1_234_567, "ILS"), rate).minorUnits).toBe(-338_238);
+  });
+
+  it("refuses to read a rate backwards for a currency it was not quoted against", () => {
+    expect(() => convertBack(money(100, "USD"), exchangeRate("USD", "ILS", 3.65))).toThrow(
+      CurrencyMismatchError,
+    );
+  });
+
+  it("returns a converted amount to exactly what it was, when the rate divides it", () => {
+    const rate = exchangeRate("USD", "ILS", 3.65);
+    const original = fromMajorUnits(69_000, "USD");
+    expect(convertBack(convert(original, rate), rate)).toEqual(original);
   });
 
   it("round-trips within one minor unit of rounding", () => {

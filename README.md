@@ -248,3 +248,45 @@ Closing an account is a lifespan (`closed_on`), never a delete: a closed account
 of later snapshots and keeps resolving in every snapshot it already appears in. Its currency
 is not editable at all — changing it would re-denominate every figure already recorded
 against it.
+
+### The שקל and the דולר tables
+
+`currencyTable` is one function; the שקל table and the דולר table are it with a different
+argument. Neither is stored and neither has an input in it, so the sheet's failure — the
+pension reading 519,088 in one table and 450,376 in the other — has nowhere to happen. The
+one editable surface is the restatement form, in the account's own currency, once.
+
+Both directions run off the snapshot's single rate. Reading shekels back as dollars divides
+by the stored rate rather than multiplying by an inverse of it (`convertBack`), because an
+inverse rounded to a few decimals *is* a second rate, and two rates for one pair is exactly
+how two tables drift apart. `canConvertWithin` is the question "can this snapshot restate
+that pair at all"; `hasRateWithin` stays the narrower "is the rate quoted in this direction",
+and only the display of the stored quote uses it.
+
+Every total on the screen states what it is made of: `basisSplitOf` divides it into שווי
+שוק, עלות and הערכה with each one's share, for the snapshot as a whole and for every rollup
+bucket. Per [ADR 0003](docs/adr/0003-illiquid-assets-are-held-at-cost.md) a cost-held asset
+is never re-valued, so a total that does not say how much of itself is cost is claiming to
+know more than it does. A share of nothing prints as nothing rather than as 0%.
+
+### Browsing the history, and comparing two
+
+`/snapshots` lists the complete history by date, newest first, each row with its own total
+at its own rate. A snapshot is a reading in a series, so the series is walkable from inside
+one: `/snapshots/[id]` carries the previous and next dates and a link straight to the
+comparison with the previous.
+
+`/snapshots/compare` puts any two side by side. Two rules keep it honest:
+
+- **Per-account differences are in the account's own currency.** Subtracting two converted
+  figures taken at different rates mixes what the money did with what the shekel did.
+  Separating those is a later phase's work, so this screen shows a figure no rate can
+  distort, and says outright when the two snapshots' rates differ.
+- **A row that carried is never presented as a measurement.** `ComparisonKind` says which of
+  five things a row is — measured, carried, unmeasured on one side, opened, closed — and it
+  is orthogonal to whether the figure moved: a July row carrying April's pension against a
+  January reading has changed *and* was not measured, and reads as both. A side nobody ever
+  measured is a placeholder, so there is no difference to state and none is invented.
+
+Argument order does not matter: the earlier date is always the *before*, so a comparison
+cannot read backwards by accident.

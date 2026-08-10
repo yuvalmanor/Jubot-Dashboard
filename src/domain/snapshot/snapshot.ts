@@ -33,6 +33,10 @@ import {
   type Money,
   add,
   convert,
+  convertBack,
+  isZero,
+  ratio,
+  subtract,
   sum,
   zero,
 } from "@/domain/money/money";
@@ -440,19 +444,50 @@ export function rateWithin(snapshot: Snapshot, from: Currency, to: Currency): Ex
   return rate;
 }
 
+/** Whether the snapshot stores a rate quoted in this direction. */
 export function hasRateWithin(snapshot: Snapshot, from: Currency, to: Currency): boolean {
   if (from === to) return true;
   return snapshot.rates.some((candidate) => candidate.from === from && candidate.to === to);
 }
 
 /**
+ * Whether the snapshot can restate a pair at all. One stored rate reads in both
+ * directions — a `USD/ILS` rate is what turns dollars into shekels *and* shekels
+ * into dollars — so a snapshot never needs a second rate for the way back, which
+ * is what stops the שקל and the דולר tables converting at different numbers.
+ */
+export function canConvertWithin(snapshot: Snapshot, from: Currency, to: Currency): boolean {
+  if (from === to) return true;
+  return snapshot.rates.some(
+    (candidate) =>
+      (candidate.from === from && candidate.to === to) ||
+      (candidate.from === to && candidate.to === from),
+  );
+}
+
+/**
  * Convert inside a snapshot. The only conversion path for a snapshot figure: it
  * cannot reach today's rate, so re-reading a historical snapshot produces the
  * figures it produced when it was taken.
+ *
+ * A pair the snapshot quotes the other way round is read backwards from the same
+ * stored rate rather than from an inverse of it, so the two directions are one
+ * number read two ways.
  */
 export function convertWithin(snapshot: Snapshot, amount: Money, to: Currency): Money {
   if (amount.currency === to) return amount;
-  return convert(amount, rateWithin(snapshot, amount.currency, to));
+
+  const forward = snapshot.rates.find(
+    (candidate) => candidate.from === amount.currency && candidate.to === to,
+  );
+  if (forward !== undefined) return convert(amount, forward);
+
+  const backward = snapshot.rates.find(
+    (candidate) => candidate.from === to && candidate.to === amount.currency,
+  );
+  if (backward !== undefined) return convertBack(amount, backward);
+
+  throw new MissingSnapshotRateError(amount.currency, to, snapshot.takenOn);
 }
 
 /** One account's line, read with the account beside it. Nothing is converted here. */
@@ -509,6 +544,72 @@ export function snapshotTotal(
     convertedReadings(snapshot, accounts, currency).map((reading) => reading.converted),
     currency,
   );
+}
+
+// --- the שקל and דולר tables -------------------------------------------------
+
+/**
+ * How much of a total is a measurement and how much is not (ADR 0003). Real
+ * estate is held at cost and never re-valued, so a total that does not say how
+ * much of itself is cost is quietly claiming to be worth more than it can know.
+ */
+export interface BasisSplit {
+  readonly total: Money;
+  /** One subtotal per Value Basis. Every reading lands in exactly one of them. */
+  readonly byBasis: Readonly<Record<ValueBasis, Money>>;
+  /** The share of the total held at cost — `null` when there is no total to be a share of. */
+  readonly costShare: number | null;
+}
+
+/**
+ * Split a set of readings by Value Basis. Takes readings rather than a snapshot,
+ * so a bucket's split is a filter of the very list its total was computed from
+ * and cannot disagree with it.
+ */
+export function basisSplitOf(
+  readings: readonly ConvertedReading[],
+  currency: Currency,
+): BasisSplit {
+  const byBasis: Record<ValueBasis, Money> = {
+    market: zero(currency),
+    cost: zero(currency),
+    estimate: zero(currency),
+  };
+
+  for (const reading of readings) {
+    byBasis[reading.account.valueBasis] = add(byBasis[reading.account.valueBasis], reading.converted);
+  }
+
+  const total = sum(VALUE_BASES.map((basis) => byBasis[basis]), currency);
+  return { total, byBasis, costShare: ratio(byBasis.cost, total) };
+}
+
+/**
+ * A whole snapshot read in one currency — the שקל table, or the דולר table.
+ *
+ * Both are this function with a different argument. Neither is stored, neither is
+ * editable, and both read the same lines through the same rate, so they cannot
+ * disagree about an account the way the spreadsheet's two tables did — where the
+ * pension read 519,088 in one and 450,376 in the other.
+ */
+export interface CurrencyTable {
+  readonly currency: Currency;
+  /** One row per account in the snapshot, in the same order whatever the currency. */
+  readonly rows: readonly ConvertedReading[];
+  readonly total: Money;
+  readonly basis: BasisSplit;
+}
+
+export function currencyTable(
+  snapshot: Snapshot,
+  accounts: readonly Account[],
+  currency: Currency,
+): CurrencyTable {
+  const rows = convertedReadings(snapshot, accounts, currency);
+  const basis = basisSplitOf(rows, currency);
+  // The total is the split's own total, not a second sum of the same rows: a
+  // table whose header can disagree with its footer is the bug this replaces.
+  return { currency, rows, total: basis.total, basis };
 }
 
 /** How much of a snapshot was actually measured on its own date. */
@@ -613,4 +714,149 @@ export function previousSnapshot(
     .filter((snapshot) => compareDates(snapshot.takenOn, date) < 0)
     .sort((left, right) => compareDates(left.takenOn, right.takenOn));
   return earlier[earlier.length - 1] ?? null;
+}
+
+// --- comparing two snapshots -------------------------------------------------
+
+/**
+ * What one row of a comparison is. A difference is never a bare number: a figure
+ * nobody measured on the later date can only have moved because it was carried
+ * forward, not because the money did.
+ */
+export type ComparisonKind =
+  /** Someone stated the later figure on the later snapshot's own date. */
+  | "measured"
+  /** Nobody did; the later figure came forward from an earlier reading. */
+  | "carried"
+  /** One side or the other is a placeholder nobody has ever measured. */
+  | "unmeasured"
+  /** The account holds no line in the earlier snapshot. */
+  | "opened"
+  /** The account holds no line in the later snapshot. */
+  | "closed";
+
+export interface ComparisonRow {
+  readonly account: Account;
+  readonly kind: ComparisonKind;
+  readonly before: SnapshotLine | null;
+  readonly after: SnapshotLine | null;
+  /**
+   * The difference in the account's own currency, so no rate touches it. `null`
+   * when there is nothing to subtract — a side that holds no line, or one that
+   * holds a placeholder rather than a measurement.
+   */
+  readonly change: Money | null;
+  /** Whether the two recorded figures differ. False whenever `change` is `null`. */
+  readonly changed: boolean;
+}
+
+export interface ComparisonCounts {
+  readonly measured: number;
+  readonly carried: number;
+  readonly unmeasured: number;
+  readonly opened: number;
+  readonly closed: number;
+  /** Rows whose figure actually differs between the two snapshots. */
+  readonly changed: number;
+}
+
+export interface SnapshotComparison {
+  readonly earlier: Snapshot;
+  readonly later: Snapshot;
+  readonly rows: readonly ComparisonRow[];
+  readonly counts: ComparisonCounts;
+}
+
+function comparisonRow(account: Account, earlier: Snapshot, later: Snapshot): ComparisonRow | null {
+  const before = findLine(earlier, account.id) ?? null;
+  const after = findLine(later, account.id) ?? null;
+
+  if (before === null && after === null) return null;
+  if (before === null) {
+    return { account, kind: "opened", before, after, change: null, changed: false };
+  }
+  if (after === null) {
+    return { account, kind: "closed", before, after, change: null, changed: false };
+  }
+  if (isUnmeasured(before) || isUnmeasured(after)) {
+    // Subtracting a placeholder would report growth nobody measured.
+    return { account, kind: "unmeasured", before, after, change: null, changed: false };
+  }
+
+  const change = subtract(after.balance, before.balance);
+  return {
+    account,
+    kind: after.source === "entered" ? "measured" : "carried",
+    before,
+    after,
+    change,
+    changed: !isZero(change),
+  };
+}
+
+/**
+ * Two snapshots side by side. Argument order does not matter: the earlier date is
+ * always the *before*, so a comparison cannot read backwards by accident.
+ *
+ * Every difference here is in the account's own currency. Restating the change of
+ * two snapshots taken at different rates mixes what the money did with what the
+ * rate did, and separating those two is Phase 10's work — this phase says what
+ * moved, per account, at a figure no rate can distort.
+ */
+export function compareSnapshots(input: {
+  readonly earlier: Snapshot;
+  readonly later: Snapshot;
+  readonly accounts: readonly Account[];
+}): SnapshotComparison {
+  const backwards = compareDates(input.earlier.takenOn, input.later.takenOn) > 0;
+  const earlier = backwards ? input.later : input.earlier;
+  const later = backwards ? input.earlier : input.later;
+
+  const rows = sortAccounts(input.accounts).flatMap((account) => {
+    const row = comparisonRow(account, earlier, later);
+    return row === null ? [] : [row];
+  });
+
+  const counts: ComparisonCounts = {
+    measured: rows.filter((row) => row.kind === "measured").length,
+    carried: rows.filter((row) => row.kind === "carried").length,
+    unmeasured: rows.filter((row) => row.kind === "unmeasured").length,
+    opened: rows.filter((row) => row.kind === "opened").length,
+    closed: rows.filter((row) => row.kind === "closed").length,
+    changed: rows.filter((row) => row.changed).length,
+  };
+
+  return { earlier, later, rows, counts };
+}
+
+export interface ComparisonTotals {
+  readonly currency: Currency;
+  /** Each side read at its own snapshot's rate — a historical snapshot never re-converts. */
+  readonly before: Money;
+  readonly after: Money;
+  /**
+   * `after − before`, and nothing finer. When the two snapshots carry different
+   * rates this is a mix of what moved and what the rate did; `rateChanged` says
+   * so, and decomposing it is Phase 10's work rather than a figure invented here.
+   */
+  readonly change: Money;
+  readonly rateChanged: boolean;
+}
+
+export function comparisonTotals(
+  comparison: SnapshotComparison,
+  accounts: readonly Account[],
+  currency: Currency,
+): ComparisonTotals {
+  const before = snapshotTotal(comparison.earlier, accounts, currency);
+  const after = snapshotTotal(comparison.later, accounts, currency);
+
+  const rateChanged = comparison.later.rates.some((rate) => {
+    const previous = comparison.earlier.rates.find(
+      (candidate) => candidate.from === rate.from && candidate.to === rate.to,
+    );
+    return previous !== undefined && previous.rate !== rate.rate;
+  });
+
+  return { currency, before, after, change: subtract(after, before), rateChanged };
 }
