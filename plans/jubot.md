@@ -174,20 +174,20 @@ producer in this PRD.
 
 ### Acceptance criteria
 
-- [ ] A person can enter an amount for each of their own categories for a chosen month
-- [ ] Each person's categories are separate — the same real-world spend can be named
+- [x] A person can enter an amount for each of their own categories for a chosen month
+- [x] Each person's categories are separate — the same real-world spend can be named
       `בריאות` by one and `רפואה` by the other
-- [ ] A new personal category can be created during entry without leaving the screen
-- [ ] Creating a personal category always creates or joins a household category; there is
+- [x] A new personal category can be created during entry without leaving the screen
+- [x] Creating a personal category always creates or joins a household category; there is
       no reachable state in which a personal category is unassigned
-- [ ] Category Type is set once at creation and is not variable per month
-- [ ] חיסכון displays as `הכנסות − הוצאות` and is nowhere writable
-- [ ] Any month in any year can be reopened and a figure corrected
-- [ ] Entries are keyed by real calendar `(year, month)` and read as one continuous ledger
-- [ ] The Ledger accessor returns the entered value and is the only read path for a
+- [x] Category Type is set once at creation and is not variable per month
+- [x] חיסכון displays as `הכנסות − הוצאות` and is nowhere writable
+- [x] Any month in any year can be reopened and a figure corrected
+- [x] Entries are keyed by real calendar `(year, month)` and read as one continuous ledger
+- [x] The Ledger accessor returns the entered value and is the only read path for a
       category-month; a category-month cannot be both entered and transaction-backed
-- [ ] A missing month is distinguishable from a month of zeros
-- [ ] `Categories` and `Ledger` tests run on plain data with no database
+- [x] A missing month is distinguishable from a month of zeros
+- [x] `Categories` and `Ledger` tests run on plain data with no database
 
 ---
 

@@ -13,3 +13,16 @@ insert into fx_rates (base, quote, rate, as_of)
 values ('USD', 'ILS', 3.650000, current_date)
 on conflict (base, quote, as_of) do update
   set rate = excluded.rate;
+
+-- The two People. `email` is the link from a Google sign-in to a Person, so on a
+-- deployed instance these must be the two real addresses — the same two that are
+-- in JUBOT_ALLOWED_EMAILS. The placeholders below match .env.example.
+insert into people (id, display_name, email)
+values ('yuval', 'יובל', 'yuval@example.com'),
+       ('eden',  'עדן',  'eden@example.com')
+on conflict (id) do update
+  set display_name = excluded.display_name,
+      email        = excluded.email;
+
+-- No categories are seeded. Every Personal Category is named by the Person who
+-- owns it, and creating one always creates or joins a Household Category.

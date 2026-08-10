@@ -37,8 +37,24 @@ npm test && npx tsc --noEmit && npm run build
    `db:local` is PGlite — real Postgres compiled to WebAssembly — served over the ordinary
    wire protocol on port 5433, with `db/schema.sql` and `db/seed.sql` already applied. The
    app connects to it with the same `pg` client it uses against Neon. It is a
-   devDependency: nothing in the deployed app imports it.
+   devDependency: nothing in the deployed app imports it. It holds the database in memory,
+   so restarting it starts from the seed again.
 4. `npm run dev`
+
+### Linking a sign-in to a Person
+
+`JUBOT_ALLOWED_EMAILS` decides *who may sign in*. `people.email` decides *which of the two
+they are* — it is what connects a Google account to that Person's categories and entries.
+The two must agree. `db/seed.sql` ships the same placeholder addresses as `.env.example`;
+on a real instance put the two real addresses in both places:
+
+```sql
+update people set email = 'yuval@…' where id = 'yuval';
+update people set email = 'eden@…'  where id = 'eden';
+```
+
+An allowed address with no matching Person row gets a signed-in shell that says so, rather
+than someone else's ledger.
 
 ### Google OAuth client
 
@@ -56,11 +72,12 @@ the `signIn` callback, so no session is ever issued for it.
 
 1. Create a Postgres database on Neon or Supabase (free tier) and run `db/schema.sql` and
    `db/seed.sql` against it.
-2. Import the repository into Vercel (Hobby plan).
-3. Set `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `JUBOT_ALLOWED_EMAILS` and
+2. Set the two real addresses on the `people` rows (see *Linking a sign-in to a Person*).
+3. Import the repository into Vercel (Hobby plan).
+4. Set `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `JUBOT_ALLOWED_EMAILS` and
    `DATABASE_URL` as environment variables in the Vercel project.
-4. Add the deployed domain's callback URL to the Google OAuth client.
-5. Deploy.
+5. Add the deployed domain's callback URL to the Google OAuth client.
+6. Deploy.
 
 ## Money
 
@@ -68,4 +85,21 @@ Every amount in the system is an integer number of minor units plus an explicit 
 code — never a float, never a bare number. `src/domain/money/money.ts` owns the arithmetic:
 addition across currencies throws, conversion requires an explicit rate that names its
 currency pair, and rounding happens at the minor-unit boundary, half away from zero. Rates
-are read as exact decimals rather than doubles, so 3.65 means 365/100.
+are read as exact decimals rather than doubles, so 3.65 means 365/100. It also owns the
+boundary with a keyboard: `parseMoneyInput` reads what a person typed and `toDecimalString`
+writes it back, and a field left untouched round-trips to the same minor units.
+
+## מאזן
+
+`src/domain/categories` holds Personal Categories, Household Categories and the Assignment
+between them. Creating a personal category is one indivisible result — the category, the
+household category it joins, and the assignment — so there is no shape in which money is
+recorded personally and missing from the household. The database holds the same rule as a
+deferred constraint, so it cannot be broken by anything that writes around the domain.
+
+`src/domain/ledger` holds Entries, keyed by real calendar `(year, month)`. `readAmount` is
+the only read path for a category-month and hides whether the figure was entered by hand or
+derived from transactions ([ADR 0001](docs/adr/0001-monthly-amounts-with-optional-transaction-backing.md));
+a category-month carrying both is refused. A month that was never recorded reads as `null`,
+which is not the same fact as a month recorded as zero. חיסכון is `הכנסות − הוצאות`,
+computed on read, with nowhere to write it.

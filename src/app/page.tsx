@@ -1,61 +1,40 @@
-import { redirect } from "next/navigation";
+import Link from "next/link";
 
+import { AppHeader } from "@/components/app-header";
 import { MoneyFigure } from "@/components/money-figure";
-import { auth, householdAllowList, signOut } from "@/auth";
 import { DatabaseNotConfiguredError } from "@/db/client";
 import { type DatedRate, type StoredAmount, findLatestRate, findStoredAmount } from "@/db/money-settings";
-import { isAllowed } from "@/domain/access/allow-list";
+import { findPersonByEmail } from "@/db/people";
+import { requireHouseholdEmail } from "@/session";
 
 // Reads a live database on every request; nothing here is prerendered at build.
 export const dynamic = "force-dynamic";
 
 /** The areas this shell will grow into. Listed so the shape is visible from day one. */
 const AREAS = [
-  { title: "מאזן הכנסות-הוצאות", note: "רישום חודשי, קטגוריות, מגמות" },
-  { title: "מיפוי", note: "צילום מלא של כל החשבונות" },
-  { title: "שווי נטו", note: "מסלול, חשיפה למט״ח, הקצאה" },
-  { title: "נכסים ופרוייקטים", note: "רגלי מימון, הוצאות, יתרה" },
-  { title: "מחשבון RSU", note: "מניות לפני ואחרי התקופה, מס" },
-  { title: "לוח תכנון", note: "תרחישים ותוכניות מימון" },
-  { title: "סיכום שנתי", note: "היכן הסתיימה השנה" },
+  { title: "מאזן הכנסות-הוצאות", note: "רישום חודשי, קטגוריות, מגמות", href: "/balance" },
+  { title: "מיפוי", note: "צילום מלא של כל החשבונות", href: null },
+  { title: "שווי נטו", note: "מסלול, חשיפה למט״ח, הקצאה", href: null },
+  { title: "נכסים ופרוייקטים", note: "רגלי מימון, הוצאות, יתרה", href: null },
+  { title: "מחשבון RSU", note: "מניות לפני ואחרי התקופה, מס", href: null },
+  { title: "לוח תכנון", note: "תרחישים ותוכניות מימון", href: null },
+  { title: "סיכום שנתי", note: "היכן הסתיימה השנה", href: null },
 ] as const;
 
 export default async function DashboardPage() {
-  const session = await auth();
-  const email = session?.user?.email;
-
-  // Defence in depth: the middleware already redirected, and the allow-list already
-  // refused at sign-in. No route renders data without both holding here too.
-  if (!session || !isAllowed(email, householdAllowList())) {
-    redirect("/signin");
-  }
+  const email = await requireHouseholdEmail();
+  const person = await findPersonByEmail(email).catch(() => null);
 
   const tracer = await readTracerAmount();
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
-      <header className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-3 border-b border-stone-300 pb-5">
-        <div>
-          <h1 className="text-2xl font-bold sm:text-3xl">Jubot</h1>
-          <p className="text-sm text-stone-600">לוח מחוונים פיננסי של משק הבית</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <bdi className="text-sm text-stone-600 break-all">{email}</bdi>
-          <form
-            action={async () => {
-              "use server";
-              await signOut({ redirectTo: "/signin" });
-            }}
-          >
-            <button
-              type="submit"
-              className="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-stone-50"
-            >
-              התנתקות
-            </button>
-          </form>
-        </div>
-      </header>
+      <AppHeader
+        email={email}
+        person={person}
+        title="Jubot"
+        subtitle="לוח מחוונים פיננסי של משק הבית"
+      />
 
       <main className="mt-6 space-y-6 sm:mt-8">
         <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
@@ -83,16 +62,29 @@ export default async function DashboardPage() {
             אזורים
           </h2>
           <ul className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {AREAS.map((area) => (
-              <li
-                key={area.title}
-                className="rounded-lg border border-dashed border-stone-300 bg-white/60 p-4"
-              >
-                <p className="font-medium text-stone-700">{area.title}</p>
-                <p className="mt-1 text-sm text-stone-500">{area.note}</p>
-                <p className="mt-2 text-xs font-medium tracking-wide text-stone-400">בקרוב</p>
-              </li>
-            ))}
+            {AREAS.map((area) =>
+              area.href === null ? (
+                <li
+                  key={area.title}
+                  className="rounded-lg border border-dashed border-stone-300 bg-white/60 p-4"
+                >
+                  <p className="font-medium text-stone-700">{area.title}</p>
+                  <p className="mt-1 text-sm text-stone-500">{area.note}</p>
+                  <p className="mt-2 text-xs font-medium tracking-wide text-stone-400">בקרוב</p>
+                </li>
+              ) : (
+                <li key={area.title}>
+                  <Link
+                    href={area.href}
+                    className="block h-full rounded-lg border border-stone-300 bg-white p-4 hover:bg-stone-50"
+                  >
+                    <p className="font-medium text-stone-900">{area.title}</p>
+                    <p className="mt-1 text-sm text-stone-500">{area.note}</p>
+                    <p className="mt-2 text-xs font-medium tracking-wide text-stone-600">פתיחה ←</p>
+                  </Link>
+                </li>
+              ),
+            )}
           </ul>
         </section>
       </main>

@@ -24,7 +24,16 @@ for (const file of ["db/schema.sql", "db/seed.sql"]) {
   console.log(`applied ${file}`);
 }
 
-const server = new PGLiteSocketServer({ db: database, port: PORT, host: "127.0.0.1" });
+// maxConnections defaults to 1, and a single-slot server wedges when a client is
+// replaced rather than closed cleanly — a restarted dev server, or a pooled
+// connection discarded after a failed transaction. Every later connection then
+// resets. A handful of slots costs nothing and keeps the local database usable.
+const server = new PGLiteSocketServer({
+  db: database,
+  port: PORT,
+  host: "127.0.0.1",
+  maxConnections: 8,
+});
 await server.start();
 console.log(`local postgres listening on postgres://postgres@127.0.0.1:${PORT}/postgres`);
 

@@ -90,9 +90,47 @@ export function fromMajorUnits(majorUnits: number | string, currency: Currency):
   return money(Number(divideRoundingHalfAwayFromZero(fraction.numerator * scale, fraction.denominator)), currency);
 }
 
+/**
+ * Read what a person typed into a field. Accepts the grouping and currency marks
+ * a Hebrew keyboard produces around a number — `12,500.40`, `‏12 500‏`, `₪1,200`,
+ * a Unicode minus — and rejects everything else rather than guessing.
+ *
+ * Blank is `null`, not zero: an empty field means the figure was not recorded,
+ * and that is a different fact from a figure of zero.
+ */
+export function parseMoneyInput(text: string, currency: Currency): Money | null {
+  const stripped = text
+    .replace(/[‎‏؜]/g, "") // bidi marks an RTL field leaves behind
+    .replace(/[\s  ,']/g, "") // grouping: space, nbsp, narrow nbsp, comma, geresh
+    .replace(/[₪$]/g, "") // a currency symbol typed into the field
+    .replace(/[−‒–—]/g, "-"); // minus sign and dashes that are not hyphen-minus
+
+  if (stripped.length === 0) return null;
+
+  // ".5" and "5." are what a half-typed field looks like, not an error.
+  const normalised = stripped.replace(/^([+-]?)\./, "$10.").replace(/\.$/, "");
+  if (!/^[+-]?\d+(\.\d+)?$/.test(normalised)) {
+    throw new InvalidMoneyError(`Expected an amount, received ${JSON.stringify(text)}`);
+  }
+  return fromMajorUnits(normalised, currency);
+}
+
 /** Lossy by construction — for display and charting only, never for arithmetic. */
 export function toMajorUnits(amount: Money): number {
   return amount.minorUnits / 10 ** minorUnitDigits(amount.currency);
+}
+
+/**
+ * The exact decimal, ungrouped and unsymbolled — `1234.50`. This is what goes back
+ * into an input field: `parseMoneyInput` reads it to the same minor units it came
+ * from, so re-saving an untouched field cannot drift the figure.
+ */
+export function toDecimalString(amount: Money): string {
+  const digits = minorUnitDigits(amount.currency);
+  const magnitude = Math.abs(amount.minorUnits).toString().padStart(digits + 1, "0");
+  const whole = magnitude.slice(0, magnitude.length - digits);
+  const fraction = magnitude.slice(magnitude.length - digits);
+  return `${amount.minorUnits < 0 ? "-" : ""}${whole}.${fraction}`;
 }
 
 function assertSameCurrency(left: Money, right: Money): void {

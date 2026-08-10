@@ -15,8 +15,10 @@ import {
   money,
   multiply,
   negate,
+  parseMoneyInput,
   subtract,
   sum,
+  toDecimalString,
   toMajorUnits,
   zero,
 } from "./money";
@@ -193,5 +195,67 @@ describe("Hebrew formatting", () => {
 
   it("can drop the symbol for a column that names its currency once", () => {
     expect(withoutBidiMarks(format(money(100_50, "ILS"), { withSymbol: false }))).toBe("100.50");
+  });
+});
+
+describe("parseMoneyInput", () => {
+  it("reads a plain figure into exact minor units", () => {
+    expect(parseMoneyInput("12500.40", "ILS")).toEqual({ minorUnits: 1_250_040, currency: "ILS" });
+    expect(parseMoneyInput("0", "ILS")).toEqual({ minorUnits: 0, currency: "ILS" });
+  });
+
+  it("treats a blank field as not recorded rather than as zero", () => {
+    expect(parseMoneyInput("", "ILS")).toBeNull();
+    expect(parseMoneyInput("   ", "ILS")).toBeNull();
+  });
+
+  it("accepts the grouping marks a Hebrew keyboard produces", () => {
+    for (const text of ["12,500.40", "12 500.40", "12 500.40", "12'500.40", "‏12,500.40‏"]) {
+      expect(parseMoneyInput(text, "ILS")).toEqual({ minorUnits: 1_250_040, currency: "ILS" });
+    }
+  });
+
+  it("accepts a currency symbol typed into the field", () => {
+    expect(parseMoneyInput("₪1,200", "ILS")).toEqual({ minorUnits: 120_000, currency: "ILS" });
+    expect(parseMoneyInput("$69,000", "USD")).toEqual({ minorUnits: 6_900_000, currency: "USD" });
+  });
+
+  it("accepts a Unicode minus as a minus", () => {
+    expect(parseMoneyInput("−1,200", "ILS")).toEqual({ minorUnits: -120_000, currency: "ILS" });
+    expect(parseMoneyInput("-1,200", "ILS")).toEqual({ minorUnits: -120_000, currency: "ILS" });
+  });
+
+  it("tolerates a half-typed decimal point", () => {
+    expect(parseMoneyInput("5.", "ILS")).toEqual({ minorUnits: 500, currency: "ILS" });
+    expect(parseMoneyInput(".5", "ILS")).toEqual({ minorUnits: 50, currency: "ILS" });
+    expect(parseMoneyInput("-.5", "ILS")).toEqual({ minorUnits: -50, currency: "ILS" });
+  });
+
+  it("rounds extra precision to the minor unit rather than truncating", () => {
+    expect(parseMoneyInput("1.005", "ILS")).toEqual({ minorUnits: 101, currency: "ILS" });
+    expect(parseMoneyInput("1.004", "ILS")).toEqual({ minorUnits: 100, currency: "ILS" });
+  });
+
+  it("refuses anything that is not an amount instead of guessing", () => {
+    for (const text of ["abc", "1.2.3", "12-34", "1,2e5", "--5", "5%"]) {
+      expect(() => parseMoneyInput(text, "ILS")).toThrow(InvalidMoneyError);
+    }
+  });
+});
+
+describe("toDecimalString", () => {
+  it("writes the exact decimal, ungrouped and unsymbolled", () => {
+    expect(toDecimalString(money(123_456, "ILS"))).toBe("1234.56");
+    expect(toDecimalString(money(0, "ILS"))).toBe("0.00");
+    expect(toDecimalString(money(5, "ILS"))).toBe("0.05");
+    expect(toDecimalString(money(-123_456, "ILS"))).toBe("-1234.56");
+    expect(toDecimalString(money(-5, "USD"))).toBe("-0.05");
+  });
+
+  it("round-trips through parseMoneyInput without drifting", () => {
+    for (const minorUnits of [0, 1, -1, 5, 99, 100, 123_456, -987_654_321]) {
+      const original = money(minorUnits, "ILS");
+      expect(parseMoneyInput(toDecimalString(original), "ILS")).toEqual(original);
+    }
   });
 });
