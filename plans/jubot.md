@@ -424,13 +424,29 @@ genuinely free after everything already claimed.
 
 ### Acceptance criteria
 
-- [ ] Positions can be recorded inside an investment account and read back per account
-- [ ] Earmarks can be recorded against money in an account
-- [ ] An earmark whose backing has fallen below its claim is shown as underfunded, with the
+- [x] Positions can be recorded inside an investment account and read back per account
+      <!-- A position carries no amount: how much an account holds is a dated fact and the
+           snapshot owns it, so a figure stored beside it could only drift from it. An
+           account held at cost is refused one — per ADR 0003 nothing in it is priced. -->
+- [x] Earmarks can be recorded against money in an account
+      <!-- In the account's own currency, held there by a composite foreign key. Releasing
+           one is a lifespan, so a claim declared in 2026 does not appear on a 2025
+           snapshot, and one released later still reads on the snapshots it stood for. -->
+- [x] An earmark whose backing has fallen below its claim is shown as underfunded, with the
       shortfall figure
-- [ ] Free liquid money is computed as liquid holdings less earmarked amounts
-- [ ] Spending an earmarked account down surfaces as a shortfall rather than reducing the
+      <!-- An account nobody ever measured reads as unmeasured rather than underfunded — a
+           placeholder is not a shortfall. Claims on one account are assessed together,
+           because they compete for the same money and no priority between them exists. -->
+- [x] Free liquid money is computed as liquid holdings less earmarked amounts
+      <!-- נזילות only: a claim on an account in another bucket is spoken for out of that
+           bucket. The claim is subtracted whole even where its backing is short, and the
+           unbacked part is stated beside it rather than written off. -->
+- [x] Spending an earmarked account down surfaces as a shortfall rather than reducing the
       earmark silently
+      <!-- Verified live: restating the liquid account from 61,400₪ to 25,000₪ left the
+           40,000₪ claim untouched and reported 15,000₪ missing, with free liquid money
+           reading −15,000₪ rather than clamping to zero. -->
+
 
 ---
 

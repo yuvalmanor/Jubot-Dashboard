@@ -168,8 +168,22 @@ create table if not exists accounts (
   opened_on   date not null,
   closed_on   date,
   check (closed_on is null or closed_on >= opened_on),
-  unique (person_id, name)
+  unique (person_id, name),
+  -- Referenced by earmarks, so a claim cannot be quoted in a currency the account
+  -- is not held in. The currency is part of the key, not merely checked beside it.
+  unique (id, currency)
 );
+
+-- For databases created before earmarks existed: the constraint above is what the
+-- composite foreign key below needs, and `create table if not exists` will not add
+-- it to a table that is already there.
+do $do$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'accounts_id_currency_key') then
+    alter table accounts add constraint accounts_id_currency_key unique (id, currency);
+  end if;
+end;
+$do$;
 
 comment on column accounts.category is
   'קטגוריה — the rollup bucket (נזילות / השקעות / פנסיה / נדל"ן). Closed, because a '
@@ -246,3 +260,45 @@ begin
   end if;
 end;
 $do$;
+
+-- --------------------------------------------------------------------------
+-- החזקות וייעודים
+-- --------------------------------------------------------------------------
+
+-- החזקה — what an Account is invested in. There is deliberately no amount here:
+-- how much an account holds is a fact with a date on it, and that is what a
+-- snapshot line is. A figure stored beside one would drift from it exactly the
+-- way the sheet's שקל table drifted from its דולר table.
+create table if not exists positions (
+  id          uuid primary key default gen_random_uuid(),
+  account_id  uuid not null references accounts (id),
+  security_id text,
+  name        text not null,
+  unique (account_id, name)
+);
+
+comment on column positions.security_id is
+  'The number the fund or exchange states — 1159235. Kept as written, in English.';
+
+-- ייעוד — a claim on money inside an Account. The amount is fixed: spending does
+-- not reduce a promise, it makes it underfunded, and that is the state worth
+-- seeing. Releasing is a lifespan, never a delete, so a snapshot taken while the
+-- claim stood keeps reading as it did.
+--
+-- The composite foreign key is what holds the claim in the account's own
+-- currency. A claim needing a rate to compare against its backing would let a
+-- rate move look like money being spent.
+create table if not exists earmarks (
+  id           uuid   primary key default gen_random_uuid(),
+  account_id   uuid   not null,
+  name         text   not null,
+  amount_minor bigint not null check (amount_minor > 0),
+  currency     text   not null check (char_length(currency) = 3),
+  declared_on  date   not null,
+  released_on  date,
+  check (released_on is null or released_on >= declared_on),
+  unique (account_id, name),
+  foreign key (account_id, currency) references accounts (id, currency)
+);
+
+create index if not exists earmarks_account_idx on earmarks (account_id);

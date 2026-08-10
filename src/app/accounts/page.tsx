@@ -3,8 +3,17 @@ import Link from "next/link";
 import { AppHeader } from "@/components/app-header";
 import { loadAccounts } from "@/db/accounts";
 import { DatabaseNotConfiguredError } from "@/db/client";
+import { loadEarmarks, loadPositions } from "@/db/holdings";
 import { type Person, findPersonByEmail, listPeople } from "@/db/people";
-import { type Currency } from "@/domain/money/money";
+import { type Currency, toDecimalString } from "@/domain/money/money";
+import {
+  type Earmark,
+  type Position,
+  canHoldPositions,
+  earmarksOn,
+  isEarmarkActiveOn,
+  positionsIn,
+} from "@/domain/snapshot/holdings";
 import {
   type Account,
   type AssetCategory,
@@ -13,10 +22,20 @@ import {
   VALUE_BASES,
   VALUE_BASIS_LABELS,
 } from "@/domain/snapshot/snapshot";
-import { dateKey, dateOf, formatDate } from "@/domain/time/calendar-date";
+import { type CalendarDate, dateKey, dateOf, formatDate } from "@/domain/time/calendar-date";
 import { requireHouseholdEmail } from "@/session";
 
-import { type AccountsErrorCode, createAccount, editAccount, setAccountLifespan } from "./actions";
+import {
+  type AccountsErrorCode,
+  createAccount,
+  createEarmark,
+  createPosition,
+  editAccount,
+  editEarmark,
+  removePosition,
+  setAccountLifespan,
+  setEarmarkLifespan,
+} from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -164,6 +183,9 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
                   accounts={loaded.accounts.filter((account) => account.category === category)}
                   people={loaded.people}
                   assetKinds={loaded.assetKinds}
+                  positions={loaded.positions}
+                  earmarks={loaded.earmarks}
+                  today={today}
                 />
               ))
             )}
@@ -193,6 +215,8 @@ type Loaded =
       people: readonly Person[];
       accounts: readonly Account[];
       assetKinds: readonly string[];
+      positions: readonly Position[];
+      earmarks: readonly Earmark[];
     }
   | { kind: "unavailable"; reason: string };
 
@@ -205,11 +229,16 @@ async function loadPage(email: string): Promise<Loaded> {
         reason: `הכתובת ${email} אינה משויכת לאף אדם בטבלת people. יש לעדכן את שתי הכתובות במסד (ראו README).`,
       };
     }
-    const [people, accounts] = await Promise.all([listPeople(), loadAccounts()]);
+    const [people, accounts, positions, earmarks] = await Promise.all([
+      listPeople(),
+      loadAccounts(),
+      loadPositions(),
+      loadEarmarks(),
+    ]);
     const assetKinds = [...new Set(accounts.map((account) => account.assetKind))].sort((left, right) =>
       left.localeCompare(right, "he"),
     );
-    return { kind: "ok", person, people, accounts, assetKinds };
+    return { kind: "ok", person, people, accounts, assetKinds, positions, earmarks };
   } catch (error) {
     if (error instanceof DatabaseNotConfiguredError) {
       return { kind: "unavailable", reason: "משתנה הסביבה DATABASE_URL אינו מוגדר." };
@@ -225,11 +254,17 @@ function CategorySection({
   accounts,
   people,
   assetKinds,
+  positions,
+  earmarks,
+  today,
 }: {
   category: AssetCategory;
   accounts: readonly Account[];
   people: readonly Person[];
   assetKinds: readonly string[];
+  positions: readonly Position[];
+  earmarks: readonly Earmark[];
+  today: CalendarDate;
 }) {
   if (accounts.length === 0) return null;
 
@@ -241,7 +276,14 @@ function CategorySection({
       <ul className="divide-y divide-stone-200">
         {accounts.map((account) => (
           <li key={account.id}>
-            <AccountRow account={account} people={people} assetKinds={assetKinds} />
+            <AccountRow
+              account={account}
+              people={people}
+              assetKinds={assetKinds}
+              positions={positionsIn(positions, account.id)}
+              earmarks={earmarksOn(earmarks, account.id)}
+              today={today}
+            />
           </li>
         ))}
       </ul>
@@ -253,12 +295,19 @@ function AccountRow({
   account,
   people,
   assetKinds,
+  positions,
+  earmarks,
+  today,
 }: {
   account: Account;
   people: readonly Person[];
   assetKinds: readonly string[];
+  positions: readonly Position[];
+  earmarks: readonly Earmark[];
+  today: CalendarDate;
 }) {
   const owner = people.find((person) => person.id === account.personId)?.displayName ?? account.personId;
+  const standing = earmarks.filter((earmark) => isEarmarkActiveOn(earmark, today));
 
   return (
     <details className="group">
@@ -285,6 +334,16 @@ function AccountRow({
         <span className="text-sm text-stone-500">
           <bdi>{account.assetKind}</bdi>
         </span>
+        {positions.length === 0 ? null : (
+          <span className="rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-600">
+            <bdi className="tabular">{positions.length}</bdi> החזקות
+          </span>
+        )}
+        {standing.length === 0 ? null : (
+          <span className="rounded bg-sky-50 px-1.5 py-0.5 text-xs text-sky-900">
+            <bdi className="tabular">{standing.length}</bdi> ייעודים
+          </span>
+        )}
       </summary>
 
       <div className="border-t border-stone-100 bg-stone-50/60 px-5 py-4">
@@ -384,8 +443,228 @@ function AccountRow({
           המטבע (<bdi>{account.currency}</bdi>) אינו ניתן לשינוי — שינוי שלו היה משנה את המטבע של כל סכום
           שכבר נרשם לחשבון הזה בכל צילום.
         </p>
+
+        <PositionsPanel account={account} positions={positions} />
+        <EarmarksPanel account={account} earmarks={earmarks} today={today} />
       </div>
     </details>
+  );
+}
+
+// --- החזקות ------------------------------------------------------------------
+
+/**
+ * What the account is invested in. There is no amount field here on purpose: how
+ * much the account holds is a fact with a date on it, and the מיפוי is where dated
+ * facts live. A second figure stored beside it would drift from the snapshot.
+ */
+function PositionsPanel({ account, positions }: { account: Account; positions: readonly Position[] }) {
+  if (!canHoldPositions(account)) {
+    return (
+      <section className="mt-5 border-t border-stone-200 pt-4">
+        <h3 className="text-sm font-semibold tracking-wide text-stone-500">החזקות</h3>
+        <p className="mt-1 text-xs text-stone-500">
+          החשבון מוחזק בעלות, ולכן אין בו החזקות לרשום: אין בו סכום שנמדד בשוק, ורשימת החזקות הייתה
+          רומזת על מדידה שלא קיימת.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="mt-5 border-t border-stone-200 pt-4">
+      <h3 className="text-sm font-semibold tracking-wide text-stone-500">החזקות</h3>
+      <p className="mt-1 text-xs text-stone-500">
+        מה החשבון מושקע בו. ההחזקה אומרת <span className="font-medium">מה קנינו</span>, לא כמה יש —
+        כמה יש זה מה שהצילום אומר, עם תאריך עליו. החזקות זזות עם השוק, וזה בסדר גמור.
+      </p>
+
+      {positions.length === 0 ? (
+        <p className="mt-2 text-sm text-stone-500">אין החזקות רשומות בחשבון הזה.</p>
+      ) : (
+        <ul className="mt-2 divide-y divide-stone-200 rounded-md border border-stone-200 bg-white">
+          {positions.map((position) => (
+            <li key={position.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
+              <span className="min-w-0 flex-1 text-sm">
+                {position.securityId === null ? null : (
+                  <bdi className="tabular text-stone-500">{position.securityId} </bdi>
+                )}
+                <bdi className="font-medium">{position.name}</bdi>
+              </span>
+              <form action={removePosition}>
+                <input type="hidden" name="positionId" value={position.id} />
+                <button
+                  type="submit"
+                  className="rounded-md border border-stone-300 bg-white px-2 py-1 text-xs hover:bg-stone-50"
+                >
+                  הסרה
+                </button>
+              </form>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <form action={createPosition} className="mt-3 flex flex-wrap items-end gap-3">
+        <input type="hidden" name="accountId" value={account.id} />
+        <label className="block">
+          <span className="block text-xs text-stone-500">מספר נייר</span>
+          <input
+            name="securityId"
+            maxLength={30}
+            dir="ltr"
+            placeholder="1159235"
+            className="tabular mt-1 w-32 rounded-md border border-stone-300 px-3 py-2 text-start"
+          />
+        </label>
+        <label className="block">
+          <span className="block text-xs text-stone-500">שם ההחזקה</span>
+          <input
+            name="name"
+            required
+            maxLength={60}
+            placeholder="ACWI"
+            className="mt-1 w-48 rounded-md border border-stone-300 px-3 py-2"
+          />
+        </label>
+        <button
+          type="submit"
+          className="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-medium hover:bg-stone-50"
+        >
+          הוספת החזקה
+        </button>
+      </form>
+    </section>
+  );
+}
+
+// --- ייעודים -----------------------------------------------------------------
+
+/**
+ * What the money in the account is promised to. The amount is fixed: spending the
+ * account down does not shrink the claim, it makes it underfunded — and whether it
+ * is funded is read against a snapshot, where the backing has a date on it.
+ */
+function EarmarksPanel({
+  account,
+  earmarks,
+  today,
+}: {
+  account: Account;
+  earmarks: readonly Earmark[];
+  today: CalendarDate;
+}) {
+  return (
+    <section className="mt-5 border-t border-stone-200 pt-4">
+      <h3 className="text-sm font-semibold tracking-wide text-stone-500">ייעודים</h3>
+      <p className="mt-1 text-xs text-stone-500">
+        למה הכסף בחשבון מובטח. הסכום קבוע: הוצאה מהחשבון לא מקטינה את ההבטחה אלא הופכת אותה לחסרת
+        כיסוי, וזה נקרא בתוך הצילום. הסכום נרשם ב־<bdi>{account.currency}</bdi>, המטבע שהחשבון מוחזק בו.
+      </p>
+
+      {earmarks.length === 0 ? (
+        <p className="mt-2 text-sm text-stone-500">אין ייעודים בחשבון הזה.</p>
+      ) : (
+        <ul className="mt-2 divide-y divide-stone-200 rounded-md border border-stone-200 bg-white">
+          {earmarks.map((earmark) => {
+            const standing = isEarmarkActiveOn(earmark, today);
+            return (
+              <li key={earmark.id} className="px-3 py-2">
+                <form action={editEarmark} className="flex flex-wrap items-end gap-3">
+                  <input type="hidden" name="earmarkId" value={earmark.id} />
+                  <label className="block min-w-0 flex-1">
+                    <span className="block text-xs text-stone-500">שם הייעוד</span>
+                    <input
+                      name="name"
+                      defaultValue={earmark.name}
+                      required
+                      maxLength={60}
+                      className="mt-1 w-full rounded-md border border-stone-300 px-3 py-2"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="block text-xs text-stone-500">
+                      סכום ב־<bdi>{earmark.claim.currency}</bdi>
+                    </span>
+                    <input
+                      name="claim"
+                      defaultValue={toDecimalString(earmark.claim)}
+                      inputMode="decimal"
+                      dir="ltr"
+                      className="tabular mt-1 w-36 rounded-md border border-stone-300 px-3 py-2 text-end"
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    className="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-medium hover:bg-stone-50"
+                  >
+                    שמירה
+                  </button>
+                </form>
+
+                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <p className="text-xs text-stone-500">
+                    הוכרז ב־{formatDate(earmark.declaredOn)}
+                    {earmark.releasedOn === null ? null : <> · שוחרר ב־{formatDate(earmark.releasedOn)}</>}
+                  </p>
+                  <form action={setEarmarkLifespan}>
+                    <input type="hidden" name="earmarkId" value={earmark.id} />
+                    <input type="hidden" name="intent" value={standing ? "release" : "reinstate"} />
+                    <button
+                      type="submit"
+                      className="rounded-md border border-stone-300 bg-white px-2 py-1 text-xs hover:bg-stone-50"
+                    >
+                      {standing ? "שחרור הייעוד" : "החזרת הייעוד"}
+                    </button>
+                  </form>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <form action={createEarmark} className="mt-3 flex flex-wrap items-end gap-3">
+        <input type="hidden" name="accountId" value={account.id} />
+        <label className="block">
+          <span className="block text-xs text-stone-500">שם הייעוד</span>
+          <input
+            name="name"
+            required
+            maxLength={60}
+            placeholder="קרן חירום"
+            className="mt-1 w-48 rounded-md border border-stone-300 px-3 py-2"
+          />
+        </label>
+        <label className="block">
+          <span className="block text-xs text-stone-500">
+            סכום ב־<bdi>{account.currency}</bdi>
+          </span>
+          <input
+            name="claim"
+            required
+            inputMode="decimal"
+            dir="ltr"
+            className="tabular mt-1 w-36 rounded-md border border-stone-300 px-3 py-2 text-end"
+          />
+        </label>
+        <label className="block">
+          <span className="block text-xs text-stone-500">מוכרז מתאריך</span>
+          <input
+            type="date"
+            name="declaredOn"
+            defaultValue={dateKey(today)}
+            className="mt-1 rounded-md border border-stone-300 px-3 py-2"
+          />
+        </label>
+        <button
+          type="submit"
+          className="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-medium hover:bg-stone-50"
+        >
+          הוספת ייעוד
+        </button>
+      </form>
+    </section>
   );
 }
 
@@ -424,9 +703,25 @@ function Select({
 const ERROR_MESSAGES: Record<AccountsErrorCode, string> = {
   "no-person": "הכתובת שאיתה נכנסת אינה משויכת לאף אדם בטבלת people.",
   "bad-account": "פרטי החשבון אינם תקינים.",
-  "duplicate-name": "לאדם הזה כבר יש חשבון בשם הזה.",
+  "duplicate-name": "השם הזה כבר תפוס — לחשבון, להחזקה או לייעוד באותו חשבון.",
   "unknown-account": "החשבון אינו קיים.",
+  "bad-position": "פרטי ההחזקה אינם תקינים.",
+  "no-positions-here": "החשבון מוחזק בעלות, ולכן אין בו החזקות לרשום.",
+  "bad-earmark": "פרטי הייעוד אינם תקינים. ייעוד מבטיח סכום גדול מאפס.",
+  "unknown-earmark": "הייעוד אינו קיים.",
   failed: "הפעולה נכשלה.",
+};
+
+const DONE_MESSAGES: Record<string, string> = {
+  created: "נוצר חשבון",
+  reopened: "החשבון חזר לשימוש",
+  saved: "החשבון נשמר",
+  "position-added": "נוספה החזקה בחשבון",
+  "position-removed": "ההחזקה הוסרה",
+  "earmark-added": "נוסף ייעוד",
+  "earmark-saved": "הייעוד נשמר",
+  "earmark-released": "הייעוד שוחרר — הצילומים שנלקחו בזמן שעמד ממשיכים להראות אותו",
+  "earmark-reinstated": "הייעוד חזר לעמוד",
 };
 
 function isErrorCode(value: string | undefined): value is AccountsErrorCode {
@@ -457,14 +752,18 @@ function Notices({
 
   if (done === undefined) return null;
 
-  const [verb, name = ""] = done.split(":");
-  const text =
-    verb === "created" ? "נוצר חשבון" : verb === "reopened" ? "החשבון חזר לשימוש" : "החשבון נשמר";
+  const [verb = "", name = ""] = done.split(":");
+  const text = DONE_MESSAGES[verb] ?? "החשבון נשמר";
 
   return (
     <div className="rounded-md border border-emerald-300 bg-emerald-50 p-4" role="status">
       <p className="font-medium text-emerald-900">
-        {text}: <bdi>{name}</bdi>
+        {text}
+        {name.length === 0 ? null : (
+          <>
+            : <bdi>{name}</bdi>
+          </>
+        )}
       </p>
     </div>
   );

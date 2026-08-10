@@ -290,3 +290,40 @@ comparison with the previous.
 
 Argument order does not matter: the earlier date is always the *before*, so a comparison
 cannot read backwards by accident.
+
+### החזקות and ייעודים
+
+`src/domain/snapshot/holdings.ts` holds the two claims on what is inside an Account. They
+look alike and are opposites.
+
+A **Position** (החזקה) says what the money is invested in — `1159235 ACWI`. It carries no
+amount, deliberately: how much an account holds is a fact with a date on it, and the
+Snapshot is where dated facts live. A figure stored beside it would drift from the snapshot
+exactly the way the sheet's two currency tables drifted from each other. An account held at
+cost is refused one outright — per [ADR 0003](docs/adr/0003-illiquid-assets-are-held-at-cost.md)
+nothing in it is priced, so there is no composition to state.
+
+An **Earmark** (ייעוד) says what the money is promised to — קרן חירום's claim inside the
+liquid account. It *is* an amount and it is fixed, held in the account's own currency by a
+composite foreign key rather than by a check anyone can forget. Spending the account down
+does not shrink the claim; it makes it **underfunded**, and the shortfall is the figure
+worth seeing. Releasing one is a lifespan, so a snapshot taken while the claim stood keeps
+reading as it did, and one declared in 2026 never appears on a 2025 reading.
+
+Both are defined on `/accounts`. Whether a claim is *funded* is read on `/snapshots/[id]`,
+against that snapshot's own figures, and three rules keep it honest:
+
+- **The comparison is in the account's own currency**, so no rate can turn a shortfall into
+  a surplus.
+- **An account nobody ever measured is `unmeasured`, not underfunded.** A placeholder is not
+  a shortfall.
+- **Claims on one account are assessed together**, because they compete for the same money.
+  Two 80,000₪ promises against 100,000₪ are jointly short, and nothing here invents a
+  priority that would make one of them whole at the other's expense.
+
+`freeLiquid` answers what is actually available: the נזילות bucket less what is promised out
+of it. A claim on an account in another bucket is spoken for out of *that* bucket and does
+not reduce it. The claim is subtracted whole even where its backing is short — what was
+promised is what was promised — and the unbacked part is reported beside it rather than
+written off. The figure goes negative rather than clamping, because a promise with nothing
+behind it is a fact and not a zero.

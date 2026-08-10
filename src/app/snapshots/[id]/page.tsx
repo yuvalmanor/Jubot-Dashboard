@@ -5,9 +5,19 @@ import { notFound } from "next/navigation";
 import { AppHeader } from "@/components/app-header";
 import { loadAccounts } from "@/db/accounts";
 import { DatabaseNotConfiguredError } from "@/db/client";
+import { loadEarmarks, loadPositions } from "@/db/holdings";
 import { type Person, findPersonByEmail, listPeople } from "@/db/people";
 import { type SnapshotHeader, findSnapshot, findSnapshotHeader, loadSnapshotHeaders } from "@/db/snapshots";
-import { type Currency, format, toDecimalString } from "@/domain/money/money";
+import { type Currency, format, isNegative, toDecimalString } from "@/domain/money/money";
+import {
+  type AccountEarmarks,
+  type Earmark,
+  type FreeLiquid,
+  type Position,
+  earmarkFunding,
+  freeLiquid,
+  positionsIn,
+} from "@/domain/snapshot/holdings";
 import {
   type Account,
   type ConvertedReading,
@@ -98,6 +108,8 @@ export default async function SnapshotPage({
               snapshot={loaded.snapshot}
               accounts={loaded.accounts}
               people={loaded.people}
+              positions={loaded.positions}
+              earmarks={loaded.earmarks}
             />
           </>
         ) : (
@@ -120,6 +132,8 @@ type Loaded =
       note: string | null;
       /** Every snapshot's date, so this one can be read as part of a history rather than alone. */
       history: readonly SnapshotHeader[];
+      positions: readonly Position[];
+      earmarks: readonly Earmark[];
     }
   | { kind: "missing" }
   | { kind: "unavailable"; reason: string };
@@ -133,15 +147,27 @@ async function loadPage(email: string, id: string): Promise<Loaded> {
         reason: `הכתובת ${email} אינה משויכת לאף אדם בטבלת people. יש לעדכן את שתי הכתובות במסד (ראו README).`,
       };
     }
-    const [people, accounts, snapshot, header, history] = await Promise.all([
+    const [people, accounts, snapshot, header, history, positions, earmarks] = await Promise.all([
       listPeople(),
       loadAccounts(),
       findSnapshot(id),
       findSnapshotHeader(id),
       loadSnapshotHeaders(),
+      loadPositions(),
+      loadEarmarks(),
     ]);
     if (snapshot === null) return { kind: "missing" };
-    return { kind: "ok", person, people, accounts, snapshot, note: header?.note ?? null, history };
+    return {
+      kind: "ok",
+      person,
+      people,
+      accounts,
+      snapshot,
+      note: header?.note ?? null,
+      history,
+      positions,
+      earmarks,
+    };
   } catch (error) {
     if (error instanceof DatabaseNotConfiguredError) {
       return { kind: "unavailable", reason: "משתנה הסביבה DATABASE_URL אינו מוגדר." };
@@ -208,10 +234,14 @@ function SnapshotView({
   snapshot,
   accounts,
   people,
+  positions,
+  earmarks,
 }: {
   snapshot: Snapshot;
   accounts: readonly Account[];
   people: readonly Person[];
+  positions: readonly Position[];
+  earmarks: readonly Earmark[];
 }) {
   // Every screen figure is converted at the snapshot's own rate, so a snapshot
   // without one is readable in native currencies and rolls up to nothing. Taking
@@ -278,7 +308,18 @@ function SnapshotView({
         </div>
       )}
 
-      <RestateForm readings={snapshotReadings(snapshot, accounts)} snapshotId={snapshot.id} people={people} />
+      <EarmarksPanel funding={earmarkFunding({ snapshot, accounts, earmarks })} />
+
+      {convertible ? (
+        <FreeLiquidPanel free={freeLiquid({ snapshot, accounts, earmarks, currency: READING_CURRENCY })} />
+      ) : null}
+
+      <RestateForm
+        readings={snapshotReadings(snapshot, accounts)}
+        snapshotId={snapshot.id}
+        people={people}
+        positions={positions}
+      />
     </div>
   );
 }
@@ -542,16 +583,167 @@ function NativeAndConverted({ reading }: { reading: ConvertedReading }) {
   );
 }
 
+// --- ייעודים -----------------------------------------------------------------
+
+const STATUS_STYLES = {
+  funded: { box: "border-emerald-300 bg-emerald-50", text: "text-emerald-900", label: "מכוסה" },
+  underfunded: { box: "border-red-300 bg-red-50", text: "text-red-900", label: "חסר כיסוי" },
+  unmeasured: { box: "border-stone-300 bg-stone-50", text: "text-stone-700", label: "לא נמדד" },
+} as const;
+
+/**
+ * What the money is promised to, read against this snapshot's own figures. The
+ * unit is the account rather than the claim because claims on the same money
+ * compete for it — nothing here invents an order that would make one of them whole
+ * at another's expense.
+ */
+function EarmarksPanel({ funding }: { funding: readonly AccountEarmarks[] }) {
+  if (funding.length === 0) return null;
+
+  return (
+    <section className="rounded-lg border border-stone-300 bg-white">
+      <div className="border-b border-stone-200 px-5 py-3">
+        <h2 className="text-sm font-semibold tracking-wide text-stone-500">ייעודים</h2>
+        <p className="text-xs text-stone-500">
+          כמה מהכסף כבר מובטח, ואם יש מאחוריו כיסוי. ההשוואה נעשית במטבע של החשבון עצמו, כך שאף שער
+          לא יכול להפוך חוסר לעודף.
+        </p>
+      </div>
+
+      <ul className="divide-y divide-stone-200">
+        {funding.map((entry) => {
+          const style = STATUS_STYLES[entry.status];
+          return (
+            <li key={entry.account.id} className={`border-s-4 px-5 py-3 ${style.box}`}>
+              <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                <span className="min-w-0 flex-1 font-medium">
+                  <bdi>{entry.account.name}</bdi>
+                </span>
+                <span className={`text-xs font-medium ${style.text}`}>{style.label}</span>
+              </div>
+
+              <p className="mt-1 text-sm text-stone-600">
+                מובטח <bdi className="tabular font-medium">{format(entry.claimed)}</bdi> · בחשבון{" "}
+                <bdi className="tabular font-medium">{format(entry.backing)}</bdi>
+              </p>
+
+              {entry.shortfall === null ? null : (
+                <p className={`mt-1 text-sm font-medium ${style.text}`}>
+                  חסרים <bdi className="tabular">{format(entry.shortfall)}</bdi> — ההבטחה לא קטנה, הכיסוי
+                  שלה ירד
+                </p>
+              )}
+              {entry.free === null ? null : (
+                <p className="mt-1 text-sm text-stone-600">
+                  פנוי בחשבון הזה <bdi className="tabular">{format(entry.free)}</bdi>
+                </p>
+              )}
+              {entry.status === "unmeasured" ? (
+                <p className="mt-1 text-sm text-stone-600">
+                  איש לא מדד את החשבון הזה מעולם, ולכן אין מול מה למדוד את ההבטחה. זה לא חוסר כיסוי —
+                  זו העדר מדידה.
+                </p>
+              ) : null}
+
+              <ul className="mt-2 space-y-1">
+                {entry.earmarks.map((earmark) => (
+                  <li key={earmark.id} className="flex flex-wrap items-baseline gap-x-3 text-sm">
+                    <span className="min-w-0 flex-1 text-stone-700">
+                      <bdi>{earmark.name}</bdi>
+                    </span>
+                    <bdi className="tabular">{format(earmark.claim)}</bdi>
+                  </li>
+                ))}
+              </ul>
+
+              {entry.earmarks.length > 1 ? (
+                <p className="mt-1 text-xs text-stone-500">
+                  שני ייעודים ומעלה על אותו חשבון מתחרים על אותו כסף, ולכן הם נמדדים יחד.
+                </p>
+              ) : null}
+              {entry.carried && entry.status !== "unmeasured" ? (
+                <p className="mt-1 text-xs text-amber-800">
+                  היתרה נגררה
+                  {entry.measuredOn === null ? null : <> — נמדדה לאחרונה ב־{formatDate(entry.measuredOn)}</>}
+                </p>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+/**
+ * What is genuinely available. נזילות less what is promised out of it — a claim on
+ * an account in another bucket is spoken for out of *that* bucket and does not
+ * reduce this figure.
+ */
+function FreeLiquidPanel({ free }: { free: FreeLiquid }) {
+  return (
+    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
+      <h2 className="text-sm font-semibold tracking-wide text-stone-500">כסף נזיל פנוי</h2>
+      <p className="mt-1 text-xs text-stone-500">
+        נזילות פחות מה שכבר מובטח מתוכה. ייעוד על חשבון בקטגוריה אחרת נלקח מאותה קטגוריה ואינו מקטין
+        את המספר הזה.
+      </p>
+
+      <div className="mt-4 grid gap-4 sm:grid-cols-3">
+        <div>
+          <p className="text-xs text-stone-500">נזילות</p>
+          <bdi className="tabular block text-2xl">{format(free.holdings)}</bdi>
+        </div>
+        <div>
+          <p className="text-xs text-stone-500">מובטח</p>
+          <bdi className="tabular block text-2xl">{format(free.earmarked)}</bdi>
+        </div>
+        <div>
+          <p className="text-xs text-stone-500">פנוי</p>
+          <bdi
+            className={`tabular block text-3xl font-semibold ${isNegative(free.free) ? "text-red-800" : ""}`}
+          >
+            {format(free.free)}
+          </bdi>
+        </div>
+      </div>
+
+      <div className="mt-3 space-y-1">
+        {isNegative(free.free) ? (
+          <p className="text-sm font-medium text-red-800">
+            מובטח יותר ממה שיש. המספר נשאר שלילי ולא מתאפס — הבטחה בלי כיסוי היא עובדה, לא אפס.
+          </p>
+        ) : null}
+        {free.shortfall.minorUnits === 0 ? null : (
+          <p className="text-sm text-red-800">
+            מתוך המובטח, <bdi className="tabular font-medium">{format(free.shortfall)}</bdi> אין מאחוריו
+            כיסוי בחשבון שהובטח ממנו. הסכום המובטח יורד מהנזילות במלואו, והחלק הלא־מכוסה נאמר כאן ולא
+            נמחק בשקט.
+          </p>
+        )}
+        {free.unmeasuredAccounts === 0 ? null : (
+          <p className="text-sm text-amber-800">
+            <bdi className="tabular">{free.unmeasuredAccounts}</bdi> חשבונות נזילים לא נמדדו מעולם,
+            והמספרים כאן נשענים על מציין המקום שלהם.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
 // --- restating ---------------------------------------------------------------
 
 function RestateForm({
   readings,
   snapshotId,
   people,
+  positions,
 }: {
   readings: readonly SnapshotReading[];
   snapshotId: string;
   people: readonly Person[];
+  positions: readonly Position[];
 }) {
   const nameOf = (personId: string) =>
     people.find((person) => person.id === personId)?.displayName ?? personId;
@@ -589,6 +781,7 @@ function RestateForm({
                       {nameOf(reading.account.personId)} · <bdi>{reading.account.assetKind}</bdi> ·{" "}
                       {VALUE_BASIS_LABELS[reading.account.valueBasis]}
                     </p>
+                    <PositionsLine positions={positionsIn(positions, reading.account.id)} />
                     <SourceBadge reading={reading} />
                   </div>
 
@@ -635,6 +828,27 @@ function RestateForm({
         </Link>
       </div>
     </form>
+  );
+}
+
+/**
+ * What the account is invested in, beside the figure being restated. No amount is
+ * shown per position: the account's balance is the measured fact, and splitting it
+ * between instruments would be a figure nobody stated.
+ */
+function PositionsLine({ positions }: { positions: readonly Position[] }) {
+  if (positions.length === 0) return null;
+
+  return (
+    <p className="text-xs text-stone-500">
+      מושקע ב־
+      {positions.map((position, index) => (
+        <span key={position.id}>
+          {index === 0 ? null : <span aria-hidden="true"> · </span>}
+          <bdi>{position.securityId === null ? position.name : `${position.securityId} ${position.name}`}</bdi>
+        </span>
+      ))}
+    </p>
   );
 }
 
