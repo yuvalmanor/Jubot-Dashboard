@@ -316,3 +316,112 @@ create table if not exists earmarks (
 );
 
 create index if not exists earmarks_account_idx on earmarks (account_id);
+
+-- --------------------------------------------------------------------------
+-- נכסים ופרוייקטים
+-- --------------------------------------------------------------------------
+
+-- A closed pot of capital. `currency` is what the pot is denominated in — a pot
+-- has one size, so it has one currency — and every leg and expense is read into
+-- it. `account_id` names the מיפוי account that carries the project's value, so
+-- the cost below can be read against what the snapshot actually records; per ADR
+-- 0003 nothing here writes into that account.
+create table if not exists projects (
+  id         uuid primary key default gen_random_uuid(),
+  name       text not null unique,
+  currency   text not null check (char_length(currency) = 3),
+  account_id uuid references accounts (id),
+  started_on date not null
+);
+
+-- רגל מימון — one source that funded the project, in the currency it was actually
+-- paid in. The pot's cost is the sum of these rows, so adding money to a project
+-- is inserting one and never editing a total.
+--
+-- `usd_ils_rate` is the rate that was actually used, quoted USD/ILS in both
+-- directions so one number can never be read as two. It is null exactly when the
+-- leg was already in the pot's currency and converted nothing; the trigger below
+-- is what holds that, because a rate beside money that never changed currency is
+-- a number nobody used.
+create table if not exists funding_legs (
+  id           uuid   primary key default gen_random_uuid(),
+  project_id   uuid   not null references projects (id) on delete cascade,
+  source       text   not null,
+  amount_minor bigint not null check (amount_minor > 0),
+  currency     text   not null check (char_length(currency) = 3),
+  usd_ils_rate numeric(18, 6) check (usd_ils_rate > 0),
+  paid_on      date   not null
+);
+
+create index if not exists funding_legs_project_idx on funding_legs (project_id);
+
+-- הוצאת פרוייקט — money drawn *out of* the pot. There is no shape in which one of
+-- these adds to what is available: `יתרה = Σ(legs) − Σ(expenses)` is computed on
+-- read and stored nowhere, and an expense that would overdraw the pot is refused
+-- by the domain before it reaches here.
+create table if not exists project_expenses (
+  id           uuid   primary key default gen_random_uuid(),
+  project_id   uuid   not null references projects (id) on delete cascade,
+  description  text   not null,
+  amount_minor bigint not null check (amount_minor > 0),
+  currency     text   not null check (char_length(currency) = 3),
+  usd_ils_rate numeric(18, 6) check (usd_ils_rate > 0),
+  paid_on      date   not null
+);
+
+create index if not exists project_expenses_project_idx on project_expenses (project_id);
+
+-- A rate is recorded where a conversion happened and nowhere else. The rule needs
+-- the project's own currency, which a column check cannot reach, so it is a
+-- trigger — the same shape as the snapshot line's source check.
+create or replace function jubot_pot_movement_rate_agrees() returns trigger as $fn$
+declare
+  pot_currency text;
+begin
+  select currency into pot_currency from projects where id = new.project_id;
+
+  if new.currency = pot_currency and new.usd_ils_rate is not null then
+    raise exception 'row % is already in the pot''s currency and converted nothing, yet records a rate', new.id
+      using errcode = 'integrity_constraint_violation';
+  end if;
+
+  if new.currency <> pot_currency and new.usd_ils_rate is null then
+    raise exception 'row % is in % against a % pot and must record the rate that was used', new.id, new.currency, pot_currency
+      using errcode = 'integrity_constraint_violation';
+  end if;
+
+  return null;
+end;
+$fn$ language plpgsql;
+
+do $do$
+begin
+  if not exists (select 1 from pg_trigger where tgname = 'funding_leg_rate_must_agree') then
+    create constraint trigger funding_leg_rate_must_agree
+      after insert or update on funding_legs
+      for each row execute function jubot_pot_movement_rate_agrees();
+  end if;
+
+  if not exists (select 1 from pg_trigger where tgname = 'project_expense_rate_must_agree') then
+    create constraint trigger project_expense_rate_must_agree
+      after insert or update on project_expenses
+      for each row execute function jubot_pot_movement_rate_agrees();
+  end if;
+end;
+$do$;
+
+-- תנאי העסקה — what the sponsor's paperwork stated. At most one row per project:
+-- it is a promise read off a document, not a series of measurements. Everything
+-- but `recorded_on` is nullable, because a document that states only a hold period
+-- states only a hold period.
+create table if not exists deal_terms (
+  project_id       uuid primary key references projects (id) on delete cascade,
+  target_return_bp integer,
+  hold_months      integer check (hold_months > 0),
+  distribution     text,
+  source           text,
+  recorded_on      date not null
+);
+
+comment on column deal_terms.target_return_bp is
+  'The stated target return in whole basis points — 1800 is 18%. A promise, never a measurement.';

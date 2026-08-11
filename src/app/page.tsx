@@ -33,7 +33,7 @@ const AREAS = [
   { title: "מאזן הכנסות-הוצאות", note: "רישום חודשי, קטגוריות, מגמות", href: "/balance" },
   { title: "מיפוי", note: "צילום מלא של כל החשבונות", href: "/snapshots" },
   { title: "שווי נטו", note: "מסלול, חשיפה למט״ח, הקצאה", href: "/net-worth" },
-  { title: "נכסים ופרוייקטים", note: "רגלי מימון, הוצאות, יתרה", href: null },
+  { title: "נכסים ופרוייקטים", note: "רגלי מימון, הוצאות, יתרה", href: "/projects" },
   { title: "מחשבון RSU", note: "מניות לפני ואחרי התקופה, מס", href: null },
   { title: "לוח תכנון", note: "תרחישים ותוכניות מימון", href: null },
   { title: "סיכום שנתי", note: "היכן הסתיימה השנה", href: null },

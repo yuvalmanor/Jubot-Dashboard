@@ -418,3 +418,51 @@ rate that can only move by shipping a deploy stops reading as an assumption and 
 reading as a fact. Percentages are stored as whole basis points for the same reason money is
 stored in minor units, and a bucket left blank is stored as no target at all rather than as
 a target of zero.
+
+## נכסים ופרוייקטים
+
+`src/domain/projects/projects.ts` holds the closed pot, and `/projects` reads it. A Project
+is a pot with one currency — a pot has one size, so it has one currency — and three rules
+give it its shape:
+
+- **Funding Legs fill it, and nothing else does.** A leg records one source in the currency
+  it was actually paid in: CGM 1 was funded by 109,800₪ out of the current account and by
+  $69,000 of Apple RSU. Putting more money in is adding a leg, so a pot cannot be topped up
+  without it being written down where from.
+- **Expenses are drawn out of it.** `יתרה = Σ(legs) − Σ(expenses)`, computed on every read
+  with nowhere to write it, so no sequence of operations can leave the balance disagreeing
+  with the rows beneath it. An expense larger than the balance is refused before it is
+  written — the overdrawn state never exists, not even inside a transaction — and so is
+  removing a leg the pot has already spent against, which is the same broken state reached
+  from the other side.
+- **A rate is recorded where a conversion happened, and nowhere else.** A leg already in the
+  pot's currency converted nothing and carries no rate; a rate beside it would be a number
+  nobody used. The database holds the same rule as a trigger, because it needs the project's
+  own currency and a column check cannot reach it.
+
+From those comes the **effective rate**: the shekels on one side of the conversions this
+project actually took and the dollars on the other, and the shekels-per-dollar those imply.
+It is derived from the recorded amounts rather than averaged out of the rate fields, so
+dividing one by the other reproduces the shekel total exactly — and two shekel legs
+converted at 4.00 and at 3.00 blend to 3.4286, which is what they cost, not to the 3.50 an
+average of the rates would claim. Legs that were already in the pot's currency are not in it
+at all: money that was already dollars was never bought.
+
+The rate is shown against today's, and the screen says only what the two numbers are. Which
+of them is the good one depends on which way the money went — dollars bought with shekels
+want a low rate, dollars sold for shekels want a high one — so the direction is stated and
+the reader is not told what to feel about it. A difference smaller than the four decimals on
+screen reads as "the same rate", because the effective figure is derived from amounts rounded
+to the agora and can sit a fraction of a ten-thousandth from the rate that produced it.
+
+**Deal Terms** are what the sponsor's paperwork stated — target return in whole basis points,
+hold period in months, the distribution pattern in the sponsor's own words, and which
+document it was read off. A promise and not a measurement: nothing in the system is derived
+from them, and Phase 15's Scenarios are what consume them.
+
+Per [ADR 0003](docs/adr/0003-illiquid-assets-are-held-at-cost.md) a project's value in מיפוי
+is its **total cost** and stays there as the expense ledger is spent down: CGM 1 reads
+$99,082.19 with $77,894.19 already deployed, because converting cash into property moves
+money inside the same pot. Naming the account that carries the project lets the screen state
+what that account should read and report it when it does not — it never writes into the
+snapshot, because a project's value in מיפוי is a figure a person states.

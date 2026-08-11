@@ -580,18 +580,48 @@ down — converting cash into property is not losing money.
 
 ### Acceptance criteria
 
-- [ ] A project records its funding legs, each with source, amount, currency and the rate
+- [x] A project records its funding legs, each with source, amount, currency and the rate
       used
+      <!-- The rate is recorded where a conversion happened and refused where none did: a
+           leg already in the pot's currency converted nothing, and a rate beside it would
+           be a number nobody used. The database holds the same rule as a trigger. -->
 - [ ] The effective blended rate is computed on read and matches hand-computed values for
       the real CGM 1, CGM 2 and Meteor structures
-- [ ] The blended rate is displayed against today's rate
-- [ ] A project has a running expense ledger showing what was spent and on what
-- [ ] `יתרה = Σ(legs) − Σ(expenses)` holds after any sequence of legs and expenses
-- [ ] An expense that would exceed the pot is refused; adding money requires a new funding
+      <!-- CGM 1 and CGM 2 verified live against their real funding amounts: 109,800₪ +
+           $69,000 reads $99,082.19 at 3.6500, and 295,200₪ at 3.60 reads $82,000. But the
+           repository records amounts, never the rates they were paid at, and Meteor's
+           funding structure appears nowhere at all — only that the sheet valued it twice
+           and disagreed. The arithmetic is verified; the real figures need the household's
+           own rates and Meteor's legs. Surfaced rather than checked off on a fixture. -->
+- [x] The blended rate is displayed against today's rate
+      <!-- The screen says only where the two numbers sit. Which is the good one depends on
+           which way the money went — dollars bought with shekels want a low rate, dollars
+           sold for shekels want a high one — so the direction is stated and the domain
+           answers "above" or "below" and nothing else. A difference smaller than the four
+           decimals shown reads as the same rate. -->
+- [x] A project has a running expense ledger showing what was spent and on what
+- [x] `יתרה = Σ(legs) − Σ(expenses)` holds after any sequence of legs and expenses
+      <!-- Computed on every read with nowhere to write it, so there is no state to leave
+           inconsistent. Asserted after every step of a 24-step interleaving, and the pot
+           reads identically whatever order the rows arrive in. -->
+- [x] An expense that would exceed the pot is refused; adding money requires a new funding
       leg
-- [ ] Undeployed capital is displayed per project
-- [ ] Deal Terms are recorded per project as data, entered by hand
-- [ ] A project's snapshot value remains at total cost as its expense ledger is spent down
+      <!-- Verified live: against $21,188.00 of room, $21,188.00 was accepted and
+           $21,188.01 refused with the agora named. Removing a leg the pot has already
+           spent against is refused too — it is the same broken state from the other side,
+           and CGM 1 reported the $8,894.19 that would go missing. -->
+- [x] Undeployed capital is displayed per project
+      <!-- Verified live: CGM 1 reads $21,188.00 not yet working, the figure the PRD names,
+           on both the list and the project. -->
+- [x] Deal Terms are recorded per project as data, entered by hand
+      <!-- Entered as a percentage, stored in whole basis points: 18.25% round-trips as
+           1,825. Nothing derives from them and nothing else reads them yet; a row of nulls
+           reports as no promise rather than as a promise of nothing. -->
+- [x] A project's snapshot value remains at total cost as its expense ledger is spent down
+      <!-- Verified live: CGM 1 reads $99,082.19 in מיפוי with $77,894.19 already deployed.
+           Naming the account that carries the project lets the screen state what that
+           account should read and report the difference when it does not — it never writes
+           into the snapshot, because the value there is a figure a person states. -->
 
 ---
 
