@@ -411,8 +411,8 @@ figure the מאזן screens show and cannot drift from them.
 
 `/settings` holds the household's own dials: the appreciation assumption, the רצוי
 allocation targets, which accounts the concentration is watched on, which accounts move
-with a market, and the GP window the RSU screen estimates over. Later phases add the fee
-and tax rates beside them.
+with a market, the GP window the RSU screen estimates over, the two tax rates a sale can
+meet, and what the broker and the trustee charge.
 
 None of it is a measurement, which is exactly why none of it is a constant in the code — a
 rate that can only move by shipping a deploy stops reading as an assumption and starts
@@ -519,3 +519,55 @@ weekends, while the calendar basis counts dates and a shut market simply shorten
 Changing the window does not rewrite a figure already taken: an estimate keeps the window it
 was taken under, and `/rsu` flags it as taken under a different one. Correcting the setting
 corrects the next reading, and says which older ones are owed a recomputation.
+
+### What a sale costs, under both treatments
+
+`src/domain/rsu/rsu-tax.ts` is the gap the spreadsheet could not express. It priced one
+outcome — GP as ordinary income and the appreciation above it at the capital-gains rate,
+which is correct *once* the 24 months have run — and had no way to say what selling early
+costs. Both treatments are here, and neither is ever chosen by hand:
+
+- **The treatment comes from the lot's own clock.** `treatmentOn` asks the grant date and
+  the *sale* date and nothing else — never the lot's `qualified`, which is a fact about the
+  day the position was read. Verified live on one lot with nothing written between the two
+  reads: sold on 1 June 2025 it is an early sale taxed on the whole $5,320.00, and sold on
+  11 August 2026 it is $2,839.02 of ordinary income against a $2,480.98 gain. That the same
+  function answers both is what makes *what is waiting worth* a question it can answer by
+  asking itself twice, at the same price, so the difference is the clock and not a guess
+  about the share price.
+- **A sale is priced or it is refused.** A Qualified lot out of a grant with no GP recorded
+  cannot be split into work income and gain at all, so `/rsu` says so instead of putting a
+  number on the screen that rests on nothing. Where the price has fallen *below* GP the
+  whole of the proceeds is ordinary income and the gain is nought — a work-income component
+  larger than the money received would tax income nobody got — and the row says that is why.
+- **The rates are the household's.** 62.17% and 25% are its reading of סעיף 102, and a
+  reading belongs in `/settings` rather than in a constant. Every figure names the two rates
+  that produced it.
+- **Fees come off the net and never off the base.** A commission is money that did not
+  arrive, not income nobody earned; taking it off the taxable base would reduce a tax on a
+  figure the tax authority never saw reduced, and would make "what was taxed" and "what
+  arrived" impossible to read apart. They are charged once over a whole sale rather than per
+  lot, because a flat commission on one sale is one commission however many lots the shares
+  came out of. Verified live: $0.01 a share, $15.00 flat and 0.5% to the trustee took
+  $41.79 off a $2,934.73 net and left the $2,385.27 of tax exactly where it was.
+
+Shares are drawn from the oldest lot first. That is a *stated convention* and not an
+optimisation — which lots are cheapest to sell is Phase 14's question, and it answers it by
+handing a different list to the same function, so the tax arithmetic never has to know how
+the lots were chosen. Asking for more shares than are held fills what it can and reports the
+shortfall rather than refusing the question.
+
+The net is reported in dollars and in shekels, at the latest stored rate, which is named and
+dated beside the figure. Where no rate is stored the net stays in dollars and the screen
+says why, rather than converting at one nobody quoted.
+
+**One row does not reproduce.** The household's own sheet states that 19 shares at $280 with
+GP 149.4219 yield tax $2,385.14 and net $2,934.67; this module produces $2,385.27 and
+$2,934.73. The gap is reconstructible to the cent and it is not rounding:
+`5,320.00 − 2,385.14 − 2,934.67 = 0.19`, a cent a share of selling cost, and taking that
+$0.19 off the *ordinary-income base* before the 62.17% gives 2,385.1442 — the sheet's tax to
+the cent, and then its net to the cent. Nothing else fits both figures at 62.17% and 25%. So
+the sheet deducted the selling cost from what it taxed, which is the one thing the PRD names
+as wrong; the remaining agora is that each component here is a real amount rounded to the
+cent once, where the sheet carried unrounded floats into a single total. Reproducing the
+sheet exactly would mean reproducing that, and this does not.

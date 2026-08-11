@@ -738,14 +738,62 @@ rather than from the taxable base.
 
 - [ ] The Qualified path reproduces the existing spreadsheet rows exactly — row 1: 19
       shares at $280 with GP 149.4219 yields tax $2,385.14 and net $2,934.67
-- [ ] The Unqualified path taxes the entire gain as ordinary income
-- [ ] Treatment is selected per lot from its own qualification date, automatically
-- [ ] Selling a given number of shares today reports net proceeds in both USD and ILS
-- [ ] Any lot can be shown as net-today versus net-once-Qualified, with the difference
+      <!-- It does not, and the gap is reconstructible to the cent rather than being
+           rounding. Verified live on that exact row: $2,839.02 of ordinary income at
+           62.17% and a $2,480.98 gain at 25% give tax $2,385.27 and net $2,934.73. The
+           sheet's two figures leave 5,320.00 − 2,385.14 − 2,934.67 = $0.19 unaccounted —
+           a cent a share of selling cost — and taking that $0.19 off the *ordinary-income
+           base* before the 62.17% yields 2,385.1442 and then 2,934.67, both to the cent.
+           Nothing else fits both at 62.17% and 25%. So the sheet taxed the sale net of its
+           selling cost, which is exactly what the sixth criterion below forbids: the two
+           cannot both hold on a row carrying a fee. The remaining agora is that each
+           component here is a real amount rounded to the cent once, where the sheet
+           carried unrounded floats into one total. Surfaced rather than reinterpreted —
+           whether the household wants the sheet's arithmetic or the correct one is its
+           decision, not an implementation detail. -->
+- [x] The Unqualified path taxes the entire gain as ordinary income
+      <!-- Verified live on the same row read four months before its boundary: the whole
+           $5,320.00 is ordinary income, the gain is nought and the tax is $3,307.44. An
+           RSU costs nothing to acquire, so the entire sale is the benefit. It does not
+           consult GP at all — a lot under an estimated GP is not an estimate when sold
+           early, and does not read as one. -->
+- [x] Treatment is selected per lot from its own qualification date, automatically
+      <!-- From the grant date and the *sale* date, never from the lot's own `qualified`,
+           which is a fact about the day the position was read. Verified live: one lot,
+           nothing written between the two reads, priced as an early sale on 2025-06-01 and
+           as a Qualified one on 2026-08-11. Tested on the day before, the day of and the
+           day after its boundary, and across two grants inside one sale. -->
+- [x] Selling a given number of shares today reports net proceeds in both USD and ILS
+      <!-- Verified live: 19 shares at $280 read as $2,934.73 and ₪10,711.76, with the rate
+           and its date named beside the figure. Where no rate is stored the net stays in
+           dollars and the screen says why rather than converting at one nobody quoted. A
+           request larger than the position fills what exists and reports the shortfall. -->
+- [x] Any lot can be shown as net-today versus net-once-Qualified, with the difference
       stated
-- [ ] Fees are settings, not constants, and are subtracted from net proceeds and not from
+      <!-- Verified live: $2,012.56 today against $2,934.73 from 15 January 2026, a
+           difference of $922.17. The price is held flat between the two readings on
+           purpose, so the difference is what the clock is worth and not a guess about the
+           share price; the fees are charged on both sides for the same reason. A lot with
+           nothing to wait for says so and reads as no difference rather than as ₪0. -->
+- [x] Fees are settings, not constants, and are subtracted from net proceeds and not from
       the taxable base
+      <!-- Verified live: $0.01 a share, $15.00 flat and 0.5% to the trustee came to $41.79
+           and took the net from $2,934.73 to $2,892.94, with the tax unmoved at $2,385.27.
+           Charged once over a sale rather than per lot — a flat commission on one sale is
+           one commission however many lots it drew on — and a fee quoted in a currency the
+           sale is not in throws rather than converting at a rate nobody named. -->
 - [ ] `RsuTax` tests assert exact figures against the household's existing sheet rows
+      <!-- The tests assert exact minor-unit integers on that row's own inputs, and the
+           sheet row is the fixture. But they assert what this module produces, because it
+           does not produce what the sheet states — see the first criterion. Left unchecked
+           with the first one rather than checked on a weaker reading of it. -->
+
+Two things were built that no criterion names, and both are recorded here rather than added
+as criteria: the **two tax rates are `/settings` dials** in whole basis points, because
+62.17% and 25% are the household's reading of סעיף 102 and not a fact of the world, and
+every figure on screen names the two that produced it; and a **Qualified sale out of a grant
+with no GP is refused** rather than approximated, because without a GP there is no split
+between work income and gain and any number shown would rest on nothing.
 
 ---
 

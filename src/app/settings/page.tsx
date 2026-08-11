@@ -5,7 +5,9 @@ import { loadAccounts } from "@/db/accounts";
 import { DatabaseNotConfiguredError } from "@/db/client";
 import { type Person, findPersonByEmail } from "@/db/people";
 import { type HouseholdSettings, loadHouseholdSettings } from "@/db/settings";
+import { toDecimalString } from "@/domain/money/money";
 import { targetFor } from "@/domain/networth/net-worth-analytics";
+import { sharePriceToDecimalString } from "@/domain/rsu/rsu-position";
 import {
   type Account,
   ASSET_CATEGORIES,
@@ -21,8 +23,10 @@ import {
   setAllocationTargets,
   setAppreciation,
   setConcentrationAccounts,
+  setFees,
   setGpWindow,
   setMarketMovingAccounts,
+  setTaxRates,
 } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -77,6 +81,8 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <ConcentrationPanel settings={loaded.settings} accounts={loaded.accounts} />
             <MarketMovingPanel settings={loaded.settings} accounts={loaded.accounts} />
             <GpWindowPanel settings={loaded.settings} />
+            <TaxRatesPanel settings={loaded.settings} />
+            <FeesPanel settings={loaded.settings} />
           </>
         ) : (
           <UnavailablePanel reason={loaded.reason} />
@@ -423,6 +429,134 @@ function GpWindowPanel({ settings }: { settings: HouseholdSettings }) {
   );
 }
 
+// --- the two rates a sale can meet -------------------------------------------
+
+/**
+ * What סעיף 102 charges, as the household reads it. The system starts from
+ * 62.17% and 25% and holds them here rather than in the code for the same reason
+ * every other number on this screen is here: a rate that can only move by
+ * shipping a deploy stops reading as a belief and starts reading as a fact.
+ */
+function TaxRatesPanel({ settings }: { settings: HouseholdSettings }) {
+  const { taxRates } = settings;
+
+  return (
+    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
+      <h2 className="text-sm font-semibold tracking-wide text-stone-500">שיעורי המס על מכירת RSU</h2>
+      <p className="mt-1 text-sm text-stone-600">
+        מנה שעברה את 24 החודשים משלמת את השיעור השולי על ה־GP ואת שיעור רווח ההון על כל מה שמעליו.
+        מנה שלא עברה — השיעור השולי על הכול. איזו משתי הדרכים חלה נקבע מהשעון של המנה עצמה, ולא
+        כאן.
+      </p>
+
+      <form action={setTaxRates} className="mt-4 grid gap-4 sm:grid-cols-3">
+        <label className="block">
+          <span className="block text-sm font-medium text-stone-700">שיעור שולי (הכנסת עבודה)</span>
+          <span className="block text-xs text-stone-500">ברירת המחדל: 62.17%</span>
+          <input
+            name="ordinary"
+            inputMode="decimal"
+            dir="ltr"
+            step={PERCENT_STEP}
+            defaultValue={asPercentText(taxRates.ordinaryBasisPoints)}
+            className="tabular mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-end"
+          />
+        </label>
+
+        <label className="block">
+          <span className="block text-sm font-medium text-stone-700">שיעור רווח הון</span>
+          <span className="block text-xs text-stone-500">ברירת המחדל: 25%</span>
+          <input
+            name="capitalGains"
+            inputMode="decimal"
+            dir="ltr"
+            step={PERCENT_STEP}
+            defaultValue={asPercentText(taxRates.capitalGainsBasisPoints)}
+            className="tabular mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-end"
+          />
+        </label>
+
+        <div className="flex items-end">
+          <SaveButton label="שמירת השיעורים" />
+        </div>
+      </form>
+    </section>
+  );
+}
+
+// --- what the sale costs to make ---------------------------------------------
+
+/**
+ * The broker's and the trustee's charges. They come off the net and never off
+ * the taxable base — a commission is money that did not arrive, not income
+ * nobody earned, and taking it off the base would reduce a tax on a figure the
+ * tax authority never saw reduced.
+ */
+function FeesPanel({ settings }: { settings: HouseholdSettings }) {
+  const { fees } = settings;
+
+  return (
+    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
+      <h2 className="text-sm font-semibold tracking-wide text-stone-500">עמלות מכירה</h2>
+      <p className="mt-1 text-sm text-stone-600">
+        מה שהברוקר והנאמן גובים. אלה עובדות עליהם ולא על הקוד, ולכן הן כאן. הן יורדות{" "}
+        <span className="font-medium">מהנטו</span> ולא מהבסיס החייב במס: עמלה היא כסף שלא הגיע, לא
+        הכנסה שאיש לא הרוויח. הסכומים בדולרים, כי ההחזקה דולרית.
+      </p>
+
+      <form action={setFees} className="mt-4 grid gap-4 sm:grid-cols-4">
+        <label className="block">
+          <span className="block text-sm font-medium text-stone-700">עמלת ברוקר למניה</span>
+          <span className="block text-xs text-stone-500">דולרים למניה — ריק פירושו שאין</span>
+          <input
+            name="brokerPerShare"
+            inputMode="decimal"
+            dir="ltr"
+            defaultValue={fees.brokerPerShare === null ? "" : sharePriceToDecimalString(fees.brokerPerShare)}
+            className="tabular mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-end"
+          />
+        </label>
+
+        <label className="block">
+          <span className="block text-sm font-medium text-stone-700">עמלה קבועה למכירה</span>
+          <span className="block text-xs text-stone-500">נגבית פעם אחת לכל מכירה</span>
+          <input
+            name="brokerFlat"
+            inputMode="decimal"
+            dir="ltr"
+            defaultValue={fees.brokerFlat === null ? "" : toDecimalString(fees.brokerFlat)}
+            className="tabular mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-end"
+          />
+        </label>
+
+        <label className="block">
+          <span className="block text-sm font-medium text-stone-700">עמלת נאמן</span>
+          <span className="block text-xs text-stone-500">אחוז מהתמורה ברוטו</span>
+          <input
+            name="trustee"
+            inputMode="decimal"
+            dir="ltr"
+            step={PERCENT_STEP}
+            defaultValue={asPercentText(fees.trusteeBasisPoints)}
+            className="tabular mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-end"
+          />
+        </label>
+
+        <div className="flex items-end">
+          <SaveButton label="שמירת העמלות" />
+        </div>
+      </form>
+
+      <p className="mt-3 text-sm text-stone-500">
+        <Link href="/rsu" className="underline underline-offset-4">
+          מחשבון RSU
+        </Link>{" "}
+        מחשב לפיהן את הנטו של כל מכירה.
+      </p>
+    </section>
+  );
+}
+
 // --- shared ------------------------------------------------------------------
 
 function SaveButton({ label }: { label: string }) {
@@ -441,6 +575,8 @@ const ERROR_MESSAGES: Record<SettingsErrorCode, string> = {
   "bad-appreciation": "הנחת עליית הערך אינה תקינה. אחוז שלם או עשרוני בין 0 ל־100.",
   "bad-targets": "היעדים אינם תקינים. כל יעד הוא אחוז בין 0 ל־100.",
   "bad-gp-window": "חלון ה־GP אינו תקין. מספר שלם של ימים בין 0 ל־365 לכל צד, ולפחות יום אחד בסך הכול.",
+  "bad-tax-rates": "שיעורי המס אינם תקינים. כל שיעור הוא אחוז בין 0 ל־100.",
+  "bad-fees": "העמלות אינן תקינות. סכום בדולרים, ועמלת הנאמן כאחוז בין 0 ל־100.",
   failed: "הפעולה נכשלה.",
 };
 
@@ -450,6 +586,8 @@ const DONE_MESSAGES: Record<string, string> = {
   concentration: "המעקב נשמר.",
   "market-moving": "הסימון נשמר. פירוק השינוי ייקרא לפיו, ויאמר על מה הוא נשען.",
   "gp-window": "החלון נשמר. אומדנים שכבר חושבו שומרים את החלון שבו נלקחו, ויסומנו ככאלה.",
+  "tax-rates": "השיעורים נשמרו. כל מכירה תתומחר לפיהם, ותאמר אותם.",
+  fees: "העמלות נשמרו. הן יורדות מהנטו, ולא מהבסיס החייב במס.",
 };
 
 function isErrorCode(value: string | undefined): value is SettingsErrorCode {

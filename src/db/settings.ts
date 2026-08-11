@@ -5,7 +5,23 @@ import {
   buildAllocationTargets,
   buildAppreciationAssumption,
 } from "@/domain/networth/net-worth-analytics";
-import { type GpWindow, DEFAULT_GP_WINDOW, buildGpWindow, gpWindowKey, parseGpWindow } from "@/domain/rsu/rsu-position";
+import { type Currency, isCurrency, money } from "@/domain/money/money";
+import {
+  type GpWindow,
+  DEFAULT_GP_WINDOW,
+  buildGpWindow,
+  gpWindowKey,
+  parseGpWindow,
+  sharePrice,
+} from "@/domain/rsu/rsu-position";
+import {
+  type FeeSchedule,
+  type TaxRates,
+  NO_FEES,
+  SECTION_102_RATES,
+  buildFeeSchedule,
+  buildTaxRates,
+} from "@/domain/rsu/rsu-tax";
 import { type AssetCategory, ASSET_CATEGORIES } from "@/domain/snapshot/snapshot";
 
 import { query, withTransaction } from "./client";
@@ -27,6 +43,11 @@ const TARGET_PREFIX = "allocation_target.";
 const CONCENTRATION_KEY = "concentration.account_ids";
 const MARKET_MOVING_KEY = "decomposition.market_account_ids";
 const GP_WINDOW_KEY = "rsu.gp_window";
+const ORDINARY_RATE_KEY = "rsu.tax.ordinary_bp";
+const CAPITAL_GAINS_RATE_KEY = "rsu.tax.capital_gains_bp";
+const BROKER_PER_SHARE_KEY = "rsu.fees.broker_per_share";
+const BROKER_FLAT_KEY = "rsu.fees.broker_flat";
+const TRUSTEE_FEE_KEY = "rsu.fees.trustee_bp";
 
 interface SettingRow extends Record<string, unknown> {
   key: string;
@@ -57,6 +78,14 @@ export interface HouseholdSettings {
    * an ESOP statement and corrects it here, with no deploy involved.
    */
   readonly gpWindow: GpWindow;
+  /**
+   * The two rates a sale can meet. Settings rather than constants because a
+   * marginal rate that could only move by shipping a deploy would stop reading as
+   * the household's belief and start reading as a fact of the world.
+   */
+  readonly taxRates: TaxRates;
+  /** What the broker and the trustee charge. Facts about them, not about the code. */
+  readonly fees: FeeSchedule;
 }
 
 export const DEFAULT_SETTINGS: HouseholdSettings = {
@@ -65,7 +94,43 @@ export const DEFAULT_SETTINGS: HouseholdSettings = {
   concentrationAccountIds: [],
   marketMovingAccountIds: [],
   gpWindow: DEFAULT_GP_WINDOW,
+  taxRates: SECTION_102_RATES,
+  fees: NO_FEES,
 };
+
+/**
+ * A fee amount as it is stored: an integer and the currency it is an amount of,
+ * `1900:USD`. The currency is not assumed, because a commission is charged in the
+ * broker's currency and nothing here may convert it at a rate nobody named.
+ */
+function splitAmount(key: string, text: string): { units: number; currency: Currency } {
+  const [units = "", currency = ""] = text.trim().split(":");
+  const value = Number(units);
+  if (!Number.isSafeInteger(value)) {
+    throw new MalformedSettingError(key, `${JSON.stringify(units)} is not a whole number`);
+  }
+  if (!isCurrency(currency)) {
+    throw new MalformedSettingError(key, `unknown currency ${JSON.stringify(currency)}`);
+  }
+  return { units: value, currency };
+}
+
+/** A stored commission per share — ten-thousandths, the scale a price is held at. */
+function storedPrice(key: string, text: string) {
+  const { units, currency } = splitAmount(key, text);
+  return sharePrice(units, currency);
+}
+
+/** A stored flat charge — minor units, the scale money is held at. */
+function storedMoney(key: string, text: string) {
+  const { units, currency } = splitAmount(key, text);
+  return money(units, currency);
+}
+
+/** How a fee amount goes back — `1900:USD`. The inverse of `splitAmount`. */
+function joinAmount(units: number, currency: Currency): string {
+  return `${units}:${currency}`;
+}
 
 function wholeNumber(key: string, text: string): number {
   const value = Number(text.trim());
@@ -83,6 +148,11 @@ export async function loadHouseholdSettings(): Promise<HouseholdSettings> {
   const concentration = byKey.get(CONCENTRATION_KEY);
   const marketMoving = byKey.get(MARKET_MOVING_KEY);
   const gpWindow = byKey.get(GP_WINDOW_KEY);
+  const ordinary = byKey.get(ORDINARY_RATE_KEY);
+  const capitalGains = byKey.get(CAPITAL_GAINS_RATE_KEY);
+  const brokerPerShare = byKey.get(BROKER_PER_SHARE_KEY);
+  const brokerFlat = byKey.get(BROKER_FLAT_KEY);
+  const trustee = byKey.get(TRUSTEE_FEE_KEY);
 
   const targets = ASSET_CATEGORIES.flatMap((category) => {
     const stored = byKey.get(`${TARGET_PREFIX}${category}`);
@@ -100,6 +170,21 @@ export async function loadHouseholdSettings(): Promise<HouseholdSettings> {
       concentration === undefined ? [] : splitIds(concentration),
     marketMovingAccountIds: marketMoving === undefined ? [] : splitIds(marketMoving),
     gpWindow: gpWindow === undefined ? DEFAULT_GP_WINDOW : parseGpWindow(gpWindow),
+    taxRates: buildTaxRates({
+      ordinaryBasisPoints:
+        ordinary === undefined
+          ? SECTION_102_RATES.ordinaryBasisPoints
+          : wholeNumber(ORDINARY_RATE_KEY, ordinary),
+      capitalGainsBasisPoints:
+        capitalGains === undefined
+          ? SECTION_102_RATES.capitalGainsBasisPoints
+          : wholeNumber(CAPITAL_GAINS_RATE_KEY, capitalGains),
+    }),
+    fees: buildFeeSchedule({
+      brokerPerShare: brokerPerShare === undefined ? null : storedPrice(BROKER_PER_SHARE_KEY, brokerPerShare),
+      brokerFlat: brokerFlat === undefined ? null : storedMoney(BROKER_FLAT_KEY, brokerFlat),
+      trusteeBasisPoints: trustee === undefined ? 0 : wholeNumber(TRUSTEE_FEE_KEY, trustee),
+    }),
   };
 }
 
@@ -170,4 +255,62 @@ export async function saveMarketMovingAccounts(accountIds: readonly string[]): P
  */
 export async function saveGpWindow(window: GpWindow): Promise<void> {
   await put(GP_WINDOW_KEY, gpWindowKey(buildGpWindow(window)));
+}
+
+/**
+ * The two rates a sale can meet. 62.17% and 25% are what the household believes
+ * סעיף 102 charges, and a belief belongs in a row rather than in a constant.
+ */
+export async function saveTaxRates(rates: TaxRates): Promise<void> {
+  const checked = buildTaxRates(rates);
+  await withTransaction(async (run) => {
+    for (const [key, basisPoints] of [
+      [ORDINARY_RATE_KEY, checked.ordinaryBasisPoints],
+      [CAPITAL_GAINS_RATE_KEY, checked.capitalGainsBasisPoints],
+    ] as const) {
+      await run(
+        `insert into settings (key, value) values ($1, $2)
+         on conflict (key) do update set value = excluded.value, updated_at = now()`,
+        [key, String(basisPoints)],
+      );
+    }
+  });
+}
+
+/**
+ * What the broker and the trustee charge. Written as one set: a charge left blank
+ * is deleted rather than left behind, because "we pay no flat commission" and "we
+ * once did" are different states and a stale row would make them look alike.
+ */
+export async function saveFeeSchedule(fees: FeeSchedule): Promise<void> {
+  const checked = buildFeeSchedule(fees);
+  const values: readonly (readonly [string, string | null])[] = [
+    [
+      BROKER_PER_SHARE_KEY,
+      checked.brokerPerShare === null
+        ? null
+        : joinAmount(checked.brokerPerShare.tenThousandths, checked.brokerPerShare.currency),
+    ],
+    [
+      BROKER_FLAT_KEY,
+      checked.brokerFlat === null
+        ? null
+        : joinAmount(checked.brokerFlat.minorUnits, checked.brokerFlat.currency),
+    ],
+    [TRUSTEE_FEE_KEY, checked.trusteeBasisPoints === 0 ? null : String(checked.trusteeBasisPoints)],
+  ];
+
+  await withTransaction(async (run) => {
+    for (const [key, value] of values) {
+      if (value === null) {
+        await run(`delete from settings where key = $1`, [key]);
+        continue;
+      }
+      await run(
+        `insert into settings (key, value) values ($1, $2)
+         on conflict (key) do update set value = excluded.value, updated_at = now()`,
+        [key, value],
+      );
+    }
+  });
 }

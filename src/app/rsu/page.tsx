@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { AppHeader } from "@/components/app-header";
 import { DatabaseNotConfiguredError } from "@/db/client";
+import { type DatedRate, findLatestRate } from "@/db/money-settings";
 import { type Person, findPersonByEmail, listPeople } from "@/db/people";
 import { type RsuRecords, loadRsuRecords } from "@/db/rsu";
 import { loadHouseholdSettings } from "@/db/settings";
@@ -12,12 +13,15 @@ import {
   type Lot,
   type RsuPosition,
   type Sale,
+  type SharePrice,
   formatSharePrice,
   nextQualificationDate,
+  parseSharePriceInput,
   readPosition,
   salesOf,
   sharePriceToDecimalString,
 } from "@/domain/rsu/rsu-position";
+import { type FeeSchedule, type TaxRates } from "@/domain/rsu/rsu-tax";
 import { dateKey, dateOf, formatDate, tryParseDateKey } from "@/domain/time/calendar-date";
 import { requireHouseholdEmail } from "@/session";
 
@@ -41,6 +45,7 @@ import {
   UnavailablePanel,
   windowInWords,
 } from "./panels";
+import { SalePricingPanel, WaitingPanel, latestKnownPrice } from "./tax-panels";
 
 export const dynamic = "force-dynamic";
 
@@ -60,10 +65,29 @@ interface SearchParams {
   detail?: string | string[];
   done?: string | string[];
   asOf?: string | string[];
+  sellShares?: string | string[];
+  sellPrice?: string | string[];
 }
 
 function first(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
+}
+
+/** A share count off the query string. Anything that is not one reads as absent. */
+function readShares(value: string | undefined): number | null {
+  if (value === undefined || value.trim().length === 0) return null;
+  const count = Number(value.trim());
+  return Number.isSafeInteger(count) && count >= 0 ? count : null;
+}
+
+/** A price off the query string. Unreadable reads as absent rather than as an error. */
+function readPrice(value: string | undefined): SharePrice | null {
+  if (value === undefined) return null;
+  try {
+    return parseSharePriceInput(value, "USD");
+  } catch {
+    return null;
+  }
 }
 
 export default async function RsuPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
@@ -90,6 +114,22 @@ export default async function RsuPage({ searchParams }: { searchParams: Promise<
           <>
             <AsOfControl asOf={asOf} today={today} />
             <PositionPanel position={loaded.position} window={loaded.window} />
+            <SalePricingPanel
+              position={loaded.position}
+              rates={loaded.rates}
+              fees={loaded.fees}
+              todayRate={loaded.todayRate}
+              shares={readShares(first(params.sellShares))}
+              salePrice={readPrice(first(params.sellPrice))}
+              known={latestKnownPrice(loaded.records)}
+            />
+            <WaitingPanel
+              position={loaded.position}
+              rates={loaded.rates}
+              fees={loaded.fees}
+              salePrice={readPrice(first(params.sellPrice))}
+              known={latestKnownPrice(loaded.records)}
+            />
 
             {loaded.position.grants.length === 0 ? (
               <p className="rounded-lg border border-dashed border-stone-300 bg-white/60 p-5 text-stone-600">
@@ -132,16 +172,20 @@ type Loaded =
       records: RsuRecords;
       position: RsuPosition;
       window: GpWindow;
+      rates: TaxRates;
+      fees: FeeSchedule;
+      todayRate: DatedRate | null;
     }
   | { kind: "unavailable"; reason: string };
 
 async function loadPage(email: string, asOf: ReturnType<typeof dateOf>): Promise<Loaded> {
   try {
-    const [person, people, records, settings] = await Promise.all([
+    const [person, people, records, settings, todayRate] = await Promise.all([
       findPersonByEmail(email),
       listPeople(),
       loadRsuRecords(),
       loadHouseholdSettings(),
+      findLatestRate("USD", "ILS"),
     ]);
 
     return {
@@ -151,6 +195,9 @@ async function loadPage(email: string, asOf: ReturnType<typeof dateOf>): Promise
       records,
       position: readPosition({ ...records, asOf }),
       window: settings.gpWindow,
+      rates: settings.taxRates,
+      fees: settings.fees,
+      todayRate,
     };
   } catch (error) {
     if (error instanceof DatabaseNotConfiguredError) {

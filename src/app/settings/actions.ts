@@ -8,9 +8,12 @@ import {
   saveAllocationTargets,
   saveAppreciation,
   saveConcentrationAccounts,
+  saveFeeSchedule,
   saveGpWindow,
   saveMarketMovingAccounts,
+  saveTaxRates,
 } from "@/db/settings";
+import { InvalidMoneyError, parseMoneyInput } from "@/domain/money/money";
 import {
   InvalidAllocationTargetError,
   InvalidAppreciationError,
@@ -20,9 +23,17 @@ import {
 import {
   type GpWindowBasis,
   InvalidGpWindowError,
+  InvalidSharePriceError,
   buildGpWindow,
   isGpWindowBasis,
+  parseSharePriceInput,
 } from "@/domain/rsu/rsu-position";
+import {
+  InvalidFeeScheduleError,
+  InvalidTaxRatesError,
+  buildFeeSchedule,
+  buildTaxRates,
+} from "@/domain/rsu/rsu-tax";
 import { ASSET_CATEGORIES } from "@/domain/snapshot/snapshot";
 import { requireHouseholdEmail } from "@/session";
 
@@ -40,6 +51,8 @@ export type SettingsErrorCode =
   | "bad-appreciation"
   | "bad-targets"
   | "bad-gp-window"
+  | "bad-tax-rates"
+  | "bad-fees"
   | "failed";
 
 interface Outcome {
@@ -66,6 +79,16 @@ function failureFor(error: unknown): Outcome {
   }
   if (error instanceof InvalidGpWindowError) {
     return { code: "bad-gp-window", detail: error.message };
+  }
+  if (error instanceof InvalidTaxRatesError) {
+    return { code: "bad-tax-rates", detail: error.message };
+  }
+  if (
+    error instanceof InvalidFeeScheduleError ||
+    error instanceof InvalidSharePriceError ||
+    error instanceof InvalidMoneyError
+  ) {
+    return { code: "bad-fees", detail: error.message };
   }
   return { code: "failed" };
 }
@@ -117,6 +140,8 @@ async function run(work: () => Promise<Outcome>): Promise<never> {
   }
   revalidatePath("/settings");
   revalidatePath("/net-worth");
+  // The RSU screen prices every sale off the window, the rates and the fees below.
+  revalidatePath("/rsu");
   // The dashboard carries the reconciliation, which reads the marks below.
   revalidatePath("/");
   backTo(outcome);
@@ -221,6 +246,63 @@ export async function setGpWindow(form: FormData): Promise<void> {
       }),
     );
     return { code: null, done: "gp-window" };
+  });
+}
+
+/**
+ * The two rates a sale meets. They are the household's reading of סעיף 102 and
+ * not a fact of the world, so they sit in a form: a rate that could only move by
+ * shipping a deploy stops reading as a belief and starts reading as a fact.
+ */
+export async function setTaxRates(form: FormData): Promise<void> {
+  await requireSignedIn();
+
+  await run(async () => {
+    await saveTaxRates(
+      buildTaxRates({
+        ordinaryBasisPoints: readBasisPoints(
+          form,
+          "ordinary",
+          "שיעור המס השולי",
+          (message) => new InvalidTaxRatesError(message),
+        ),
+        capitalGainsBasisPoints: readBasisPoints(
+          form,
+          "capitalGains",
+          "שיעור מס רווח ההון",
+          (message) => new InvalidTaxRatesError(message),
+        ),
+      }),
+    );
+    return { code: null, done: "tax-rates" };
+  });
+}
+
+/**
+ * What the broker and the trustee charge. Facts about them rather than about the
+ * code, and they come off the net — never off the taxable base, which would
+ * reduce a tax on a figure the tax authority never saw reduced.
+ *
+ * Denominated in dollars, because the RSU position is a dollar holding and a fee
+ * quoted elsewhere would need a rate nobody named.
+ */
+export async function setFees(form: FormData): Promise<void> {
+  await requireSignedIn();
+
+  await run(async () => {
+    await saveFeeSchedule(
+      buildFeeSchedule({
+        brokerPerShare: parseSharePriceInput(readText(form, "brokerPerShare"), "USD"),
+        brokerFlat: parseMoneyInput(readText(form, "brokerFlat"), "USD"),
+        trusteeBasisPoints: readBasisPoints(
+          form,
+          "trustee",
+          "עמלת הנאמן",
+          (message) => new InvalidFeeScheduleError(message),
+        ),
+      }),
+    );
+    return { code: null, done: "fees" };
   });
 }
 
