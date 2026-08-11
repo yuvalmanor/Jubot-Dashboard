@@ -89,6 +89,22 @@ export function datesEqual(left: CalendarDate, right: CalendarDate): boolean {
 }
 
 /**
+ * Whole years from one date to another — completed anniversaries, never a
+ * fraction. Eleven months is nought years, and the day before an anniversary is
+ * still the year before it.
+ *
+ * Whole years because the things counted in them are assumptions rather than
+ * measurements: a rate held "for 2.9 years" implies a precision about the day an
+ * asset was acquired that nobody has. Negative spans count as nought.
+ */
+export function wholeYearsBetween(from: CalendarDate, to: CalendarDate): number {
+  const years = to.year - from.year;
+  const beforeAnniversary =
+    to.month < from.month || (to.month === from.month && to.day < from.day);
+  return Math.max(0, beforeAnniversary ? years - 1 : years);
+}
+
+/**
  * The day a moment falls on. The clock is a parameter, never read from inside — a
  * function that asks the system for today cannot be tested against a boundary.
  */

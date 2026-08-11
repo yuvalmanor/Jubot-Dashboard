@@ -470,16 +470,37 @@ assumption it applied.
 
 ### Acceptance criteria
 
-- [ ] Net worth over time is charted from the snapshot history
-- [ ] Currency exposure is derived from each account's native currency and is unaffected by
+- [x] Net worth over time is charted from the snapshot history
+      <!-- Each point at its own snapshot's rate. A snapshot carrying no rate for a currency
+           it holds has no point rather than a total with those accounts dropped out, and a
+           change measured across two different rates is labelled as such rather than read
+           as growth. -->
+- [x] Currency exposure is derived from each account's native currency and is unaffected by
       funding history
-- [ ] Current allocation is displayed against רצוי targets with over- and under-weights
+      <!-- The Account's own currency is the only input; nothing in a Snapshot records how an
+           asset was funded, and this would not consult it if it did. -->
+- [x] Current allocation is displayed against רצוי targets with over- and under-weights
       identified
-- [ ] The appreciation assumption is a household-editable setting, not a constant
-- [ ] Any figure incorporating the appreciation assumption states the assumption applied,
+      <!-- Verified live: at 1,134,176₪ against 10/25/32.5/30, נזילות reads 52,017.60₪ under
+           and פנסיה 81,768.80₪ over. Every bucket appears whether or not it holds anything,
+           an untargeted bucket is not "on target", and a set of targets adding to 97.5% is
+           reported as such rather than completed to 100%. -->
+- [x] The appreciation assumption is a household-editable setting, not a constant
+      <!-- `/settings`, stored in whole basis points. Blank is nought — "we assume nothing"
+           is a position, and it is the one the system starts from. -->
+- [x] Any figure incorporating the appreciation assumption states the assumption applied,
       or excludes cost-held assets
-- [ ] The Apple RSU share of total wealth is displayed
-- [ ] CGM 2 is classified under נדל"ן, and allocation percentages read accordingly
+      <!-- The range panel prints all three: recorded, recorded excluding cost-held, and the
+           grown figure beside the rate and the exact multiplier it used. The assumption is
+           carried on the result, so the grown figure has nowhere to be printed alone. -->
+- [x] The Apple RSU share of total wealth is displayed
+      <!-- Verified live: $112,500 reads as 360,000₪, 31.7% of 1,134,176₪. The accounts are
+           named by id rather than matched on a name, so a rename cannot make the
+           concentration read as zero, and one marked but absent from the snapshot is
+           reported rather than counted as nothing. -->
+- [x] CGM 2 is classified under נדל"ן, and allocation percentages read accordingly
+      <!-- Verified live against the real account: $82,000 held at cost reads under נדל"ן at
+           23.1%, and none of it under נזילות. -->
 
 ---
 

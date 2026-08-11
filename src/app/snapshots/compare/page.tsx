@@ -2,6 +2,7 @@ import type { Route } from "next";
 import Link from "next/link";
 
 import { AppHeader } from "@/components/app-header";
+import { BasisNote } from "@/components/basis-note";
 import { loadAccounts } from "@/db/accounts";
 import { DatabaseNotConfiguredError } from "@/db/client";
 import { type Person, findPersonByEmail } from "@/db/people";
@@ -23,7 +24,7 @@ import {
 import { formatDate } from "@/domain/time/calendar-date";
 import { requireHouseholdEmail } from "@/session";
 
-import { BasisNote, UnavailablePanel } from "../panels";
+import { UnavailablePanel } from "../panels";
 
 export const dynamic = "force-dynamic";
 

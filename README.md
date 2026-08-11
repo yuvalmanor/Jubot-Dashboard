@@ -327,3 +327,51 @@ not reduce it. The claim is subtracted whole even where its backing is short —
 promised is what was promised — and the unbacked part is reported beside it rather than
 written off. The figure goes negative rather than clamping, because a promise with nothing
 behind it is a fact and not a zero.
+
+## שווי נטו
+
+`src/domain/networth/net-worth-analytics.ts` is the derived view over the snapshot history,
+and `/net-worth` renders it. Nothing on that screen is writable and no figure there is
+stored. One control names the snapshot everything but the trajectory is read from, so no
+figure is ambiguous about which reading it belongs to.
+
+- **The trajectory** is every snapshot's total at *its own* rate, so the line does not
+  redraw itself when today's rate moves. A snapshot carrying no rate for a currency it holds
+  has no point at all: the line breaks there rather than plotting a total that quietly
+  dropped the dollar accounts. Each row states how many of its lines were measured on the
+  day, and a change across two different rates is labelled as such — decomposing it is
+  Phase 10's work and nothing here pretends to have done it.
+- **Exposure is what an asset *is*.** It is grouped by each Account's own currency and never
+  by how the money that bought it was funded. A $104,000 stake is fully exposed even if two
+  thirds of it began as shekels — the funding history is not consulted, and could not be:
+  nothing in a Snapshot records it.
+- **Allocation states its target.** Every קטגוריה gets a row whether or not it holds
+  anything, because a bucket targeted at 30% and holding nothing is the largest deviation
+  the portfolio can have. A bucket with no target reads *לא נקבע יעד* rather than as a target
+  of nothing, and the drift is a Money as well as a percentage — "9% under" is not
+  actionable until it says how much money that is. Targets are read as they were set: a set
+  adding to 97.5% says so, and nothing completes it to 100% behind the reader's back. CGM 2
+  sits under נדל"ן by the household's decision, and the percentages read accordingly.
+- **Growth is an assumption or it is absent.** Per [ADR 0003](docs/adr/0003-illiquid-assets-are-held-at-cost.md)
+  a cost-held asset is never re-valued, so שווי נטו is read twice: as recorded, holding cost
+  at cost, and with the household's appreciation assumption applied to the cost-held part
+  only. Both travel together and the assumption travels with them, so the grown figure
+  cannot be printed as though it were a measurement. Each asset grows from its own opening
+  date in *whole* years — an asset held eleven months grows by nothing rather than by a
+  fraction nobody can check — and the multiplier is exact: 3% for five years is
+  `1.15927407430000000000` and not a float near it.
+- **Concentration is named by account id**, not matched on a name, so renaming the Apple RSU
+  account cannot make the concentration quietly read as zero. An account marked for the
+  watch but absent from the snapshot is reported rather than counted as nothing.
+
+### Settings
+
+`/settings` holds the household's own dials: the appreciation assumption, the רצוי
+allocation targets, and which accounts the concentration is watched on. Later phases add the
+GP window and the fee and tax rates beside them.
+
+None of it is a measurement, which is exactly why none of it is a constant in the code — a
+rate that can only move by shipping a deploy stops reading as an assumption and starts
+reading as a fact. Percentages are stored as whole basis points for the same reason money is
+stored in minor units, and a bucket left blank is stored as no target at all rather than as
+a target of zero.

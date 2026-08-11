@@ -16,6 +16,20 @@ create table if not exists money_settings (
 comment on column money_settings.amount_minor is
   'Integer minor units (agorot / cents). Meaningless without the currency column.';
 
+-- The household's own dials: the appreciation assumption, the רצוי allocation
+-- targets, and which accounts a concentration is watched on. Later phases add the
+-- GP window, fee rates and tax rates here.
+--
+-- Every value is text and every one of them is parsed and validated by a domain
+-- module before anything reads it (see src/db/settings.ts). A setting is a number
+-- somebody chose, so it must be changeable without a deploy — a rate that can only
+-- move by shipping code becomes a constant by accident, and then a fact.
+create table if not exists settings (
+  key        text        primary key,
+  value      text        not null,
+  updated_at timestamptz not null default now()
+);
+
 -- Rates are dated because a converted figure must always be reproducible. A
 -- historical reading never re-converts at today's rate.
 create table if not exists fx_rates (

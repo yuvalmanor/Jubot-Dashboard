@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { AppHeader } from "@/components/app-header";
+import { BasisNote } from "@/components/basis-note";
 import { loadAccounts } from "@/db/accounts";
 import { DatabaseNotConfiguredError } from "@/db/client";
 import { loadEarmarks, loadPositions } from "@/db/holdings";
@@ -47,7 +48,7 @@ import { compareDates, formatDate } from "@/domain/time/calendar-date";
 import { requireHouseholdEmail } from "@/session";
 
 import { fillMissingAccounts, restateSnapshot } from "../actions";
-import { BasisNote, Notices, UnavailablePanel } from "../panels";
+import { Notices, UnavailablePanel } from "../panels";
 
 export const dynamic = "force-dynamic";
 

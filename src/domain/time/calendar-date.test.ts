@@ -10,6 +10,7 @@ import {
   formatDate,
   parseDateKey,
   tryParseDateKey,
+  wholeYearsBetween,
 } from "./calendar-date";
 
 describe("calendarDate", () => {
@@ -70,6 +71,24 @@ describe("compareDates", () => {
   it("agrees with datesEqual", () => {
     expect(datesEqual(calendarDate(2025, 3, 9), calendarDate(2025, 3, 9))).toBe(true);
     expect(datesEqual(calendarDate(2025, 3, 9), calendarDate(2025, 3, 10))).toBe(false);
+  });
+});
+
+describe("wholeYearsBetween", () => {
+  it("counts completed anniversaries and never a fraction of one", () => {
+    expect(wholeYearsBetween(calendarDate(2023, 6, 15), calendarDate(2025, 12, 31))).toBe(2);
+    expect(wholeYearsBetween(calendarDate(2023, 6, 15), calendarDate(2024, 5, 31))).toBe(0);
+  });
+
+  it("is exact on the day before, the day of, and the day after the anniversary", () => {
+    const opened = calendarDate(2023, 6, 15);
+    expect(wholeYearsBetween(opened, calendarDate(2024, 6, 14))).toBe(0);
+    expect(wholeYearsBetween(opened, calendarDate(2024, 6, 15))).toBe(1);
+    expect(wholeYearsBetween(opened, calendarDate(2024, 6, 16))).toBe(1);
+  });
+
+  it("counts a span that runs backwards as nought, never as a negative year", () => {
+    expect(wholeYearsBetween(calendarDate(2025, 1, 1), calendarDate(2023, 1, 1))).toBe(0);
   });
 });
 
