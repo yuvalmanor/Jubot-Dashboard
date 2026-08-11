@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { calendarMonth } from "./calendar-month";
 import {
   InvalidCalendarDateError,
+  addDays,
+  addMonths,
   calendarDate,
   compareDates,
   containsWholeMonth,
@@ -121,6 +123,36 @@ describe("the month a day belongs to", () => {
     expect(containsWholeMonth(calendarDate(2025, 2, 28), calendarDate(2025, 4, 1), march)).toBe(true);
     expect(containsWholeMonth(calendarDate(2025, 3, 2), calendarDate(2025, 3, 31), march)).toBe(false);
     expect(containsWholeMonth(calendarDate(2025, 3, 1), calendarDate(2025, 3, 30), march)).toBe(false);
+  });
+});
+
+describe("moving a date", () => {
+  it("adds and subtracts whole days across every boundary", () => {
+    expect(addDays(calendarDate(2025, 8, 31), 1)).toEqual(calendarDate(2025, 9, 1));
+    expect(addDays(calendarDate(2025, 1, 1), -1)).toEqual(calendarDate(2024, 12, 31));
+    expect(addDays(calendarDate(2024, 2, 28), 1)).toEqual(calendarDate(2024, 2, 29));
+    expect(addDays(calendarDate(2025, 2, 28), 1)).toEqual(calendarDate(2025, 3, 1));
+    expect(addDays(calendarDate(2025, 6, 10), 0)).toEqual(calendarDate(2025, 6, 10));
+  });
+
+  it("adds months onto the same day of the month, not onto a count of days", () => {
+    expect(addMonths(calendarDate(2024, 1, 15), 24)).toEqual(calendarDate(2026, 1, 15));
+    expect(addMonths(calendarDate(2024, 11, 30), 2)).toEqual(calendarDate(2025, 1, 30));
+    expect(addMonths(calendarDate(2025, 3, 15), -3)).toEqual(calendarDate(2024, 12, 15));
+    expect(addMonths(calendarDate(2025, 6, 10), 0)).toEqual(calendarDate(2025, 6, 10));
+  });
+
+  it("clamps to the last day of a month that has no such date", () => {
+    // The 31st of a 30-day month, and the 29th of a February that has 28 days:
+    // both are dates that never arrive, and the count cannot run past them.
+    expect(addMonths(calendarDate(2025, 1, 31), 1)).toEqual(calendarDate(2025, 2, 28));
+    expect(addMonths(calendarDate(2024, 2, 29), 24)).toEqual(calendarDate(2026, 2, 28));
+    expect(addMonths(calendarDate(2025, 5, 31), 1)).toEqual(calendarDate(2025, 6, 30));
+  });
+
+  it("refuses a fraction of a day or of a month", () => {
+    expect(() => addDays(calendarDate(2025, 6, 10), 1.5)).toThrow(InvalidCalendarDateError);
+    expect(() => addMonths(calendarDate(2025, 6, 10), 0.5)).toThrow(InvalidCalendarDateError);
   });
 });
 

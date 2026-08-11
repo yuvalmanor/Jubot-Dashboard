@@ -104,6 +104,39 @@ export function containsWholeMonth(from: CalendarDate, to: CalendarDate, month: 
   return compareDates(firstDayOf(month), from) >= 0 && compareDates(lastDayOf(month), to) <= 0;
 }
 
+/**
+ * The day a whole number of days later, or earlier for a negative count. Used to
+ * walk a window of calendar days out from a date — the GP window the household's
+ * sheet uses is one of those.
+ */
+export function addDays(date: CalendarDate, days: number): CalendarDate {
+  if (!Number.isInteger(days)) {
+    throw new InvalidCalendarDateError(`Days must be a whole number, received ${String(days)}`);
+  }
+  const moved = new Date(Date.UTC(date.year, date.month - 1, date.day + days));
+  return calendarDate(moved.getUTCFullYear(), moved.getUTCMonth() + 1, moved.getUTCDate());
+}
+
+/**
+ * The same day of the month a whole number of months later — the shape of a
+ * holding period. סעיף 102's clock is "twenty-four months from the grant", not
+ * "seven hundred and thirty days", so it is counted in months and lands on the
+ * same day of the month it started on.
+ *
+ * A day that does not exist in the target month is clamped to that month's last
+ * day: a grant made on 29 February qualifies on the 28th two years later, because
+ * the 29th never arrives and the clock cannot simply keep running.
+ */
+export function addMonths(date: CalendarDate, months: number): CalendarDate {
+  if (!Number.isInteger(months)) {
+    throw new InvalidCalendarDateError(`Months must be a whole number, received ${String(months)}`);
+  }
+  const zeroBased = date.month - 1 + months;
+  const year = date.year + Math.floor(zeroBased / 12);
+  const month = ((zeroBased % 12) + 12) % 12 + 1;
+  return calendarDate(year, month, Math.min(date.day, daysInMonth(year, month)));
+}
+
 export function compareDates(left: CalendarDate, right: CalendarDate): -1 | 0 | 1 {
   const a = dateKey(left);
   const b = dateKey(right);

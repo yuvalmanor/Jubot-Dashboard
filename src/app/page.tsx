@@ -34,7 +34,7 @@ const AREAS = [
   { title: "מיפוי", note: "צילום מלא של כל החשבונות", href: "/snapshots" },
   { title: "שווי נטו", note: "מסלול, חשיפה למט״ח, הקצאה", href: "/net-worth" },
   { title: "נכסים ופרוייקטים", note: "רגלי מימון, הוצאות, יתרה", href: "/projects" },
-  { title: "מחשבון RSU", note: "מניות לפני ואחרי התקופה, מס", href: null },
+  { title: "מחשבון RSU", note: "מניות לפני ואחרי התקופה, מס", href: "/rsu" },
   { title: "לוח תכנון", note: "תרחישים ותוכניות מימון", href: null },
   { title: "סיכום שנתי", note: "היכן הסתיימה השנה", href: null },
   { title: "הגדרות", note: "הנחות ויעדים של משק הבית", href: "/settings" },

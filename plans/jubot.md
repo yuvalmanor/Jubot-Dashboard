@@ -105,10 +105,26 @@ task:
    the ordinary/capital-gains boundary on every row. Confirm against a real ESOP statement
    or with the household's רו"ח. It is a setting precisely so this can be corrected without
    a code change.
+
+   **Resolved for now, 2026-08-11 — still to be confirmed.** The household chose the סעיף
+   102 reading as the starting value, and it is a `/settings` dial as planned, so confirming
+   it against an ESOP statement costs a form submission. Two consequences worth carrying
+   forward: an estimate already taken keeps the window it was taken under and is flagged
+   when the setting moves, so changing this never rewrites a figure behind the reader; and
+   Phase 13's *"reproduces the existing spreadsheet rows exactly"* criterion is written
+   against the sheet's window, so that phase must set the window to the sheet's rule to
+   reproduce the sheet, and say which window each figure used.
+
 2. **Qualified/Unqualified share counts.** `RSU_Grants!M50` in the live sheet holds the
    formula behind the $68,619 / $48,879 split. The markdown export lost cell references and
    the two blocks appear priced differently (219 shares at 313.33 vs 214 at roughly 228).
    Read from the live sheet before RsuPosition is built.
+
+   **Still open.** Phase 12 was built past it by decision, with the gap recorded rather than
+   papered over: `RsuPosition` derives the split from recorded lots and is verified on
+   fixtures and live, but nothing has been reconciled against the household's own two
+   figures, because no real grant is recorded anywhere in the repository and `M50` is still
+   unread. Reading it is what turns the mechanism into the household's actual position.
 
 ---
 
@@ -629,8 +645,10 @@ down — converting cash into property is not losing money.
 
 **User stories**: 58, 59, 60, 61, 62, 63, 70, 71
 
-> **Blocked until** the GP window and the `RSU_Grants!M50` share counts are resolved — see
-> *Blocking open items* above.
+> **Was blocked** on the GP window and the `RSU_Grants!M50` share counts — see *Blocking
+> open items* above. The window is settled as a starting value and remains a setting; the
+> share counts are still unread, and what that leaves unverified is recorded on the
+> criterion it belongs to rather than checked off.
 
 ### What to build
 
@@ -649,15 +667,50 @@ in the UI so it is always clear which tax numbers rest on an approximation.
 
 ### Acceptance criteria
 
-- [ ] Grants are recorded with ID, date and total shares
-- [ ] Vests are recorded with date, shares and price at vest
-- [ ] Future vests can be recorded and are excluded from the current position
-- [ ] A sale is recorded against a specific lot and reduces that lot
-- [ ] Lot qualification is derived from grant date + 24 months, with no stored flag
-- [ ] The 24-month boundary is correct on the day before, the day of, and the day after
-- [ ] The position displays Qualified and Unqualified share counts
-- [ ] The GP estimation window is a setting changeable without a code change
-- [ ] Estimated GP figures are visibly flagged as estimates
+- [x] Grants are recorded with ID, date and total shares
+      <!-- The document's own ID, kept as written and in English. The grant's total is held
+           against the sum of its vests: shares vesting out of a grant that never awarded
+           them are refused, because the two figures come off the same document. -->
+- [x] Vests are recorded with date, shares and price at vest
+      <!-- A price per share is not a Money — GP 149.4219 is a real figure and cents cannot
+           hold it — so prices are exact integer ten-thousandths and become money only when
+           multiplied by shares, rounded once at the end. -->
+- [x] Future vests can be recorded and are excluded from the current position
+      <!-- Verified live: a vest dated 2027-11-11 read as 60 shares "רשומות, ואינן נספרות",
+           with the held count unmoved at 100. Nothing marks it as future; the position
+           compares its date to the day it is read on. -->
+- [x] A sale is recorded against a specific lot and reduces that lot
+      <!-- Verified live: 45 shares sold out of a 100-share lot left it at 55 with the other
+           lot untouched, and a 56th share was refused with "במנה יש 55 מניות, והמכירה
+           מבקשת 56". A sale dated ahead of the reading date is not counted yet. -->
+- [x] Lot qualification is derived from grant date + 24 months, with no stored flag
+      <!-- There is no column to store one. The clock runs from the *grant* date, so a lot
+           that vested in November 2024 under an August 2024 grant qualifies in August
+           2026 — verified live. -->
+- [x] The 24-month boundary is correct on the day before, the day of, and the day after
+      <!-- Verified live on one lot with nothing written between the three reads: on
+           2026-08-10 it read 0 qualified / 100 unqualified, on 2026-08-11 100 / 0, and on
+           2026-08-12 100 / 0. Counted in months rather than days, so a leap year cannot
+           move it and 29 February clamps to the 28th. -->
+- [x] The position displays Qualified and Unqualified share counts
+      <!-- Verified live at 55 Qualified against 80 Unqualified across two grants. The
+           counts are of what is *held* — a lot sold down to nothing stays in the record and
+           out of the totals. Not reconciled against the household's own $68,619 / $48,879
+           split: `RSU_Grants!M50` is still unread and no real grant is recorded anywhere in
+           the repository. That is the open item, and it is unchanged. -->
+- [x] The GP estimation window is a setting changeable without a code change
+      <!-- Both candidate rules are one shape with different numbers in it, and the grant
+           day is its own field rather than an off-by-one inside a count. Verified live:
+           switching from 30 trading days preceding to the sheet's 15 calendar days either
+           side moved the same twelve pasted closes from $104.5000 over 10 to $170.5000 over
+           12. Starts at the סעיף 102 reading by the household's decision; whether that is
+           the right one is the open item this setting exists for. -->
+- [x] Estimated GP figures are visibly flagged as estimates
+      <!-- One component renders every GP, so there is no second path that could forget. An
+           estimate reads "אומדן" with the sample size and the window behind it; a price
+           read off a document reads "מהמסמך" and carries no window, because none produced
+           it. An estimate taken under a window since changed says so and is not silently
+           rewritten — verified live. -->
 
 ---
 

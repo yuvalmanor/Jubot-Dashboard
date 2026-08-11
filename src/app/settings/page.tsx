@@ -21,6 +21,7 @@ import {
   setAllocationTargets,
   setAppreciation,
   setConcentrationAccounts,
+  setGpWindow,
   setMarketMovingAccounts,
 } from "./actions";
 
@@ -75,6 +76,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <TargetsPanel settings={loaded.settings} />
             <ConcentrationPanel settings={loaded.settings} accounts={loaded.accounts} />
             <MarketMovingPanel settings={loaded.settings} accounts={loaded.accounts} />
+            <GpWindowPanel settings={loaded.settings} />
           </>
         ) : (
           <UnavailablePanel reason={loaded.reason} />
@@ -328,6 +330,99 @@ function MarketMovingPanel({
   );
 }
 
+// --- the GP window ------------------------------------------------------------
+
+/**
+ * The one dial here that is not a preference. Which window סעיף 102 actually means
+ * is an open question of fact, and it lives in a form rather than in the code so
+ * that answering it — against an ESOP statement or with the household's רו"ח —
+ * costs a submission and not a deploy.
+ */
+function GpWindowPanel({ settings }: { settings: HouseholdSettings }) {
+  const { gpWindow } = settings;
+
+  return (
+    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
+      <h2 className="text-sm font-semibold tracking-wide text-stone-500">
+        חלון ה־GP לאומדן מחיר ההקצאה
+      </h2>
+      <p className="mt-1 text-sm text-stone-600">
+        מעל אילו סגירות נלקח הממוצע שמשמש כ־GP. המערכת מתחילה מהקריאה של סעיף 102 —{" "}
+        <span className="font-medium">30 ימי מסחר שלפני ההקצאה, בלי יום ההקצאה עצמו</span> — והגיליון
+        של משק הבית עושה משהו אחר: 15 ימי לוח לכל צד, כולל יום ההקצאה. השאלה הזאת פתוחה, ולכן היא
+        כאן: היא נסגרת מול תלוש ESOP או מול רו״ח, ולא מול קוד.
+      </p>
+      <p className="mt-2 text-sm text-stone-600">
+        אומדן שכבר חושב שומר את החלון שבו נלקח. שינוי כאן לא כותב מחדש מספר שכבר נרשם — הוא מסמן אותו
+        במסך ה־RSU כמי שנלקח בחלון אחר.
+      </p>
+
+      <form action={setGpWindow} className="mt-4 grid gap-4 sm:grid-cols-4">
+        <label className="block">
+          <span className="block text-sm font-medium text-stone-700">נספר לפי</span>
+          <select
+            name="basis"
+            defaultValue={gpWindow.basis}
+            className="mt-1 w-full rounded-md border border-stone-300 bg-white px-3 py-2"
+          >
+            <option value="trading">ימי מסחר</option>
+            <option value="calendar">ימי לוח</option>
+          </select>
+        </label>
+
+        <label className="block">
+          <span className="block text-sm font-medium text-stone-700">לפני ההקצאה</span>
+          <input
+            name="before"
+            inputMode="numeric"
+            dir="ltr"
+            defaultValue={String(gpWindow.before)}
+            className="tabular mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-end"
+          />
+        </label>
+
+        <label className="block">
+          <span className="block text-sm font-medium text-stone-700">אחרי ההקצאה</span>
+          <input
+            name="after"
+            inputMode="numeric"
+            dir="ltr"
+            defaultValue={String(gpWindow.after)}
+            className="tabular mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-end"
+          />
+        </label>
+
+        <label className="flex items-end gap-3 pb-2 text-sm">
+          <input
+            type="checkbox"
+            name="includesGrantDay"
+            defaultChecked={gpWindow.includesGrantDay}
+            className="size-4 rounded border-stone-300"
+          />
+          <span className="font-medium text-stone-700">כולל יום ההקצאה</span>
+        </label>
+
+        <div className="sm:col-span-4">
+          <SaveButton label="שמירת החלון" />
+        </div>
+      </form>
+
+      <p className="mt-3 text-sm text-stone-500">
+        כרגע:{" "}
+        <span className="font-medium text-stone-700">
+          {gpWindow.basis === "trading" ? "ימי מסחר" : "ימי לוח"} — {gpWindow.before} לפני
+          {gpWindow.includesGrantDay ? ", כולל יום ההקצאה" : ", בלי יום ההקצאה"}
+          {gpWindow.after === 0 ? "" : `, ${gpWindow.after} אחרי`}
+        </span>
+        .{" "}
+        <Link href="/rsu" className="underline underline-offset-4">
+          מחשבון RSU
+        </Link>
+      </p>
+    </section>
+  );
+}
+
 // --- shared ------------------------------------------------------------------
 
 function SaveButton({ label }: { label: string }) {
@@ -345,6 +440,7 @@ const ERROR_MESSAGES: Record<SettingsErrorCode, string> = {
   "no-person": "הכתובת שאיתה נכנסת אינה משויכת לאף אדם בטבלת people.",
   "bad-appreciation": "הנחת עליית הערך אינה תקינה. אחוז שלם או עשרוני בין 0 ל־100.",
   "bad-targets": "היעדים אינם תקינים. כל יעד הוא אחוז בין 0 ל־100.",
+  "bad-gp-window": "חלון ה־GP אינו תקין. מספר שלם של ימים בין 0 ל־365 לכל צד, ולפחות יום אחד בסך הכול.",
   failed: "הפעולה נכשלה.",
 };
 
@@ -353,6 +449,7 @@ const DONE_MESSAGES: Record<string, string> = {
   targets: "היעדים נשמרו.",
   concentration: "המעקב נשמר.",
   "market-moving": "הסימון נשמר. פירוק השינוי ייקרא לפיו, ויאמר על מה הוא נשען.",
+  "gp-window": "החלון נשמר. אומדנים שכבר חושבו שומרים את החלון שבו נלקחו, ויסומנו ככאלה.",
 };
 
 function isErrorCode(value: string | undefined): value is SettingsErrorCode {

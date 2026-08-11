@@ -8,6 +8,7 @@ import {
   saveAllocationTargets,
   saveAppreciation,
   saveConcentrationAccounts,
+  saveGpWindow,
   saveMarketMovingAccounts,
 } from "@/db/settings";
 import {
@@ -16,6 +17,12 @@ import {
   buildAllocationTargets,
   buildAppreciationAssumption,
 } from "@/domain/networth/net-worth-analytics";
+import {
+  type GpWindowBasis,
+  InvalidGpWindowError,
+  buildGpWindow,
+  isGpWindowBasis,
+} from "@/domain/rsu/rsu-position";
 import { ASSET_CATEGORIES } from "@/domain/snapshot/snapshot";
 import { requireHouseholdEmail } from "@/session";
 
@@ -32,6 +39,7 @@ export type SettingsErrorCode =
   | "no-person"
   | "bad-appreciation"
   | "bad-targets"
+  | "bad-gp-window"
   | "failed";
 
 interface Outcome {
@@ -55,6 +63,9 @@ function failureFor(error: unknown): Outcome {
   }
   if (error instanceof InvalidAllocationTargetError) {
     return { code: "bad-targets", detail: error.message };
+  }
+  if (error instanceof InvalidGpWindowError) {
+    return { code: "bad-gp-window", detail: error.message };
   }
   return { code: "failed" };
 }
@@ -180,4 +191,46 @@ export async function setMarketMovingAccounts(form: FormData): Promise<void> {
     await saveMarketMovingAccounts(ids);
     return { code: null, done: "market-moving" };
   });
+}
+
+/**
+ * The GP estimation window. The one setting here that is not a preference but an
+ * open question of fact: which window סעיף 102 means is what the household checks
+ * against an ESOP statement. It is a setting precisely so that answer costs a form
+ * submission rather than a deploy.
+ *
+ * Estimates already taken keep the window they were taken under, and the RSU screen
+ * flags them against this one — changing this corrects the next reading rather than
+ * silently rewriting the last.
+ */
+export async function setGpWindow(form: FormData): Promise<void> {
+  await requireSignedIn();
+
+  await run(async () => {
+    const basis = readText(form, "basis");
+    if (!isGpWindowBasis(basis)) {
+      throw new InvalidGpWindowError(`בסיס חלון לא מוכר: ${JSON.stringify(basis)}`);
+    }
+
+    await saveGpWindow(
+      buildGpWindow({
+        basis: basis as GpWindowBasis,
+        before: readWholeDays(form, "before"),
+        after: readWholeDays(form, "after"),
+        includesGrantDay: readText(form, "includesGrantDay") === "on",
+      }),
+    );
+    return { code: null, done: "gp-window" };
+  });
+}
+
+function readWholeDays(form: FormData, field: string): number {
+  const text = readText(form, field).trim();
+  if (text.length === 0) return 0;
+
+  const value = Number(text);
+  if (!Number.isFinite(value)) {
+    throw new InvalidGpWindowError(`מספר ימים לא תקין: ${JSON.stringify(text)}`);
+  }
+  return value;
 }

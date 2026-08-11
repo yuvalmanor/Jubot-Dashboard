@@ -425,3 +425,118 @@ create table if not exists deal_terms (
 
 comment on column deal_terms.target_return_bp is
   'The stated target return in whole basis points — 1800 is 18%. A promise, never a measurement.';
+
+-- --------------------------------------------------------------------------
+-- מחשבון RSU
+-- --------------------------------------------------------------------------
+
+-- What the paperwork awarded. `reference` is the ID the grant document states,
+-- kept as written and left in English.
+--
+-- There is deliberately no qualification column: whether a lot has passed סעיף
+-- 102's twenty-four months is derived from `granted_on` on every read (see
+-- src/domain/rsu). A stored flag would need sweeping by something, and whatever
+-- failed to run would price an early sale as though the clock had finished.
+--
+-- A price per share is *not* money in minor units: GP 149.4219 is a real figure
+-- off a real statement and cents cannot hold it. Prices are integer
+-- ten-thousandths with their own currency, the same way money is integer minor
+-- units with its own — exact, and never a float.
+create table if not exists rsu_grants (
+  id                        uuid primary key default gen_random_uuid(),
+  person_id                 text     not null references people (id),
+  reference                 text     not null unique,
+  granted_on                date     not null,
+  total_shares              integer  not null check (total_shares > 0),
+  grant_price_ten_thousandths bigint check (grant_price_ten_thousandths >= 0),
+  grant_price_currency      text     check (char_length(grant_price_currency) = 3),
+  grant_price_source        text     check (grant_price_source in ('stated', 'estimated')),
+  grant_price_window        text,
+  grant_price_samples       integer  check (grant_price_samples > 0),
+  -- The figure and its currency arrive together or not at all.
+  check ((grant_price_ten_thousandths is null) = (grant_price_currency is null)),
+  check ((grant_price_ten_thousandths is null) = (grant_price_source is null)),
+  -- An estimate states the window and the sample that produced it; a stated price
+  -- was produced by no window, so it carries neither. The two must not read alike.
+  check (grant_price_source is distinct from 'estimated'
+         or (grant_price_window is not null and grant_price_samples is not null)),
+  check (grant_price_source is distinct from 'stated'
+         or (grant_price_window is null and grant_price_samples is null))
+);
+
+comment on column rsu_grants.grant_price_source is
+  'stated — read off an ESOP document, a fact. estimated — averaged out of closes '
+  'over a window, which is not. Every screen that shows an estimate says so.';
+
+-- A slice of a grant becoming the household's. Recorded ahead of its date as
+-- readily as after it: the position holds future vests out of itself by comparing
+-- `vested_on` to the day it is read on, so nothing here needs a status.
+create table if not exists rsu_vests (
+  id                     uuid    primary key default gen_random_uuid(),
+  grant_id               uuid    not null references rsu_grants (id) on delete cascade,
+  vested_on              date    not null,
+  shares                 integer not null check (shares > 0),
+  price_ten_thousandths  bigint  not null check (price_ten_thousandths >= 0),
+  price_currency         text    not null check (char_length(price_currency) = 3)
+);
+
+create index if not exists rsu_vests_grant_idx on rsu_vests (grant_id);
+
+-- Shares leaving one named lot. The lot is not a detail: which one they left is
+-- what decides how they are taxed. A sale larger than the lot holds is refused by
+-- the domain before it reaches here, the same way an overdrawing project expense is.
+create table if not exists rsu_sales (
+  id                    uuid    primary key default gen_random_uuid(),
+  vest_id               uuid    not null references rsu_vests (id) on delete cascade,
+  sold_on               date    not null,
+  shares                integer not null check (shares > 0),
+  price_ten_thousandths bigint  not null check (price_ten_thousandths >= 0),
+  price_currency        text    not null check (char_length(price_currency) = 3)
+);
+
+create index if not exists rsu_sales_vest_idx on rsu_sales (vest_id);
+
+-- A vest cannot precede its grant, and a sale cannot precede its vest. Both need a
+-- date from the parent row, which a column check cannot reach, so both are
+-- triggers — the same shape as the snapshot line's source check.
+create or replace function jubot_vest_follows_grant() returns trigger as $fn$
+declare
+  granted date;
+begin
+  select granted_on into granted from rsu_grants where id = new.grant_id;
+  if new.vested_on < granted then
+    raise exception 'vest % on % precedes its grant on %', new.id, new.vested_on, granted
+      using errcode = 'integrity_constraint_violation';
+  end if;
+  return null;
+end;
+$fn$ language plpgsql;
+
+create or replace function jubot_sale_follows_vest() returns trigger as $fn$
+declare
+  vested date;
+begin
+  select vested_on into vested from rsu_vests where id = new.vest_id;
+  if new.sold_on < vested then
+    raise exception 'sale % on % precedes the vest it sells, on %', new.id, new.sold_on, vested
+      using errcode = 'integrity_constraint_violation';
+  end if;
+  return null;
+end;
+$fn$ language plpgsql;
+
+do $do$
+begin
+  if not exists (select 1 from pg_trigger where tgname = 'vest_must_follow_grant') then
+    create constraint trigger vest_must_follow_grant
+      after insert or update on rsu_vests
+      for each row execute function jubot_vest_follows_grant();
+  end if;
+
+  if not exists (select 1 from pg_trigger where tgname = 'sale_must_follow_vest') then
+    create constraint trigger sale_must_follow_vest
+      after insert or update on rsu_sales
+      for each row execute function jubot_sale_follows_vest();
+  end if;
+end;
+$do$;

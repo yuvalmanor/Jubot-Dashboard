@@ -126,11 +126,37 @@ export function toMajorUnits(amount: Money): number {
  * from, so re-saving an untouched field cannot drift the figure.
  */
 export function toDecimalString(amount: Money): string {
-  const digits = minorUnitDigits(amount.currency);
-  const magnitude = Math.abs(amount.minorUnits).toString().padStart(digits + 1, "0");
+  return fromScaledInteger(amount.minorUnits, minorUnitDigits(amount.currency));
+}
+
+/**
+ * Read a decimal into an integer count of 10⁻ⁿ units, rounded half away from zero
+ * — the same reading `fromMajorUnits` does, at whatever scale is asked for.
+ *
+ * Money uses it at the minor unit. A price *per share* needs a finer one: GP
+ * 149.4219 is a real figure off a real statement, and cents cannot hold it. A
+ * price is not an amount of money, so it does not become one by being rounded to
+ * something Money can carry.
+ */
+export function toScaledInteger(value: number | string, digits: number): number {
+  if (!Number.isInteger(digits) || digits < 0) {
+    throw new InvalidMoneyError(`Scale must be a whole number of digits, received ${String(digits)}`);
+  }
+  const fraction = decimalToFraction(value);
+  const scale = 10n ** BigInt(digits);
+  const scaled = divideRoundingHalfAwayFromZero(fraction.numerator * scale, fraction.denominator);
+  if (scaled > BigInt(Number.MAX_SAFE_INTEGER) || scaled < BigInt(Number.MIN_SAFE_INTEGER)) {
+    throw new InvalidMoneyError(`${String(value)} does not fit in a safe integer at ${digits} digits`);
+  }
+  return Number(scaled);
+}
+
+/** The exact decimal text of a scaled integer — the inverse of `toScaledInteger`. */
+export function fromScaledInteger(units: number, digits: number): string {
+  const magnitude = Math.abs(units).toString().padStart(digits + 1, "0");
   const whole = magnitude.slice(0, magnitude.length - digits);
   const fraction = magnitude.slice(magnitude.length - digits);
-  return `${amount.minorUnits < 0 ? "-" : ""}${whole}.${fraction}`;
+  return `${units < 0 ? "-" : ""}${whole}${digits === 0 ? "" : `.${fraction}`}`;
 }
 
 function assertSameCurrency(left: Money, right: Money): void {

@@ -410,8 +410,9 @@ figure the מאזן screens show and cannot drift from them.
 ### Settings
 
 `/settings` holds the household's own dials: the appreciation assumption, the רצוי
-allocation targets, which accounts the concentration is watched on, and which accounts move
-with a market. Later phases add the GP window and the fee and tax rates beside them.
+allocation targets, which accounts the concentration is watched on, which accounts move
+with a market, and the GP window the RSU screen estimates over. Later phases add the fee
+and tax rates beside them.
 
 None of it is a measurement, which is exactly why none of it is a constant in the code — a
 rate that can only move by shipping a deploy stops reading as an assumption and starts
@@ -466,3 +467,55 @@ $99,082.19 with $77,894.19 already deployed, because converting cash into proper
 money inside the same pot. Naming the account that carries the project lets the screen state
 what that account should read and report it when it does not — it never writes into the
 snapshot, because a project's value in מיפוי is a figure a person states.
+
+## מחשבון RSU
+
+`src/domain/rsu/rsu-position.ts` holds the position and `/rsu` reads it. A **Grant** is what
+the paperwork awarded; a **Vest** is a slice of it becoming the household's, on a date at a
+price; a **Sale** is shares leaving one named vest. A vest with shares still in it is a
+**Lot**, and a lot is the unit everything is answered in, because a lot is the unit tax is
+answered in.
+
+Nothing on the screen is stored. Every share count and every qualification is derived on each
+read, which is why the reading date is a control rather than a fixed "today": the same rows
+read on two days give two answers, and for a boundary whose only input is the passage of time
+that is the correct behaviour.
+
+- **Qualification is derived, never stored.** A lot is Qualified when סעיף 102's twenty-four
+  months from its *grant* date have run — `granted_on` plus 24 months, computed in months and
+  not in days, so a leap year cannot move it and a grant made on 29 February qualifies on the
+  28th. There is no flag to go stale, and therefore no sweep that could fail and price an
+  early sale as though the clock had finished. Verified live across the day before, the day
+  of and the day after, with nothing written between the three reads.
+- **A future vest is not a position.** Vests are recorded ahead of their date so the forecast
+  has something to work with, and they are held out of every figure until that date arrives.
+  Nothing marks them: the position compares their date to the day it is read on.
+- **A sale names its lot.** Which lot shares left decides how they are taxed, so a sale
+  without one would be a question rather than a record. It reduces that lot and no other, and
+  one larger than the lot holds is refused before it is written — the same shape as an
+  overdrawing project expense. Vests are checked against their grant's own total the same way.
+
+A **price per share is not money.** GP 149.4219 is a real figure off a real statement and
+cents cannot hold it, so a price is an exact integer count of ten-thousandths with its own
+currency — the same idea as minor units, one scale finer. It becomes a `Money` only when
+multiplied by a whole number of shares, rounded once at the end rather than in every share.
+
+### GP, and the window it rests on
+
+A grant's GP is one of two different kinds of thing, and the system never lets them read
+alike. **Stated** means read off an ESOP document: a fact. **Estimated** means averaged out
+of closes over a window: not one. An estimate carries the window and the sample size that
+produced it, so it cannot be printed anywhere as though somebody had measured it, and one
+component renders every GP on the screen so there is no second path that could forget.
+
+The window is a `/settings` dial rather than a constant, because *which* window סעיף 102
+means is the open question this area waits on. Both candidate rules are the same shape with
+different numbers in it — the household's sheet averages 15 calendar days either side of the
+grant including the grant day; סעיף 102 is generally applied as the 30 trading days
+*preceding* it. The system starts from the latter. On the trading basis the pasted closes
+themselves are the calendar, so "the thirty preceding sessions" counts rows and skips
+weekends, while the calendar basis counts dates and a shut market simply shortens the sample.
+
+Changing the window does not rewrite a figure already taken: an estimate keeps the window it
+was taken under, and `/rsu` flags it as taken under a different one. Correcting the setting
+corrects the next reading, and says which older ones are owed a recomputation.

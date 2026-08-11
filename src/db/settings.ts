@@ -5,6 +5,7 @@ import {
   buildAllocationTargets,
   buildAppreciationAssumption,
 } from "@/domain/networth/net-worth-analytics";
+import { type GpWindow, DEFAULT_GP_WINDOW, buildGpWindow, gpWindowKey, parseGpWindow } from "@/domain/rsu/rsu-position";
 import { type AssetCategory, ASSET_CATEGORIES } from "@/domain/snapshot/snapshot";
 
 import { query, withTransaction } from "./client";
@@ -25,6 +26,7 @@ const APPRECIATION_KEY = "appreciation.property_bp";
 const TARGET_PREFIX = "allocation_target.";
 const CONCENTRATION_KEY = "concentration.account_ids";
 const MARKET_MOVING_KEY = "decomposition.market_account_ids";
+const GP_WINDOW_KEY = "rsu.gp_window";
 
 interface SettingRow extends Record<string, unknown> {
   key: string;
@@ -49,6 +51,12 @@ export interface HouseholdSettings {
    * the system starts from, not a setting nobody got round to.
    */
   readonly marketMovingAccountIds: readonly string[];
+  /**
+   * The span of closes a GP estimate averages. A setting precisely because which
+   * window סעיף 102 means is the open question — the household confirms it against
+   * an ESOP statement and corrects it here, with no deploy involved.
+   */
+  readonly gpWindow: GpWindow;
 }
 
 export const DEFAULT_SETTINGS: HouseholdSettings = {
@@ -56,6 +64,7 @@ export const DEFAULT_SETTINGS: HouseholdSettings = {
   targets: [],
   concentrationAccountIds: [],
   marketMovingAccountIds: [],
+  gpWindow: DEFAULT_GP_WINDOW,
 };
 
 function wholeNumber(key: string, text: string): number {
@@ -73,6 +82,7 @@ export async function loadHouseholdSettings(): Promise<HouseholdSettings> {
   const appreciation = byKey.get(APPRECIATION_KEY);
   const concentration = byKey.get(CONCENTRATION_KEY);
   const marketMoving = byKey.get(MARKET_MOVING_KEY);
+  const gpWindow = byKey.get(GP_WINDOW_KEY);
 
   const targets = ASSET_CATEGORIES.flatMap((category) => {
     const stored = byKey.get(`${TARGET_PREFIX}${category}`);
@@ -89,6 +99,7 @@ export async function loadHouseholdSettings(): Promise<HouseholdSettings> {
     concentrationAccountIds:
       concentration === undefined ? [] : splitIds(concentration),
     marketMovingAccountIds: marketMoving === undefined ? [] : splitIds(marketMoving),
+    gpWindow: gpWindow === undefined ? DEFAULT_GP_WINDOW : parseGpWindow(gpWindow),
   };
 }
 
@@ -149,4 +160,14 @@ export async function saveConcentrationAccounts(accountIds: readonly string[]): 
  */
 export async function saveMarketMovingAccounts(accountIds: readonly string[]): Promise<void> {
   await put(MARKET_MOVING_KEY, [...new Set(accountIds)].join(","));
+}
+
+/**
+ * The GP estimation window. Stored rather than compiled in because the correct
+ * window for סעיף 102 is exactly the thing that needs confirming — and an estimate
+ * already taken keeps the window it was taken under, so changing this corrects the
+ * next reading rather than silently rewriting the last one.
+ */
+export async function saveGpWindow(window: GpWindow): Promise<void> {
+  await put(GP_WINDOW_KEY, gpWindowKey(buildGpWindow(window)));
 }
