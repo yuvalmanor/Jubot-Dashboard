@@ -24,6 +24,7 @@ import { query, withTransaction } from "./client";
 const APPRECIATION_KEY = "appreciation.property_bp";
 const TARGET_PREFIX = "allocation_target.";
 const CONCENTRATION_KEY = "concentration.account_ids";
+const MARKET_MOVING_KEY = "decomposition.market_account_ids";
 
 interface SettingRow extends Record<string, unknown> {
   key: string;
@@ -42,12 +43,19 @@ export interface HouseholdSettings {
   readonly targets: AllocationTargets;
   /** The accounts whose share of total wealth is watched — the Apple RSU holding. */
   readonly concentrationAccountIds: readonly string[];
+  /**
+   * The accounts the household says move on their own. Everything else that moved
+   * between two snapshots is money that went in or came out. Empty is the position
+   * the system starts from, not a setting nobody got round to.
+   */
+  readonly marketMovingAccountIds: readonly string[];
 }
 
 export const DEFAULT_SETTINGS: HouseholdSettings = {
   appreciation: NO_APPRECIATION,
   targets: [],
   concentrationAccountIds: [],
+  marketMovingAccountIds: [],
 };
 
 function wholeNumber(key: string, text: string): number {
@@ -64,6 +72,7 @@ export async function loadHouseholdSettings(): Promise<HouseholdSettings> {
 
   const appreciation = byKey.get(APPRECIATION_KEY);
   const concentration = byKey.get(CONCENTRATION_KEY);
+  const marketMoving = byKey.get(MARKET_MOVING_KEY);
 
   const targets = ASSET_CATEGORIES.flatMap((category) => {
     const stored = byKey.get(`${TARGET_PREFIX}${category}`);
@@ -79,6 +88,7 @@ export async function loadHouseholdSettings(): Promise<HouseholdSettings> {
     targets: buildAllocationTargets(targets),
     concentrationAccountIds:
       concentration === undefined ? [] : splitIds(concentration),
+    marketMovingAccountIds: marketMoving === undefined ? [] : splitIds(marketMoving),
   };
 }
 
@@ -130,4 +140,13 @@ export async function saveAllocationTargets(targets: AllocationTargets): Promise
 
 export async function saveConcentrationAccounts(accountIds: readonly string[]): Promise<void> {
   await put(CONCENTRATION_KEY, [...new Set(accountIds)].join(","));
+}
+
+/**
+ * Which accounts a change decomposition reads as moving on their own. A
+ * cost-held account is refused the mark by the decomposition itself (ADR 0003),
+ * so nothing here has to remember to.
+ */
+export async function saveMarketMovingAccounts(accountIds: readonly string[]): Promise<void> {
+  await put(MARKET_MOVING_KEY, [...new Set(accountIds)].join(","));
 }

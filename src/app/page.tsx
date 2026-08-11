@@ -2,9 +2,27 @@ import Link from "next/link";
 
 import { AppHeader } from "@/components/app-header";
 import { MoneyFigure } from "@/components/money-figure";
+import { loadAccounts } from "@/db/accounts";
+import { loadCategories } from "@/db/categories";
 import { DatabaseNotConfiguredError } from "@/db/client";
+import { loadLedger } from "@/db/ledger";
 import { type DatedRate, type StoredAmount, findLatestRate, findStoredAmount } from "@/db/money-settings";
 import { findPersonByEmail } from "@/db/people";
+import { loadHouseholdSettings } from "@/db/settings";
+import { loadSnapshots } from "@/db/snapshots";
+import { format, isNegative, negate } from "@/domain/money/money";
+import {
+  type Reconciliation,
+  decomposeChange,
+  reconcileMoneyAdded,
+} from "@/domain/networth/net-worth-analytics";
+import {
+  type Account,
+  type Snapshot,
+  canConvertWithin,
+  snapshotReadings,
+} from "@/domain/snapshot/snapshot";
+import { formatDate } from "@/domain/time/calendar-date";
 import { requireHouseholdEmail } from "@/session";
 
 // Reads a live database on every request; nothing here is prerendered at build.
@@ -27,6 +45,7 @@ export default async function DashboardPage() {
   const person = await findPersonByEmail(email).catch(() => null);
 
   const tracer = await readTracerAmount();
+  const reconciliation = await readReconciliation();
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
@@ -38,6 +57,8 @@ export default async function DashboardPage() {
       />
 
       <main className="mt-6 space-y-6 sm:mt-8">
+        {reconciliation === null ? null : <ReconciliationBanner reconciliation={reconciliation} />}
+
         <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
           <h2 className="text-sm font-semibold tracking-wide text-stone-500">סכום לדוגמה מהמסד</h2>
 
@@ -90,6 +111,126 @@ export default async function DashboardPage() {
         </section>
       </main>
     </div>
+  );
+}
+
+// --- the reconciliation, where it will be seen --------------------------------
+
+/**
+ * The מאזן and the מיפוי, held against each other on the way in. A discrepancy
+ * that only appears on a detail screen is a discrepancy nobody finds, so the two
+ * latest readings are reconciled here — and the panel says just as plainly when
+ * they agree, because a check that is only visible when it fails teaches nobody
+ * that it is running.
+ */
+function ReconciliationBanner({ reconciliation }: { reconciliation: Reconciliation }) {
+  const { residual } = reconciliation;
+  if (residual === null) return null;
+
+  return (
+    <section
+      className={`rounded-lg border p-5 ${
+        reconciliation.holds ? "border-emerald-300 bg-emerald-50" : "border-amber-300 bg-amber-50"
+      }`}
+      role={reconciliation.holds ? "status" : "alert"}
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <h2
+          className={`text-sm font-semibold tracking-wide ${reconciliation.holds ? "text-emerald-900" : "text-amber-900"}`}
+        >
+          התאמה מול המאזן
+        </h2>
+        <p className={`text-xs ${reconciliation.holds ? "text-emerald-800" : "text-amber-800"}`}>
+          {formatDate(reconciliation.from)} — {formatDate(reconciliation.to)}
+        </p>
+      </div>
+
+      <p className={`mt-2 text-sm ${reconciliation.holds ? "text-emerald-900" : "text-amber-900"}`}>
+        {reconciliation.holds ? (
+          <>
+            מה שהגיע לחשבונות הוא בדיוק החיסכון שהמאזן רשם —{" "}
+            <bdi className="tabular font-medium">{format(reconciliation.moneyAdded)}</bdi>.
+          </>
+        ) : (
+          <>
+            פער של{" "}
+            <bdi className="tabular font-medium">
+              {format(isNegative(residual) ? negate(residual) : residual)}
+            </bdi>{" "}
+            בין מה שהגיע לחשבונות (
+            <bdi className="tabular">{format(reconciliation.moneyAdded)}</bdi>) לבין החיסכון שבמאזן
+            (<bdi className="tabular">{format(reconciliation.saving ?? residual)}</bdi>).
+          </>
+        )}
+      </p>
+
+      <p className="mt-2 text-sm">
+        <Link
+          href="/net-worth"
+          className={`underline underline-offset-4 ${reconciliation.holds ? "text-emerald-900" : "text-amber-900"}`}
+        >
+          פירוק השינוי ←
+        </Link>
+      </p>
+    </section>
+  );
+}
+
+/**
+ * The latest reading, reconciled against the nearest earlier one the מאזן can
+ * answer for.
+ *
+ * The מאזן records months, so two readings ten days apart have no month to be
+ * compared against. Walking back to the nearest reading that does leaves the check
+ * running whatever cadence the household takes snapshots at — the panel names the
+ * period it used, so the figure is never ambiguous about what it covers.
+ *
+ * Anything missing — one reading, a reading with no rate, no whole month anywhere
+ * in the history — is silence rather than a panel.
+ */
+async function readReconciliation(): Promise<Reconciliation | null> {
+  try {
+    const [accounts, snapshots, settings, ledger, categories] = await Promise.all([
+      loadAccounts(),
+      loadSnapshots(),
+      loadHouseholdSettings(),
+      loadLedger(),
+      loadCategories(),
+    ]);
+
+    // Newest first out of the database, so the candidates run nearest first.
+    const later = snapshots[0];
+    if (later === undefined || !restatable(later, accounts)) return null;
+
+    for (const earlier of snapshots.slice(1)) {
+      if (!restatable(earlier, accounts)) continue;
+
+      const reconciliation = reconcileMoneyAdded({
+        decomposition: decomposeChange({
+          earlier,
+          later,
+          accounts,
+          marketMovingAccountIds: settings.marketMovingAccountIds,
+          currency: "ILS",
+        }),
+        ledger,
+        categories,
+      });
+
+      if (reconciliation.residual !== null) return reconciliation;
+    }
+
+    return null;
+  } catch {
+    // The tracer panel below already reports a database that cannot be read; this
+    // one has nothing of its own to add.
+    return null;
+  }
+}
+
+function restatable(snapshot: Snapshot, accounts: readonly Account[]): boolean {
+  return snapshotReadings(snapshot, accounts).every((reading) =>
+    canConvertWithin(snapshot, reading.account.currency, "ILS"),
   );
 }
 

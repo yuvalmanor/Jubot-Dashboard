@@ -13,6 +13,8 @@
  * every field is zero-padded and fixed width.
  */
 
+import { type CalendarMonth, calendarMonth } from "@/domain/time/calendar-month";
+
 export interface CalendarDate {
   readonly year: number;
   /** 1–12. January is 1, not 0. */
@@ -74,6 +76,32 @@ export function tryParseDateKey(text: string | undefined | null): CalendarDate |
   } catch {
     return null;
   }
+}
+
+/**
+ * The month a day falls in — the seam between the מיפוי, which is dated to the
+ * day, and the מאזן, which is keyed by month and cannot be clipped to one.
+ */
+export function monthContaining(date: CalendarDate): CalendarMonth {
+  return calendarMonth(date.year, date.month);
+}
+
+export function firstDayOf(month: CalendarMonth): CalendarDate {
+  return calendarDate(month.year, month.month, 1);
+}
+
+export function lastDayOf(month: CalendarMonth): CalendarDate {
+  return calendarDate(month.year, month.month, daysInMonth(month.year, month.month));
+}
+
+/**
+ * Whether an inclusive span of days contains a whole calendar month. This is what
+ * decides which months of the מאזן a period between two snapshots may be compared
+ * against: a month the span only clips has no partial figure to offer, because the
+ * ledger records months and not days.
+ */
+export function containsWholeMonth(from: CalendarDate, to: CalendarDate, month: CalendarMonth): boolean {
+  return compareDates(firstDayOf(month), from) >= 0 && compareDates(lastDayOf(month), to) <= 0;
 }
 
 export function compareDates(left: CalendarDate, right: CalendarDate): -1 | 0 | 1 {

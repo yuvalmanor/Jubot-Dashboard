@@ -521,15 +521,37 @@ years. This is the check the spreadsheet never had.
 
 ### Acceptance criteria
 
-- [ ] The change between two snapshots is decomposed into money added, market movement and
+- [x] The change between two snapshots is decomposed into money added, market movement and
       currency movement
-- [ ] The decomposition sums exactly to the total change with no residual when inputs are
+      <!-- Two snapshots record positions and not flows, and the household records no
+           transfers, so the split between market movement and money added cannot be
+           measured. It is declared: `/settings` names the accounts that move on their own
+           and everything else that moved reads as money added. A cost-held account is
+           refused the mark (ADR 0003), and an account that opened or closed inside the
+           period is money arriving or leaving whatever it is marked as. -->
+- [x] The decomposition sums exactly to the total change with no residual when inputs are
       consistent
-- [ ] The reconciliation compares money added against the מאזן's חיסכון for the same period
-- [ ] When the two disagree, the residual is displayed as a flagged discrepancy, not
+      <!-- Exact by construction rather than by rounding luck: each account is read three
+           times — opening at the opening rate, opening at the closing rate, closing at the
+           closing rate — and the components are the consecutive differences. Verified at
+           3.6547 against balances chosen to round badly, per row and in total. -->
+- [x] The reconciliation compares money added against the מאזן's חיסכון for the same period
+      <!-- חיסכון is read through the Ledger, so it is the same figure the מאזן screens show.
+           The period is the whole calendar months between the two readings; a month the
+           period only clips is named and left out, and a period holding no whole month says
+           so rather than comparing against half a month nobody recorded. -->
+- [x] When the two disagree, the residual is displayed as a flagged discrepancy, not
       silently absorbed
-- [ ] The discrepancy is surfaced where it will be seen, not only on a detail screen
-- [ ] `NetWorthAnalytics` decomposition and reconciliation are tested on plain data with
+      <!-- Verified live: 50,600₪ arrived against 21,000₪ of חיסכון and the screen reported
+           a 29,600₪ gap; marking the pension as moving with the market moved 5,000₪ out of
+           money added and the gap read −5,000₪. Months that are only half recorded are
+           named beside it, because an unfinished month looks exactly like a leak. -->
+- [x] The discrepancy is surfaced where it will be seen, not only on a detail screen
+      <!-- The dashboard carries it, against the nearest earlier reading the מאזן can answer
+           for — so a weekly cadence does not switch the check off — and it names the period
+           it used. It says as plainly when the two agree: a check only visible when it fails
+           teaches nobody that it is running. -->
+- [x] `NetWorthAnalytics` decomposition and reconciliation are tested on plain data with
       exact minor-unit assertions
 
 ---

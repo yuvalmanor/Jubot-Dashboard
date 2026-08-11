@@ -171,6 +171,15 @@ export function isOpenOn(account: Account, date: CalendarDate): boolean {
   return account.closedOn === null || compareDates(date, account.closedOn) <= 0;
 }
 
+/**
+ * Accounts in the order every screen reads them — by קטגוריה, then סוג נכס, then
+ * name. Exported so anything assembling its own rows over two snapshots lands in
+ * the same order as the snapshot itself.
+ */
+export function accountsInReadingOrder(accounts: readonly Account[]): readonly Account[] {
+  return sortAccounts(accounts);
+}
+
 function sortAccounts(accounts: readonly Account[]): Account[] {
   return [...accounts].sort((left, right) => {
     const byCategory = ASSET_CATEGORIES.indexOf(left.category) - ASSET_CATEGORIES.indexOf(right.category);
@@ -800,8 +809,8 @@ function comparisonRow(account: Account, earlier: Snapshot, later: Snapshot): Co
  *
  * Every difference here is in the account's own currency. Restating the change of
  * two snapshots taken at different rates mixes what the money did with what the
- * rate did, and separating those two is Phase 10's work — this phase says what
- * moved, per account, at a figure no rate can distort.
+ * rate did; separating those two is `decomposeChange`'s work — this function says
+ * what moved, per account, at a figure no rate can distort.
  */
 export function compareSnapshots(input: {
   readonly earlier: Snapshot;
@@ -836,8 +845,8 @@ export interface ComparisonTotals {
   readonly after: Money;
   /**
    * `after − before`, and nothing finer. When the two snapshots carry different
-   * rates this is a mix of what moved and what the rate did; `rateChanged` says
-   * so, and decomposing it is Phase 10's work rather than a figure invented here.
+   * rates this is a mix of what moved and what the rate did; `rateChanged` says so,
+   * and `decomposeChange` is what separates them rather than a figure invented here.
    */
   readonly change: Money;
   readonly rateChanged: boolean;

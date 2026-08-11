@@ -24,8 +24,21 @@
  *   holds cost at cost, and a total that names the assumption it grew cost by.
  *   `appreciationRange` produces both at once and carries the assumption on the
  *   result, so no caller can print the second while implying the first.
+ * - **A change is money added, market movement, or the shekel moving.** Nothing
+ *   else can have happened, so `decomposeChange` splits every change into exactly
+ *   those three and they add back to it exactly. `reconcileMoneyAdded` then holds
+ *   the money-added figure against the מאזן's own חיסכון, and reports the residual
+ *   rather than absorbing it — this is the one place where the two halves of the
+ *   system check each other.
  */
 
+import { type Categories } from "@/domain/categories/categories";
+import {
+  type Ledger,
+  type MonthCompleteness,
+  completenessOf as monthCompletenessOf,
+  householdMonthSummary,
+} from "@/domain/ledger/ledger";
 import {
   type Currency,
   type Money,
@@ -42,15 +55,27 @@ import {
   type BasisSplit,
   type ConvertedReading,
   type Snapshot,
+  type SnapshotLine,
   ASSET_CATEGORIES,
   type AssetCategory,
+  accountsInReadingOrder,
   basisSplitOf,
   canConvertWithin,
   completenessOf,
+  convertWithin,
   convertedReadings,
+  findLine,
+  isUnmeasured,
   snapshotReadings,
 } from "@/domain/snapshot/snapshot";
-import { type CalendarDate, compareDates, wholeYearsBetween } from "@/domain/time/calendar-date";
+import {
+  type CalendarDate,
+  compareDates,
+  containsWholeMonth,
+  monthContaining,
+  wholeYearsBetween,
+} from "@/domain/time/calendar-date";
+import { type CalendarMonth, monthRange } from "@/domain/time/calendar-month";
 
 // --- net worth over time -----------------------------------------------------
 
@@ -76,8 +101,9 @@ export interface NetWorthPoint {
   readonly change: Money | null;
   /**
    * Whether the two snapshots behind `change` were read at the same rate. When
-   * they were not, the change mixes what the money did with what the shekel did;
-   * separating the two is Phase 10's work and nothing here pretends to have done it.
+   * they were not, the change mixes what the money did with what the shekel did —
+   * `decomposeChange` is what separates them, and this flag says when it is worth
+   * asking it to.
    */
   readonly sameRate: boolean;
 }
@@ -575,5 +601,313 @@ export function concentrationOf(input: {
     share: ratio(holding, total),
     readings,
     missing: input.accountIds.filter((id) => !present.has(id)),
+  };
+}
+
+// --- what a change was made of ------------------------------------------------
+
+/**
+ * Why a row's movement was attributed the way it was. It is on every row because
+ * the attribution is the one part of this arithmetic that is not arithmetic.
+ *
+ * - `market` — the household says this account moves with a market, so what moved
+ *   inside it is market movement. Money paid *into* such an account looks like
+ *   market movement here, and that is exactly what the reconciliation below
+ *   surfaces as a residual rather than hiding.
+ * - `added` — nobody said it moves with a market, so a change in it is money that
+ *   went in or came out. This is the starting position: no account floats until
+ *   the household says it does.
+ * - `cost` — held at cost. Per ADR 0003 nothing in it is priced, so it cannot have
+ *   moved with a market: its value changes only when more money goes in. A mark
+ *   saying otherwise is ignored rather than obeyed.
+ * - `opened` / `closed` — the account holds a line on only one side. A position
+ *   nobody held cannot have grown, so its whole value is money arriving or leaving.
+ */
+export type MovementAttribution = "market" | "added" | "cost" | "opened" | "closed";
+
+/**
+ * One account's share of a change, in the reading currency.
+ *
+ * The three components are three differences of the same position read at three
+ * points — opening at the opening rate, opening at the closing rate, closing at
+ * the closing rate — so they telescope to `change` exactly. No component is a
+ * remainder of the other two, and none can be out by an agora.
+ */
+export interface DecompositionRow {
+  readonly account: Account;
+  /** The recorded figures in the account's own currency. `null` where a snapshot holds no line. */
+  readonly openingNative: Money | null;
+  readonly closingNative: Money | null;
+  readonly before: SnapshotLine | null;
+  readonly after: SnapshotLine | null;
+  /** What the rate did to the money that was already there. Nil for an account in the reading currency. */
+  readonly currencyMovement: Money;
+  readonly moneyAdded: Money;
+  readonly marketMovement: Money;
+  /** `moneyAdded + marketMovement + currencyMovement`, and the row's exact share of the total. */
+  readonly change: Money;
+  readonly attribution: MovementAttribution;
+  /** Whether the closing figure was stated on the later snapshot's own date. */
+  readonly measured: boolean;
+  /** Whether one side is a placeholder nobody ever measured — the change is against nothing. */
+  readonly unmeasured: boolean;
+}
+
+export interface DecompositionCounts {
+  readonly market: number;
+  readonly added: number;
+  readonly cost: number;
+  readonly opened: number;
+  readonly closed: number;
+  /** Rows whose closing figure nobody stated on the day. */
+  readonly carried: number;
+  readonly unmeasured: number;
+}
+
+export interface ChangeDecomposition {
+  readonly currency: Currency;
+  readonly earlier: Snapshot;
+  readonly later: Snapshot;
+  /** Each side at its own snapshot's rate — a historical snapshot never re-converts. */
+  readonly openingTotal: Money;
+  readonly closingTotal: Money;
+  readonly change: Money;
+  readonly moneyAdded: Money;
+  readonly marketMovement: Money;
+  readonly currencyMovement: Money;
+  /**
+   * `change − (moneyAdded + marketMovement + currencyMovement)`. Computed rather
+   * than assumed, so the screen can show that it is nought instead of claiming it.
+   */
+  readonly residual: Money;
+  readonly rows: readonly DecompositionRow[];
+  readonly counts: DecompositionCounts;
+}
+
+function attributionFor(
+  account: Account,
+  hasOpening: boolean,
+  hasClosing: boolean,
+  marketMoving: ReadonlySet<string>,
+): MovementAttribution {
+  if (!hasOpening) return "opened";
+  if (!hasClosing) return "closed";
+  if (account.valueBasis === "cost") return "cost";
+  return marketMoving.has(account.id) ? "market" : "added";
+}
+
+/**
+ * Everything that changed between two snapshots, split into money added, market
+ * movement and currency movement — so an earned month reads differently from a
+ * lucky one.
+ *
+ * Two snapshots record positions and not flows: nothing in them says whether a
+ * brokerage account grew because the market rose or because money was paid in.
+ * The household records no transfers either, so the split cannot be measured and
+ * is not invented. It is *declared*: `marketMovingAccountIds` names the accounts
+ * whose value moves on its own, and everything else that moved is money that went
+ * in or came out. An account nobody marked reads as money added, because "we
+ * assume nothing floats" is the position that claims least.
+ *
+ * The arithmetic itself is exact. For each account:
+ *
+ * - `currencyMovement` = the opening position at the closing rate, less the same
+ *   position at the opening rate.
+ * - the rest of the change = the closing position at the closing rate, less the
+ *   opening position at that same rate — attributed whole, to the market or to
+ *   money added.
+ *
+ * They are consecutive differences of three readings, so they sum to the change
+ * with nothing left over.
+ */
+export function decomposeChange(input: {
+  readonly earlier: Snapshot;
+  readonly later: Snapshot;
+  readonly accounts: readonly Account[];
+  /** The accounts the household says move with a market. Empty is a position, not an omission. */
+  readonly marketMovingAccountIds: readonly string[];
+  readonly currency: Currency;
+}): ChangeDecomposition {
+  const { currency } = input;
+  // Argument order does not matter: the earlier date is always the opening one,
+  // so a decomposition cannot read backwards and call a fall a rise.
+  const backwards = compareDates(input.earlier.takenOn, input.later.takenOn) > 0;
+  const earlier = backwards ? input.later : input.earlier;
+  const later = backwards ? input.earlier : input.later;
+  const marketMoving = new Set(input.marketMovingAccountIds);
+
+  const opening = new Map(
+    snapshotReadings(earlier, input.accounts).map((reading) => [reading.account.id, reading]),
+  );
+  const closing = new Map(
+    snapshotReadings(later, input.accounts).map((reading) => [reading.account.id, reading]),
+  );
+
+  let openingTotal = zero(currency);
+  let closingTotal = zero(currency);
+
+  const rows = accountsInReadingOrder(input.accounts).flatMap<DecompositionRow>((account) => {
+    const before = opening.get(account.id);
+    const after = closing.get(account.id);
+    if (before === undefined && after === undefined) return [];
+
+    const atOpeningRate =
+      before === undefined ? zero(currency) : convertWithin(earlier, before.native, currency);
+    const openingAtClosingRate =
+      before === undefined ? zero(currency) : convertWithin(later, before.native, currency);
+    const atClosingRate =
+      after === undefined ? zero(currency) : convertWithin(later, after.native, currency);
+
+    openingTotal = add(openingTotal, atOpeningRate);
+    closingTotal = add(closingTotal, atClosingRate);
+
+    const currencyMovement = subtract(openingAtClosingRate, atOpeningRate);
+    const rest = subtract(atClosingRate, openingAtClosingRate);
+    const attribution = attributionFor(
+      account,
+      before !== undefined,
+      after !== undefined,
+      marketMoving,
+    );
+    const toMarket = attribution === "market";
+
+    return [
+      {
+        account,
+        openingNative: before?.native ?? null,
+        closingNative: after?.native ?? null,
+        before: before?.line ?? null,
+        after: after?.line ?? null,
+        currencyMovement,
+        moneyAdded: toMarket ? zero(currency) : rest,
+        marketMovement: toMarket ? rest : zero(currency),
+        change: subtract(atClosingRate, atOpeningRate),
+        attribution,
+        measured: after !== undefined && after.line.source === "entered",
+        // A placeholder becoming a figure moves the total, so it is decomposed
+        // like anything else — but it is a first measurement rather than a
+        // movement, and every row says which it was.
+        unmeasured:
+          (before !== undefined && isUnmeasured(before.line)) ||
+          (after !== undefined && isUnmeasured(after.line)),
+      },
+    ];
+  });
+
+  const moneyAdded = sum(rows.map((row) => row.moneyAdded), currency);
+  const marketMovement = sum(rows.map((row) => row.marketMovement), currency);
+  const currencyMovement = sum(rows.map((row) => row.currencyMovement), currency);
+  const change = subtract(closingTotal, openingTotal);
+
+  const countOf = (attribution: MovementAttribution) =>
+    rows.filter((row) => row.attribution === attribution).length;
+
+  return {
+    currency,
+    earlier,
+    later,
+    openingTotal,
+    closingTotal,
+    change,
+    moneyAdded,
+    marketMovement,
+    currencyMovement,
+    residual: subtract(change, add(add(moneyAdded, marketMovement), currencyMovement)),
+    rows,
+    counts: {
+      market: countOf("market"),
+      added: countOf("added"),
+      cost: countOf("cost"),
+      opened: countOf("opened"),
+      closed: countOf("closed"),
+      carried: rows.filter((row) => row.after !== null && !row.measured).length,
+      unmeasured: rows.filter((row) => row.unmeasured).length,
+    },
+  };
+}
+
+// --- holding it against the מאזן ----------------------------------------------
+
+/** One month of the מאזן as the reconciliation reads it. */
+export interface ReconciliationMonth {
+  readonly month: CalendarMonth;
+  /** `הכנסות − הוצאות`, derived by the Ledger exactly as every מאזן screen derives it. */
+  readonly saving: Money;
+  readonly completeness: MonthCompleteness;
+}
+
+export interface Reconciliation {
+  readonly currency: Currency;
+  readonly from: CalendarDate;
+  readonly to: CalendarDate;
+  /** The whole calendar months the period contains. The מאזן answers by month and cannot be clipped. */
+  readonly months: readonly ReconciliationMonth[];
+  /** Months the period only clips. Reported, never counted — a part-month has no figure. */
+  readonly clipped: readonly CalendarMonth[];
+  readonly moneyAdded: Money;
+  /** Σ חיסכון over `months`. `null` when the period contains no whole month at all. */
+  readonly saving: Money | null;
+  /**
+   * `moneyAdded − saving`. Positive: more money arrived in the accounts than the
+   * מאזן accounts for. Negative: less arrived than was saved — money left without
+   * being written down. `null` when there is nothing to compare against.
+   */
+  readonly residual: Money | null;
+  /** True only when there was something to compare and it came out exactly nought. */
+  readonly holds: boolean;
+  /** Months in the period that are not fully recorded: their חיסכון is understated. */
+  readonly incomplete: readonly CalendarMonth[];
+}
+
+/**
+ * The check the spreadsheet never had: money added, against the מאזן's own
+ * חיסכון for the same period.
+ *
+ * חיסכון is read through the Ledger, so it is the same figure the מאזן screens
+ * show and cannot drift from them. The period is the whole calendar months
+ * between the two snapshots — a month the period only clips is named and left
+ * out, because the ledger records months and there is no part-month figure to
+ * take. When they disagree, the residual is reported: an untracked expense, a
+ * forgotten account, or money paid into an account marked as moving with the
+ * market all land here, in weeks rather than years.
+ *
+ * The ledger is read in the decomposition's own currency, so comparing a dollar
+ * reading against a shekel ledger throws rather than converting at a rate nobody
+ * chose.
+ */
+export function reconcileMoneyAdded(input: {
+  readonly decomposition: ChangeDecomposition;
+  readonly ledger: Ledger;
+  readonly categories: Categories;
+}): Reconciliation {
+  const { decomposition } = input;
+  const currency = decomposition.currency;
+  const from = decomposition.earlier.takenOn;
+  const to = decomposition.later.takenOn;
+
+  const spanned = monthRange(monthContaining(from), monthContaining(to));
+  const whole = spanned.filter((month) => containsWholeMonth(from, to, month));
+
+  const months = whole.map((month): ReconciliationMonth => {
+    const summary = householdMonthSummary(input.ledger, input.categories, month, currency);
+    return { month, saving: summary.saving, completeness: monthCompletenessOf(summary) };
+  });
+
+  const saving = months.length === 0 ? null : sum(months.map((month) => month.saving), currency);
+  const residual = saving === null ? null : subtract(decomposition.moneyAdded, saving);
+
+  return {
+    currency,
+    from,
+    to,
+    months,
+    clipped: spanned.filter((month) => !containsWholeMonth(from, to, month)),
+    moneyAdded: decomposition.moneyAdded,
+    saving,
+    residual,
+    holds: residual !== null && isZero(residual),
+    incomplete: months
+      .filter((month) => month.completeness !== "complete")
+      .map((month) => month.month),
   };
 }

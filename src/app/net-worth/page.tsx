@@ -4,23 +4,32 @@ import Link from "next/link";
 import { AppHeader } from "@/components/app-header";
 import { BasisNote } from "@/components/basis-note";
 import { loadAccounts } from "@/db/accounts";
+import { loadCategories } from "@/db/categories";
 import { DatabaseNotConfiguredError } from "@/db/client";
+import { loadLedger } from "@/db/ledger";
 import { type Person, findPersonByEmail } from "@/db/people";
 import { type HouseholdSettings, loadHouseholdSettings } from "@/db/settings";
 import { loadSnapshots } from "@/db/snapshots";
+import { type Categories } from "@/domain/categories/categories";
+import { type Ledger } from "@/domain/ledger/ledger";
 import { type Money, format, isNegative, isZero, negate } from "@/domain/money/money";
 import {
   type Allocation,
   type AllocationLine,
   type AppreciationRange,
+  type ChangeDecomposition,
   type Concentration,
   type CurrencyExposure,
+  type MovementAttribution,
   type NetWorthPoint,
+  type Reconciliation,
   allocation,
   appreciationRange,
   concentrationOf,
   currencyExposure,
+  decomposeChange,
   netWorthTrajectory,
+  reconcileMoneyAdded,
 } from "@/domain/networth/net-worth-analytics";
 import {
   type Account,
@@ -30,9 +39,11 @@ import {
   VALUE_BASIS_LABELS,
   canConvertWithin,
   convertedReadings,
+  previousSnapshot,
   snapshotReadings,
 } from "@/domain/snapshot/snapshot";
-import { formatDate } from "@/domain/time/calendar-date";
+import { compareDates, formatDate } from "@/domain/time/calendar-date";
+import { formatMonth } from "@/domain/time/calendar-month";
 import { requireHouseholdEmail } from "@/session";
 
 import { TrajectoryChart } from "./charts";
@@ -58,6 +69,8 @@ const PERCENT = new Intl.NumberFormat("he-IL", { style: "percent", maximumFracti
 
 interface SearchParams {
   snapshot?: string | string[];
+  /** The opening reading of the decomposition. Defaults to the one before `snapshot`. */
+  from?: string | string[];
 }
 
 function first(value: string | string[] | undefined): string | undefined {
@@ -80,7 +93,11 @@ export default async function NetWorthPage({ searchParams }: { searchParams: Pro
       />
 
       <main className="mt-6 space-y-6 sm:mt-8">
-        {loaded.kind === "ok" ? <NetWorthView loaded={loaded} /> : <UnavailablePanel reason={loaded.reason} />}
+        {loaded.kind === "ok" ? (
+          <NetWorthView loaded={loaded} openingId={first(params.from)} />
+        ) : (
+          <UnavailablePanel reason={loaded.reason} />
+        )}
       </main>
     </div>
   );
@@ -96,6 +113,9 @@ interface LoadedOk {
   /** The snapshot everything but the trajectory is read against. */
   current: Snapshot | null;
   settings: HouseholdSettings;
+  /** The מאזן, for the one panel that holds the two halves of the system against each other. */
+  ledger: Ledger;
+  categories: Categories;
 }
 
 type Loaded = LoadedOk | { kind: "unavailable"; reason: string };
@@ -109,10 +129,12 @@ async function loadPage(email: string, wanted: string | undefined): Promise<Load
         reason: `הכתובת ${email} אינה משויכת לאף אדם בטבלת people. יש לעדכן את שתי הכתובות במסד (ראו README).`,
       };
     }
-    const [accounts, snapshots, settings] = await Promise.all([
+    const [accounts, snapshots, settings, ledger, categories] = await Promise.all([
       loadAccounts(),
       loadSnapshots(),
       loadHouseholdSettings(),
+      loadLedger(),
+      loadCategories(),
     ]);
 
     // Newest first out of the database; the newest is what the household means by
@@ -120,7 +142,7 @@ async function loadPage(email: string, wanted: string | undefined): Promise<Load
     const current =
       snapshots.find((snapshot) => snapshot.id === wanted) ?? snapshots[0] ?? null;
 
-    return { kind: "ok", person, accounts, snapshots, current, settings };
+    return { kind: "ok", person, accounts, snapshots, current, settings, ledger, categories };
   } catch (error) {
     if (error instanceof DatabaseNotConfiguredError) {
       return { kind: "unavailable", reason: "משתנה הסביבה DATABASE_URL אינו מוגדר." };
@@ -131,7 +153,7 @@ async function loadPage(email: string, wanted: string | undefined): Promise<Load
 
 // --- the screen ---------------------------------------------------------------
 
-function NetWorthView({ loaded }: { loaded: LoadedOk }) {
+function NetWorthView({ loaded, openingId }: { loaded: LoadedOk; openingId: string | undefined }) {
   const { accounts, snapshots, current, settings } = loaded;
 
   if (current === null) {
@@ -150,10 +172,44 @@ function NetWorthView({ loaded }: { loaded: LoadedOk }) {
   const readable = canRestate(current, accounts);
   const readings = readable ? convertedReadings(current, accounts, READING_CURRENCY) : [];
 
+  // A change is between two readings, so this panel is the one thing on the screen
+  // that is about a period rather than a moment. It runs from the reading before
+  // this one unless another opening reading was named.
+  const named = snapshots.find((snapshot) => snapshot.id === openingId) ?? null;
+  const earlier =
+    named !== null && compareDates(named.takenOn, current.takenOn) < 0
+      ? named
+      : previousSnapshot(snapshots, current.takenOn);
+  const decomposition =
+    earlier === null || !readable || !canRestate(earlier, accounts)
+      ? null
+      : decomposeChange({
+          earlier,
+          later: current,
+          accounts,
+          marketMovingAccountIds: settings.marketMovingAccountIds,
+          currency: READING_CURRENCY,
+        });
+
   return (
     <>
       <SnapshotPicker snapshots={snapshots} current={current} />
       <TrajectoryPanel points={trajectory} currentId={current.id} />
+
+      {decomposition === null ? (
+        <NoDecompositionPanel snapshots={snapshots} earlier={earlier} />
+      ) : (
+        <>
+          <ReconciliationPanel
+            reconciliation={reconcileMoneyAdded({
+              decomposition,
+              ledger: loaded.ledger,
+              categories: loaded.categories,
+            })}
+          />
+          <DecompositionPanel decomposition={decomposition} />
+        </>
+      )}
 
       {readable ? (
         <>
@@ -335,6 +391,322 @@ function ChangeCell({ point }: { point: NetWorthPoint }) {
         </span>
       )}
     </span>
+  );
+}
+
+// --- ההתאמה מול המאזן ------------------------------------------------------------
+
+/**
+ * The check the spreadsheet never had: what arrived in the accounts, against what
+ * the מאזן says was saved. The residual is displayed whether or not it is nought —
+ * a gap that is only shown when somebody goes looking for it is a gap nobody sees.
+ */
+function ReconciliationPanel({ reconciliation }: { reconciliation: Reconciliation }) {
+  const { residual, saving } = reconciliation;
+
+  return (
+    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <h2 className="text-sm font-semibold tracking-wide text-stone-500">התאמה מול המאזן</h2>
+        <p className="text-xs text-stone-500">
+          {formatDate(reconciliation.from)} — {formatDate(reconciliation.to)}
+        </p>
+      </div>
+
+      {saving === null || residual === null ? (
+        <p className="mt-3 text-sm text-stone-600">
+          התקופה בין שני הצילומים אינה מכילה אף חודש שלם, והמאזן נרשם בחודשים. אין חודש לקרוא ממנו,
+          ולכן אין מול מה להשוות — וזה נאמר במקום להשוות מול חצי חודש שאיש לא רשם.
+        </p>
+      ) : (
+        <>
+          <div className="mt-3 grid gap-4 sm:grid-cols-3">
+            <div>
+              <p className="text-xs text-stone-500">כסף שנוסף — מהצילומים</p>
+              <bdi className="tabular block text-2xl font-semibold">
+                {format(reconciliation.moneyAdded)}
+              </bdi>
+            </div>
+            <div>
+              <p className="text-xs text-stone-500">
+                חיסכון — מהמאזן, <bdi className="tabular">{reconciliation.months.length}</bdi> חודשים
+              </p>
+              <bdi className="tabular block text-2xl">{format(saving)}</bdi>
+            </div>
+            <div>
+              <p className="text-xs text-stone-500">פער</p>
+              <bdi
+                className={`tabular block text-2xl font-semibold ${reconciliation.holds ? "" : "text-amber-800"}`}
+              >
+                {format(residual)}
+              </bdi>
+            </div>
+          </div>
+
+          <div
+            className={`mt-4 rounded-md border p-4 ${
+              reconciliation.holds
+                ? "border-emerald-300 bg-emerald-50"
+                : "border-amber-300 bg-amber-50"
+            }`}
+            role={reconciliation.holds ? "status" : "alert"}
+          >
+            {reconciliation.holds ? (
+              <p className="text-sm text-emerald-900">
+                שני חצאי המערכת מסתדרים: מה שהגיע לחשבונות הוא בדיוק מה שהמאזן אומר שנחסך.
+              </p>
+            ) : (
+              <p className="text-sm text-amber-900">
+                {isNegative(residual) ? (
+                  <>
+                    לחשבונות הגיעו <bdi className="tabular">{format(negate(residual))}</bdi> פחות ממה
+                    שהמאזן אומר שנחסך. כסף שיצא ולא נרשם, חשבון ששכחנו למפות, או חשבון שסומן כנע עם
+                    השוק והופקד לתוכו — הפער מוצג ולא נבלע.
+                  </>
+                ) : (
+                  <>
+                    לחשבונות הגיעו <bdi className="tabular">{format(residual)}</bdi> יותר ממה שהמאזן
+                    אומר שנחסך. הכנסה שלא נרשמה, או תנועת שוק בחשבון שאיש לא סימן ככזה — הפער מוצג
+                    ולא נבלע.
+                  </>
+                )}
+              </p>
+            )}
+          </div>
+
+          <ul className="mt-4 divide-y divide-stone-100 border-t border-stone-200">
+            {reconciliation.months.map((month) => (
+              <li
+                key={`${month.month.year}-${month.month.month}`}
+                className="flex flex-wrap items-baseline gap-x-4 gap-y-1 py-2 text-sm"
+              >
+                <span className="min-w-0 flex-1">{formatMonth(month.month)}</span>
+                {month.completeness === "complete" ? null : (
+                  <span className="text-xs text-amber-800">
+                    {month.completeness === "empty" ? "לא נרשם" : "חודש חלקי"}
+                  </span>
+                )}
+                <bdi className={`tabular ${isNegative(month.saving) ? "text-red-800" : ""}`}>
+                  {format(month.saving)}
+                </bdi>
+              </li>
+            ))}
+          </ul>
+
+          {reconciliation.incomplete.length === 0 ? null : (
+            <p className="mt-2 text-sm text-amber-800">
+              <bdi className="tabular">{reconciliation.incomplete.length}</bdi> מהחודשים אינם רשומים
+              במלואם, ולכן החיסכון שלהם נמוך מהאמת — חלק מהפער עשוי להיות רק מה שטרם הוזן.
+            </p>
+          )}
+        </>
+      )}
+
+      {reconciliation.clipped.length === 0 ? null : (
+        <p className="mt-2 text-sm text-stone-500">
+          התקופה חותכת גם את{" "}
+          {reconciliation.clipped.map((month) => formatMonth(month)).join(", ")} — המאזן נרשם
+          בחודשים ואין לו דמות של חצי חודש, ולכן החודשים האלה נאמרים ולא נספרים.
+        </p>
+      )}
+    </section>
+  );
+}
+
+// --- מה הרכיב את השינוי -----------------------------------------------------------
+
+const ATTRIBUTION_LABELS: Record<MovementAttribution, string> = {
+  market: "נע עם השוק",
+  added: "כסף שנוסף",
+  cost: "מוחזק בעלות",
+  opened: "נפתח בתקופה",
+  closed: "נסגר בתקופה",
+};
+
+/**
+ * Every change between two readings, split three ways. The three components are
+ * consecutive differences of the same position, so they add back to the change
+ * exactly — and the panel prints the leftover rather than asserting there is none.
+ */
+function DecompositionPanel({ decomposition }: { decomposition: ChangeDecomposition }) {
+  const { counts } = decomposition;
+
+  return (
+    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <h2 className="text-sm font-semibold tracking-wide text-stone-500">ממה מורכב השינוי</h2>
+        <p className="text-xs text-stone-500">
+          {formatDate(decomposition.earlier.takenOn)} — {formatDate(decomposition.later.takenOn)}
+        </p>
+      </div>
+
+      <div className="mt-3">
+        <p className="text-xs text-stone-500">השינוי בסך הכול</p>
+        <bdi
+          className={`tabular block text-3xl font-semibold ${isNegative(decomposition.change) ? "text-red-800" : ""}`}
+        >
+          {format(decomposition.change)}
+        </bdi>
+        <p className="text-xs text-stone-500">
+          מ־<bdi className="tabular">{format(decomposition.openingTotal)}</bdi> ל־
+          <bdi className="tabular">{format(decomposition.closingTotal)}</bdi>, כל צד בשער של הצילום
+          שלו
+        </p>
+      </div>
+
+      <div className="mt-4 grid gap-4 sm:grid-cols-3">
+        <Component label="כסף שנוסף" amount={decomposition.moneyAdded} note="מה שהופקד או נמשך" />
+        <Component
+          label="תנועת שוק"
+          amount={decomposition.marketMovement}
+          note={
+            counts.market === 0
+              ? "לא סומן אף חשבון כנע עם השוק"
+              : `${counts.market} חשבונות שסומנו כנעים עם השוק`
+          }
+        />
+        <Component
+          label="תנועת שער"
+          amount={decomposition.currencyMovement}
+          note="מה שהשער עשה לכסף שכבר היה שם"
+        />
+      </div>
+
+      <p className="mt-3 text-sm text-stone-600">
+        שלושת הרכיבים הם הפרשים עוקבים של אותה החזקה, ולכן הם מסתכמים בדיוק לשינוי: היתרה היא{" "}
+        <bdi className="tabular font-medium">{format(decomposition.residual)}</bdi>.
+      </p>
+
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full text-sm">
+          <caption className="sr-only">פירוק השינוי לפי חשבון</caption>
+          <thead className="text-xs text-stone-500">
+            <tr className="border-b border-stone-200">
+              <th scope="col" className="py-2 text-start font-medium">
+                חשבון
+              </th>
+              <th scope="col" className="py-2 text-end font-medium">
+                כסף שנוסף
+              </th>
+              <th scope="col" className="py-2 text-end font-medium">
+                תנועת שוק
+              </th>
+              <th scope="col" className="py-2 text-end font-medium">
+                תנועת שער
+              </th>
+              <th scope="col" className="py-2 text-end font-medium">
+                השינוי
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-stone-100">
+            {decomposition.rows.map((row) => (
+              <tr key={row.account.id}>
+                <th scope="row" className="py-2 text-start font-normal">
+                  <bdi>{row.account.name}</bdi>
+                  <span className="ms-2 text-xs text-stone-500">
+                    {ATTRIBUTION_LABELS[row.attribution]}
+                  </span>
+                  {row.unmeasured ? (
+                    <span className="ms-2 text-xs text-amber-800">צד שלא נמדד מעולם</span>
+                  ) : row.measured ? null : (
+                    <span className="ms-2 text-xs text-stone-500">נגרר</span>
+                  )}
+                  {row.openingNative === null || row.closingNative === null ? null : (
+                    <span className="block text-xs text-stone-500">
+                      <bdi className="tabular">{format(row.openingNative)}</bdi> →{" "}
+                      <bdi className="tabular">{format(row.closingNative)}</bdi>
+                    </span>
+                  )}
+                </th>
+                <MoneyCell amount={row.moneyAdded} />
+                <MoneyCell amount={row.marketMovement} />
+                <MoneyCell amount={row.currencyMovement} />
+                <MoneyCell amount={row.change} strong />
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="mt-3 text-sm text-stone-500">
+        שני צילומים רושמים מצב ולא תנועה, ולכן החלוקה בין תנועת שוק לכסף שנוסף אינה נמדדת אלא נקבעת:
+        חשבון שלא סומן כנע עם השוק — כל מה שזז בו נקרא כסף שנוסף, וחשבון המוחזק בעלות אינו יכול
+        לנוע עם שוק כלל (ADR 0003).{" "}
+        <Link href="/settings" className="underline underline-offset-4">
+          קביעת הסימון
+        </Link>
+        {counts.carried === 0 ? null : (
+          <>
+            {" "}
+            · <bdi className="tabular">{counts.carried}</bdi> שורות נגררו ולא נמדדו בתאריך הצילום
+          </>
+        )}
+        {counts.unmeasured === 0 ? null : (
+          <>
+            {" "}
+            · <bdi className="tabular">{counts.unmeasured}</bdi> שורות נשענות על צד שאיש לא מדד
+          </>
+        )}
+      </p>
+    </section>
+  );
+}
+
+function Component({ label, amount, note }: { label: string; amount: Money; note: string }) {
+  return (
+    <div>
+      <p className="text-xs text-stone-500">{label}</p>
+      <bdi className={`tabular block text-2xl ${isNegative(amount) ? "text-red-800" : ""}`}>
+        {format(amount)}
+      </bdi>
+      <p className="mt-1 text-xs text-stone-500">{note}</p>
+    </div>
+  );
+}
+
+function MoneyCell({ amount, strong = false }: { amount: Money; strong?: boolean }) {
+  return (
+    <td className="py-2 text-end">
+      {isZero(amount) ? (
+        <span className="text-stone-400">—</span>
+      ) : (
+        <bdi
+          className={`tabular ${strong ? "font-medium" : ""} ${isNegative(amount) ? "text-red-800" : ""}`}
+        >
+          {format(amount)}
+        </bdi>
+      )}
+    </td>
+  );
+}
+
+/** Why there is no decomposition: one reading, or a reading with no rate to restate it by. */
+function NoDecompositionPanel({
+  snapshots,
+  earlier,
+}: {
+  snapshots: readonly Snapshot[];
+  earlier: Snapshot | null;
+}) {
+  return (
+    <section className="rounded-lg border border-dashed border-stone-300 bg-white/60 p-5 text-sm text-stone-600">
+      {snapshots.length < 2 || earlier === null ? (
+        <>
+          שינוי הוא מה שקרה בין שתי קריאות, ולצילום הזה אין קריאה שקדמה לו.{" "}
+          <Link href="/snapshots" className="underline underline-offset-4">
+            הצילום הבא
+          </Link>{" "}
+          הוא מה שיהפוך את המסלול הזה לפירוק.
+        </>
+      ) : (
+        <>
+          לאחד משני הצילומים — של {formatDate(earlier.takenOn)} או שלאחריו — אין שער לכל מטבע שהוא
+          מחזיק, ולכן אין דרך לפרק את השינוי ביניהם בלי לשאול שער מבחוץ. פירוק כזה היה מספר שאיש
+          לא מדד.
+        </>
+      )}
+    </section>
   );
 }
 

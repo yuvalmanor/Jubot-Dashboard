@@ -280,8 +280,9 @@ comparison with the previous.
 
 - **Per-account differences are in the account's own currency.** Subtracting two converted
   figures taken at different rates mixes what the money did with what the shekel did.
-  Separating those is a later phase's work, so this screen shows a figure no rate can
-  distort, and says outright when the two snapshots' rates differ.
+  Separating those is the decomposition's work, so this screen shows a figure no rate can
+  distort, says outright when the two snapshots' rates differ, and links to the decomposition
+  of exactly that pair.
 - **A row that carried is never presented as a measurement.** `ComparisonKind` says which of
   five things a row is — measured, carried, unmeasured on one side, opened, closed — and it
   is orthogonal to whether the figure moved: a July row carrying April's pension against a
@@ -339,8 +340,8 @@ figure is ambiguous about which reading it belongs to.
   redraw itself when today's rate moves. A snapshot carrying no rate for a currency it holds
   has no point at all: the line breaks there rather than plotting a total that quietly
   dropped the dollar accounts. Each row states how many of its lines were measured on the
-  day, and a change across two different rates is labelled as such — decomposing it is
-  Phase 10's work and nothing here pretends to have done it.
+  day, and a change across two different rates is labelled as such — separating what the
+  money did from what the shekel did is the decomposition's work, below.
 - **Exposure is what an asset *is*.** It is grouped by each Account's own currency and never
   by how the money that bought it was funded. A $104,000 stake is fully exposed even if two
   thirds of it began as shekels — the funding history is not consulted, and could not be:
@@ -364,11 +365,53 @@ figure is ambiguous about which reading it belongs to.
   account cannot make the concentration quietly read as zero. An account marked for the
   watch but absent from the snapshot is reported rather than counted as nothing.
 
+### What a change was made of, and whether it holds
+
+Between two readings, only three things can have happened: money went in or came out, what
+was held moved, or the shekel moved. `decomposeChange` says how much of each, and
+`/net-worth` prints it against the reading before the one being read.
+
+The arithmetic is exact by construction. Each account is read three times — opening at the
+opening rate, opening at the closing rate, closing at the closing rate — and the three
+components are the consecutive differences, so they telescope to the change with nothing
+left over at any rate, however awkward. The screen prints the leftover rather than asserting
+there is none.
+
+The split between market movement and money added is the one part that is *not* arithmetic.
+Two snapshots record positions and not flows, and the household records no transfers, so
+nothing in the data can say whether a fund rose or was paid into. It is therefore declared:
+`/settings` names the accounts that move on their own, and everything else that moved reads
+as money added. Not marking anything is the position the system starts from. An account held
+at cost is refused the mark outright — per [ADR 0003](docs/adr/0003-illiquid-assets-are-held-at-cost.md)
+nothing in it is priced, so its value changes only when more money goes in. An account that
+opened or closed inside the period is money arriving or leaving whatever it is marked as: a
+position nobody held cannot have grown.
+
+`reconcileMoneyAdded` is then the check the spreadsheet never had: money added, against the
+מאזן's own חיסכון for the same period. חיסכון is read through the Ledger, so it is the same
+figure the מאזן screens show and cannot drift from them.
+
+- **The period is the whole calendar months between the two readings.** A month the period
+  only clips is named and left out — the ledger records months, and there is no part-month
+  figure to take. Month ends and month firsts both read a month whole, so when the household
+  takes a snapshot does not decide what may be compared. A period holding no whole month says
+  so instead of comparing against half a month nobody recorded.
+- **The residual is displayed, never absorbed.** Less arrived than was saved: money left
+  without being written down. More arrived than was saved: an income nobody recorded, or
+  movement in an account nobody marked as floating. Both readings are stated on the screen,
+  and months that are only half recorded are named beside them, because an unfinished month
+  understates its own חיסכון and can look exactly like a leak.
+- **It is on the dashboard**, not only on a detail screen — a discrepancy nobody passes is a
+  discrepancy nobody finds. The dashboard reconciles the latest reading against the nearest
+  earlier one the מאזן can answer for, so a weekly cadence does not switch the check off, and
+  it names the period it used. It says just as plainly when the two agree: a check that is
+  only visible when it fails teaches nobody that it is running.
+
 ### Settings
 
 `/settings` holds the household's own dials: the appreciation assumption, the רצוי
-allocation targets, and which accounts the concentration is watched on. Later phases add the
-GP window and the fee and tax rates beside them.
+allocation targets, which accounts the concentration is watched on, and which accounts move
+with a market. Later phases add the GP window and the fee and tax rates beside them.
 
 None of it is a measurement, which is exactly why none of it is a constant in the code — a
 rate that can only move by shipping a deploy stops reading as an assumption and starts

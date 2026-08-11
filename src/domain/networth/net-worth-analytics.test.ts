@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
 
+import {
+  type Categories,
+  EMPTY_CATEGORIES,
+  applyCreation,
+  planPersonalCategoryCreation,
+} from "@/domain/categories/categories";
+import { type Ledger, buildLedger } from "@/domain/ledger/ledger";
 import { type Money, exchangeRate, money } from "@/domain/money/money";
 import {
   type Account,
@@ -10,8 +17,10 @@ import {
   seedSnapshot,
 } from "@/domain/snapshot/snapshot";
 import { type CalendarDate, calendarDate } from "@/domain/time/calendar-date";
+import { type CalendarMonth, calendarMonth } from "@/domain/time/calendar-month";
 
 import {
+  type ChangeDecomposition,
   InvalidAllocationTargetError,
   InvalidAppreciationError,
   allocation,
@@ -20,8 +29,10 @@ import {
   buildAppreciationAssumption,
   concentrationOf,
   currencyExposure,
+  decomposeChange,
   growthFactor,
   netWorthTrajectory,
+  reconcileMoneyAdded,
   targetFor,
 } from "./net-worth-analytics";
 
@@ -488,5 +499,395 @@ describe("concentration", () => {
       concentrationOf({ readings: readings(snapshot), accountIds: [], currency: "ILS" }).share,
     ).toBe(0);
     expect(concentrationOf({ readings: [], accountIds: ["rsu"], currency: "ILS" }).share).toBeNull();
+  });
+});
+
+// --- decomposing a change ------------------------------------------------------
+
+/**
+ * Snapshots over an arbitrary set of accounts, so a test can close one or open one
+ * without disturbing the household's real shape above.
+ */
+function snapshotOver(input: {
+  readonly id: string;
+  readonly takenOn: CalendarDate;
+  readonly rate: number;
+  readonly accounts: readonly Account[];
+  readonly balances: readonly { accountId: string; balance: Money }[];
+}): Snapshot {
+  const seeded = seedSnapshot({
+    id: input.id,
+    takenOn: input.takenOn,
+    rates: [exchangeRate("USD", "ILS", input.rate)],
+    accounts: [...input.accounts],
+    previous: null,
+  });
+  return restate(
+    seeded,
+    input.balances.map((balance) => ({ ...balance, measured: true })),
+  );
+}
+
+/** The wiring, so each test can say only what it is about. */
+function decompose(
+  earlier: Snapshot,
+  later: Snapshot,
+  marketMovingAccountIds: readonly string[] = ["brokerage", "rsu"],
+  over: readonly Account[] = accounts(),
+): ChangeDecomposition {
+  return decomposeChange({
+    earlier,
+    later,
+    accounts: [...over],
+    marketMovingAccountIds,
+    currency: "ILS",
+  });
+}
+
+/** The three components, as the screen reads them off. */
+function parts(decomposition: ChangeDecomposition) {
+  return {
+    moneyAdded: decomposition.moneyAdded,
+    marketMovement: decomposition.marketMovement,
+    currencyMovement: decomposition.currencyMovement,
+  };
+}
+
+describe("decomposing a change between two snapshots", () => {
+  const january = fullSnapshot("s1", d(2025, 1, 31), 3.65);
+
+  /** 20,000₪ into the current account, $4,000 of growth, 5,000₪ of pension, $8,000 into CGM 2. */
+  const july = snapshotOf({
+    id: "s2",
+    takenOn: d(2025, 7, 31),
+    rate: 3.2,
+    balances: [
+      { accountId: "current", balance: ils(120_000) },
+      { accountId: "brokerage", balance: usd(44_000) },
+      { accountId: "rsu", balance: usd(20_000) },
+      { accountId: "pension", balance: ils(305_000) },
+      { accountId: "cgm2", balance: usd(90_000) },
+    ],
+  });
+
+  it("splits the change into money added, market movement and the shekel moving", () => {
+    expect(parts(decompose(january, july))).toEqual({
+      // 20,000₪ + 5,000₪ + $8,000 into CGM 2, at the closing rate.
+      moneyAdded: ils(20_000 + 5_000 + 8_000 * 3.2),
+      // $4,000 of growth, also at the closing rate.
+      marketMovement: ils(4_000 * 3.2),
+      // Every dollar that was already there, revalued from 3.65 to 3.20.
+      currencyMovement: ils(142_000 * (3.2 - 3.65)),
+    });
+  });
+
+  it("adds back to the total change with nothing left over", () => {
+    const decomposition = decompose(january, july);
+
+    expect(decomposition.openingTotal).toEqual(ils(400_000 + 142_000 * 3.65));
+    expect(decomposition.closingTotal).toEqual(ils(425_000 + 154_000 * 3.2));
+    expect(decomposition.change).toEqual(ils(-500));
+    expect(
+      decomposition.moneyAdded.minorUnits +
+        decomposition.marketMovement.minorUnits +
+        decomposition.currencyMovement.minorUnits,
+    ).toBe(decomposition.change.minorUnits);
+    expect(decomposition.residual).toEqual(ils(0));
+  });
+
+  it("leaves no residual at a rate that does not divide evenly", () => {
+    const awkward = snapshotOf({
+      id: "s2",
+      takenOn: d(2025, 7, 31),
+      rate: 3.6547,
+      balances: [
+        { accountId: "current", balance: ils(100_003.33) },
+        { accountId: "brokerage", balance: usd(40_777.77) },
+        { accountId: "rsu", balance: usd(19_333.33) },
+        { accountId: "pension", balance: ils(300_001.01) },
+        { accountId: "cgm2", balance: usd(82_000.01) },
+      ],
+    });
+    const decomposition = decompose(january, awkward);
+
+    expect(decomposition.residual).toEqual(ils(0));
+    for (const row of decomposition.rows) {
+      expect(
+        row.moneyAdded.minorUnits + row.marketMovement.minorUnits + row.currencyMovement.minorUnits,
+      ).toBe(row.change.minorUnits);
+    }
+  });
+
+  it("reads a rate move as the shekel moving and not as growth", () => {
+    const decomposition = decompose(january, fullSnapshot("s2", d(2025, 7, 31), 3.2));
+
+    expect(decomposition.moneyAdded).toEqual(ils(0));
+    expect(decomposition.marketMovement).toEqual(ils(0));
+    expect(decomposition.currencyMovement).toEqual(decomposition.change);
+  });
+
+  it("holds a cost-held account at cost: what changed in it is money that went in", () => {
+    // Marked as moving with a market, which per ADR 0003 it cannot: nothing in it
+    // is priced, so the mark is ignored rather than obeyed.
+    const decomposition = decompose(january, july, ["brokerage", "rsu", "cgm2"]);
+    const cgm2 = decomposition.rows.find((row) => row.account.id === "cgm2");
+
+    expect(cgm2?.attribution).toBe("cost");
+    expect(cgm2?.moneyAdded).toEqual(ils(8_000 * 3.2));
+    expect(cgm2?.marketMovement).toEqual(ils(0));
+  });
+
+  it("starts from assuming nothing floats: an unmarked account reads as money added", () => {
+    const decomposition = decompose(january, july, []);
+
+    expect(decomposition.marketMovement).toEqual(ils(0));
+    expect(decomposition.moneyAdded).toEqual(ils(20_000 + 5_000 + (8_000 + 4_000) * 3.2));
+    expect(decomposition.counts.market).toBe(0);
+    expect(decomposition.counts.added).toBe(4);
+    expect(decomposition.counts.cost).toBe(1);
+  });
+
+  it("reads the earlier date as the opening one whichever way round it is handed in", () => {
+    expect(parts(decompose(july, january))).toEqual(parts(decompose(january, july)));
+  });
+
+  it("counts an account that opened as money arriving, and one that closed as money leaving", () => {
+    const over = [
+      ...accounts().filter((account) => account.id === "current"),
+      buildAccount("closing", {
+        personId: "eden",
+        name: "עובר ושב שנסגר",
+        currency: "ILS",
+        valueBasis: "market",
+        category: "liquid",
+        assetKind: "עובר ושב",
+        openedOn: d(2020, 1, 1),
+        closedOn: d(2025, 3, 31),
+      }),
+      buildAccount("fresh", {
+        personId: "yuval",
+        name: "קרן חדשה",
+        currency: "ILS",
+        valueBasis: "market",
+        category: "investments",
+        assetKind: "קרן כספית",
+        openedOn: d(2025, 5, 1),
+      }),
+    ];
+
+    const before = snapshotOver({
+      id: "s1",
+      takenOn: d(2025, 1, 31),
+      rate: 3.65,
+      accounts: over,
+      balances: [
+        { accountId: "current", balance: ils(100_000) },
+        { accountId: "closing", balance: ils(30_000) },
+      ],
+    });
+    const after = snapshotOver({
+      id: "s2",
+      takenOn: d(2025, 7, 31),
+      rate: 3.65,
+      accounts: over,
+      balances: [
+        { accountId: "current", balance: ils(100_000) },
+        { accountId: "fresh", balance: ils(50_000) },
+      ],
+    });
+
+    const decomposition = decompose(before, after, ["fresh"], over);
+    const byId = new Map(decomposition.rows.map((row) => [row.account.id, row]));
+
+    expect(byId.get("fresh")?.attribution).toBe("opened");
+    expect(byId.get("fresh")?.moneyAdded).toEqual(ils(50_000));
+    expect(byId.get("closing")?.attribution).toBe("closed");
+    expect(byId.get("closing")?.moneyAdded).toEqual(ils(-30_000));
+    // A position nobody held cannot have grown, whatever it is marked as.
+    expect(decomposition.marketMovement).toEqual(ils(0));
+    expect(decomposition.change).toEqual(ils(20_000));
+    expect(decomposition.residual).toEqual(ils(0));
+  });
+
+  it("says when a change rests on a side nobody ever measured", () => {
+    const opening = snapshotOf({
+      id: "s1",
+      takenOn: d(2025, 1, 31),
+      rate: 3.65,
+      balances: [{ accountId: "current", balance: ils(100_000) }],
+    });
+    const closing = snapshotOf({
+      id: "s2",
+      takenOn: d(2025, 7, 31),
+      rate: 3.65,
+      balances: [
+        { accountId: "current", balance: ils(100_000) },
+        { accountId: "pension", balance: ils(300_000) },
+      ],
+    });
+
+    const decomposition = decompose(opening, closing);
+    const pension = decomposition.rows.find((row) => row.account.id === "pension");
+
+    expect(pension?.unmeasured).toBe(true);
+    expect(pension?.moneyAdded).toEqual(ils(300_000));
+    // The pension on one side, and the three nobody has ever valued on both.
+    expect(decomposition.counts.unmeasured).toBe(4);
+  });
+
+  it("counts the rows nobody stated on the day", () => {
+    const carried = seedSnapshot({
+      id: "s2",
+      takenOn: d(2025, 7, 31),
+      rates: [exchangeRate("USD", "ILS", 3.65)],
+      accounts: accounts(),
+      previous: january,
+    });
+    const decomposition = decompose(january, carried);
+
+    expect(decomposition.counts.carried).toBe(5);
+    expect(decomposition.change).toEqual(ils(0));
+  });
+});
+
+// --- the reconciliation against the מאזן ---------------------------------------
+
+/** One person, one income line and one expense line — enough to have a חיסכון. */
+function ledgerCategories(): Categories {
+  return [
+    { key: "salary", name: "משכורת", type: "income" as const },
+    { key: "food", name: "אוכל", type: "expense" as const },
+  ].reduce<Categories>(
+    (model, spec) =>
+      applyCreation(
+        model,
+        planPersonalCategoryCreation(
+          model,
+          {
+            personId: "yuval",
+            name: spec.name,
+            type: spec.type,
+            activeFrom: calendarMonth(2024, 1),
+            household: { kind: "new", name: `${spec.name} (משותף)` },
+          },
+          { personalCategoryId: `p-${spec.key}`, householdCategoryId: `h-${spec.key}` },
+        ),
+      ),
+    EMPTY_CATEGORIES,
+  );
+}
+
+function ledgerOf(
+  months: readonly { month: CalendarMonth; income: number; food: number }[],
+): Ledger {
+  return buildLedger({
+    entered: months.flatMap((entry) => [
+      { personalCategoryId: "p-salary", month: entry.month, amount: ils(entry.income) },
+      { personalCategoryId: "p-food", month: entry.month, amount: ils(entry.food) },
+    ]),
+  });
+}
+
+describe("reconciling money added against the מאזן", () => {
+  const categories = ledgerCategories();
+
+  /** 20,000₪ arrived in the current account between the two readings. */
+  function decompositionOver(from: CalendarDate, to: CalendarDate): ChangeDecomposition {
+    return decompose(
+      snapshotOf({
+        id: "s1",
+        takenOn: from,
+        rate: 3.65,
+        balances: [{ accountId: "current", balance: ils(100_000) }],
+      }),
+      snapshotOf({
+        id: "s2",
+        takenOn: to,
+        rate: 3.65,
+        balances: [{ accountId: "current", balance: ils(120_000) }],
+      }),
+    );
+  }
+
+  it("compares money added against חיסכון over the whole months between the readings", () => {
+    const reconciliation = reconcileMoneyAdded({
+      decomposition: decompositionOver(d(2025, 1, 31), d(2025, 4, 30)),
+      ledger: ledgerOf([
+        { month: calendarMonth(2025, 1), income: 30_000, food: 10_000 },
+        { month: calendarMonth(2025, 2), income: 30_000, food: 22_000 },
+        { month: calendarMonth(2025, 3), income: 30_000, food: 23_000 },
+        { month: calendarMonth(2025, 4), income: 30_000, food: 24_000 },
+      ]),
+      categories,
+    });
+
+    // February, March and April. January is only clipped by the period, so its
+    // חיסכון is named as left out rather than counted or quietly halved.
+    expect(reconciliation.months.map((month) => month.month.month)).toEqual([2, 3, 4]);
+    expect(reconciliation.clipped.map((month) => month.month)).toEqual([1]);
+    expect(reconciliation.saving).toEqual(ils(8_000 + 7_000 + 6_000));
+    expect(reconciliation.moneyAdded).toEqual(ils(20_000));
+    expect(reconciliation.residual).toEqual(ils(-1_000));
+    expect(reconciliation.holds).toBe(false);
+  });
+
+  it("holds when the two halves agree exactly", () => {
+    const reconciliation = reconcileMoneyAdded({
+      decomposition: decompositionOver(d(2025, 1, 31), d(2025, 3, 31)),
+      ledger: ledgerOf([
+        { month: calendarMonth(2025, 2), income: 30_000, food: 18_000 },
+        { month: calendarMonth(2025, 3), income: 30_000, food: 22_000 },
+      ]),
+      categories,
+    });
+
+    expect(reconciliation.saving).toEqual(ils(20_000));
+    expect(reconciliation.residual).toEqual(ils(0));
+    expect(reconciliation.holds).toBe(true);
+  });
+
+  it("reads a month whole when the readings sit on its first day and the next month's alike", () => {
+    const reconciliation = reconcileMoneyAdded({
+      decomposition: decompositionOver(d(2025, 1, 1), d(2025, 2, 1)),
+      ledger: ledgerOf([{ month: calendarMonth(2025, 1), income: 30_000, food: 10_000 }]),
+      categories,
+    });
+
+    expect(reconciliation.months.map((month) => month.month.month)).toEqual([1]);
+    expect(reconciliation.saving).toEqual(ils(20_000));
+    expect(reconciliation.holds).toBe(true);
+  });
+
+  it("has nothing to compare against when the period holds no whole month", () => {
+    const reconciliation = reconcileMoneyAdded({
+      decomposition: decompositionOver(d(2025, 1, 31), d(2025, 2, 10)),
+      ledger: ledgerOf([{ month: calendarMonth(2025, 2), income: 30_000, food: 10_000 }]),
+      categories,
+    });
+
+    expect(reconciliation.months).toEqual([]);
+    expect(reconciliation.clipped.map((month) => month.month)).toEqual([1, 2]);
+    expect(reconciliation.saving).toBeNull();
+    expect(reconciliation.residual).toBeNull();
+    expect(reconciliation.holds).toBe(false);
+  });
+
+  it("names the months that are only half recorded rather than reading them as cheap", () => {
+    const reconciliation = reconcileMoneyAdded({
+      decomposition: decompositionOver(d(2025, 1, 31), d(2025, 3, 31)),
+      ledger: buildLedger({
+        entered: [
+          { personalCategoryId: "p-salary", month: calendarMonth(2025, 2), amount: ils(30_000) },
+          { personalCategoryId: "p-food", month: calendarMonth(2025, 2), amount: ils(10_000) },
+          // March holds an income and no expense: a month in progress.
+          { personalCategoryId: "p-salary", month: calendarMonth(2025, 3), amount: ils(30_000) },
+        ],
+      }),
+      categories,
+    });
+
+    expect(reconciliation.incomplete.map((month) => month.month)).toEqual([3]);
+    expect(reconciliation.saving).toEqual(ils(50_000));
+    expect(reconciliation.residual).toEqual(ils(-30_000));
   });
 });

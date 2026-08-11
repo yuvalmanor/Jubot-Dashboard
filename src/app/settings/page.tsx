@@ -21,6 +21,7 @@ import {
   setAllocationTargets,
   setAppreciation,
   setConcentrationAccounts,
+  setMarketMovingAccounts,
 } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -73,6 +74,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <AppreciationPanel settings={loaded.settings} />
             <TargetsPanel settings={loaded.settings} />
             <ConcentrationPanel settings={loaded.settings} accounts={loaded.accounts} />
+            <MarketMovingPanel settings={loaded.settings} accounts={loaded.accounts} />
           </>
         ) : (
           <UnavailablePanel reason={loaded.reason} />
@@ -250,6 +252,82 @@ function ConcentrationPanel({
   );
 }
 
+// --- what a change decomposition may call market movement ---------------------
+
+function MarketMovingPanel({
+  settings,
+  accounts,
+}: {
+  settings: HouseholdSettings;
+  accounts: readonly Account[];
+}) {
+  const open = accountsOpenOn(accounts, dateOf(new Date()));
+  const marked = new Set(settings.marketMovingAccountIds);
+
+  return (
+    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
+      <h2 className="text-sm font-semibold tracking-wide text-stone-500">חשבונות שנעים עם השוק</h2>
+      <p className="mt-1 text-sm text-stone-600">
+        שני צילומים רושמים מצב ולא תנועה, ולכן שום נתון אינו יכול לומר אם קרן עלתה או שהופקד לתוכה
+        כסף. זו ההכרעה היחידה בפירוק השינוי, והיא של משק הבית: מה שסומן כאן נקרא{" "}
+        <span className="font-medium">תנועת שוק</span>, וכל שאר מה שזז נקרא{" "}
+        <span className="font-medium">כסף שנוסף</span>. לא לסמן דבר זו עמדה — ממנה המערכת מתחילה.
+      </p>
+
+      {open.length === 0 ? (
+        <p className="mt-3 text-sm text-stone-600">
+          אין חשבונות פתוחים.{" "}
+          <Link href="/accounts" className="underline underline-offset-4">
+            הגדרת חשבון
+          </Link>{" "}
+          קודמת לכל דבר אחר כאן.
+        </p>
+      ) : (
+        <form action={setMarketMovingAccounts} className="mt-4">
+          <ul className="space-y-2">
+            {open.map((account) => {
+              const heldAtCost = account.valueBasis === "cost";
+
+              return (
+                <li key={account.id}>
+                  <label
+                    className={`flex flex-wrap items-center gap-3 text-sm ${heldAtCost ? "text-stone-400" : ""}`}
+                  >
+                    <input
+                      type="checkbox"
+                      name="accountId"
+                      value={account.id}
+                      defaultChecked={marked.has(account.id)}
+                      disabled={heldAtCost}
+                      className="size-4 rounded border-stone-300"
+                    />
+                    <span className="font-medium">
+                      <bdi>{account.name}</bdi>
+                    </span>
+                    <span className="text-xs text-stone-500">
+                      {ASSET_CATEGORY_LABELS[account.category]} · <bdi>{account.assetKind}</bdi> ·{" "}
+                      {VALUE_BASIS_LABELS[account.valueBasis]} · <bdi>{account.currency}</bdi>
+                    </span>
+                    {heldAtCost ? (
+                      <span className="text-xs text-stone-500">
+                        מוחזק בעלות — אין בו מחיר, ולכן אין בו תנועת שוק (ADR 0003)
+                      </span>
+                    ) : null}
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+
+          <div className="mt-4">
+            <SaveButton label="שמירת הסימון" />
+          </div>
+        </form>
+      )}
+    </section>
+  );
+}
+
 // --- shared ------------------------------------------------------------------
 
 function SaveButton({ label }: { label: string }) {
@@ -274,6 +352,7 @@ const DONE_MESSAGES: Record<string, string> = {
   appreciation: "ההנחה נשמרה. כל מספר שמשתמש בה יאמר אותה במפורש.",
   targets: "היעדים נשמרו.",
   concentration: "המעקב נשמר.",
+  "market-moving": "הסימון נשמר. פירוק השינוי ייקרא לפיו, ויאמר על מה הוא נשען.",
 };
 
 function isErrorCode(value: string | undefined): value is SettingsErrorCode {

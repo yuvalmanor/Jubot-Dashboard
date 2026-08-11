@@ -8,6 +8,7 @@ import {
   saveAllocationTargets,
   saveAppreciation,
   saveConcentrationAccounts,
+  saveMarketMovingAccounts,
 } from "@/db/settings";
 import {
   InvalidAllocationTargetError,
@@ -105,6 +106,8 @@ async function run(work: () => Promise<Outcome>): Promise<never> {
   }
   revalidatePath("/settings");
   revalidatePath("/net-worth");
+  // The dashboard carries the reconciliation, which reads the marks below.
+  revalidatePath("/");
   backTo(outcome);
 }
 
@@ -159,5 +162,22 @@ export async function setConcentrationAccounts(form: FormData): Promise<void> {
     const ids = form.getAll("accountId").filter((value): value is string => typeof value === "string");
     await saveConcentrationAccounts(ids);
     return { code: null, done: "concentration" };
+  });
+}
+
+/**
+ * Which accounts move on their own. This is the one judgement in the change
+ * decomposition, and it is the household's: two snapshots record positions and
+ * not flows, so nothing in the data can say whether a fund grew or was paid into.
+ * Marking none of them is a position — everything that moved reads as money added
+ * — and it is where the system starts.
+ */
+export async function setMarketMovingAccounts(form: FormData): Promise<void> {
+  await requireSignedIn();
+
+  await run(async () => {
+    const ids = form.getAll("accountId").filter((value): value is string => typeof value === "string");
+    await saveMarketMovingAccounts(ids);
+    return { code: null, done: "market-moving" };
   });
 }

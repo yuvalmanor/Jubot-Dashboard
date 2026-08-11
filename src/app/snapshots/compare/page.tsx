@@ -33,9 +33,9 @@ export const dynamic = "force-dynamic";
  *
  * Every per-account difference here is in the account's own currency, so no rate
  * touches it. Restating a change across two snapshots taken at different rates
- * would mix what the money did with what the shekel did, and separating those is
- * a later phase's work — this screen says what moved and, just as importantly,
- * which rows nobody actually measured.
+ * would mix what the money did with what the shekel did; separating those is the
+ * decomposition's work on `/net-worth`, which this screen links to. Here the
+ * question is what moved and, just as importantly, which rows nobody measured.
  */
 
 const READING_CURRENCY = "ILS" as const;
@@ -324,8 +324,14 @@ function TotalsPanel({
           <bdi className="tabular block text-2xl font-semibold">{format(totals.change)}</bdi>
           {totals.rateChanged ? (
             <p className="mt-1 text-xs text-amber-800">
-              שער הצילומים אינו זהה, ולכן ההפרש הזה מערבב תנועה של כסף עם תנועה של שער. פירוק
-              ההפרש לרכיביו אינו חלק מהמסך הזה.
+              שער הצילומים אינו זהה, ולכן ההפרש הזה מערבב תנועה של כסף עם תנועה של שער.{" "}
+              <Link
+                href={`/net-worth?snapshot=${later.id}&from=${earlier.id}` as Route}
+                className="underline underline-offset-4"
+              >
+                פירוק השינוי
+              </Link>{" "}
+              הוא מה שמפריד ביניהן.
             </p>
           ) : (
             <p className="mt-1 text-xs text-stone-500">שני הצילומים נקראים באותו שער.</p>

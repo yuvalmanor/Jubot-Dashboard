@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
 
+import { calendarMonth } from "./calendar-month";
 import {
   InvalidCalendarDateError,
   calendarDate,
   compareDates,
+  containsWholeMonth,
   dateKey,
   dateOf,
   datesEqual,
+  firstDayOf,
   formatDate,
+  lastDayOf,
+  monthContaining,
   parseDateKey,
   tryParseDateKey,
   wholeYearsBetween,
@@ -95,6 +100,27 @@ describe("wholeYearsBetween", () => {
 describe("dateOf", () => {
   it("reads the local calendar day of a moment, taking the clock as a parameter", () => {
     expect(dateOf(new Date(2025, 7, 31, 23, 30))).toEqual(calendarDate(2025, 8, 31));
+  });
+});
+
+describe("the month a day belongs to", () => {
+  it("names the month, and the first and last day of it", () => {
+    expect(monthContaining(calendarDate(2025, 2, 17))).toEqual(calendarMonth(2025, 2));
+    expect(firstDayOf(calendarMonth(2025, 2))).toEqual(calendarDate(2025, 2, 1));
+    expect(lastDayOf(calendarMonth(2025, 2))).toEqual(calendarDate(2025, 2, 28));
+    // A leap February, read off the calendar rather than off a table of 28s.
+    expect(lastDayOf(calendarMonth(2024, 2))).toEqual(calendarDate(2024, 2, 29));
+  });
+
+  it("contains a whole month only when it contains every day of it", () => {
+    const march = calendarMonth(2025, 3);
+
+    expect(containsWholeMonth(calendarDate(2025, 3, 1), calendarDate(2025, 3, 31), march)).toBe(true);
+    // Month ends and month firsts both read the month whole, so the household's
+    // choice of when to take a snapshot does not decide what may be compared.
+    expect(containsWholeMonth(calendarDate(2025, 2, 28), calendarDate(2025, 4, 1), march)).toBe(true);
+    expect(containsWholeMonth(calendarDate(2025, 3, 2), calendarDate(2025, 3, 31), march)).toBe(false);
+    expect(containsWholeMonth(calendarDate(2025, 3, 1), calendarDate(2025, 3, 30), march)).toBe(false);
   });
 });
 
