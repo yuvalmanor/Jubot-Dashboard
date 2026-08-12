@@ -6,15 +6,27 @@ import { redirect } from "next/navigation";
 
 import { loadAccounts } from "@/db/accounts";
 import { findPersonByEmail } from "@/db/people";
+import { loadRsuRecords } from "@/db/rsu";
+import { loadHouseholdSettings } from "@/db/settings";
 import {
   findSnapshot,
+  findSnapshotHeader,
   findSnapshotBefore,
   insertSnapshot,
   saveSnapshotLines,
+  saveSnapshotRsuPrice,
 } from "@/db/snapshots";
 import { type Money, InvalidMoneyError, exchangeRate, parseMoneyInput } from "@/domain/money/money";
 import {
+  type SharePrice,
+  InvalidSharePriceError,
+  parseSharePriceInput,
+  readPosition,
+} from "@/domain/rsu/rsu-position";
+import { readRsuLine, rsuStatement } from "@/domain/snapshot/rsu-line";
+import {
   type AccountStatement,
+  type Snapshot,
   MalformedSnapshotError,
   MissingSnapshotRateError,
   SnapshotOrderError,
@@ -47,6 +59,7 @@ export type SnapshotsErrorCode =
   | "bad-date"
   | "bad-rate"
   | "bad-amount"
+  | "bad-share-price"
   | "out-of-order"
   | "duplicate-date"
   | "unknown-snapshot"
@@ -87,6 +100,7 @@ function isUniqueViolation(error: unknown): boolean {
 }
 
 function failureFor(error: unknown): Outcome {
+  if (error instanceof InvalidSharePriceError) return { code: "bad-share-price", detail: error.message };
   if (error instanceof BadAmountError) return { code: "bad-amount", detail: error.accountName };
   if (error instanceof NoAccountsError) return { code: "no-accounts" };
   if (error instanceof InvalidMoneyError) return { code: "bad-rate", detail: error.message };
@@ -115,6 +129,46 @@ function backTo(outcome: Outcome): never {
 function readText(form: FormData, field: string): string {
   const value = form.get(field);
   return typeof value === "string" ? value : "";
+}
+
+/**
+ * The RSU account's restatement for a snapshot, worked out rather than read off
+ * the form — there is no field for it.
+ *
+ * The position is read as of the snapshot's own date, so a snapshot of January
+ * holds January's shares however many sales have been recorded since; the price is
+ * the one stored on that snapshot, so its dollar figure is what a share cost that
+ * day; and the conversion into the account's currency is `convertWithin`, which
+ * can only reach the snapshot's own rate. Nothing about the figure can be typed,
+ * and nothing about it can drift.
+ */
+async function derivedRsuStatement(
+  snapshot: Snapshot,
+  price: SharePrice | null,
+): Promise<AccountStatement | null> {
+  if (price === null) return null;
+
+  const [settings, records, accounts] = await Promise.all([
+    loadHouseholdSettings(),
+    loadRsuRecords(),
+    loadAccounts(),
+  ]);
+  if (settings.rsuAccountId === null) return null;
+
+  return rsuStatement(
+    readRsuLine({
+      snapshot,
+      accounts,
+      accountId: settings.rsuAccountId,
+      position: readPosition({ ...records, asOf: snapshot.takenOn }),
+      price,
+    }),
+  );
+}
+
+/** The share price a reading was taken at. Blank is nothing stated, never nought. */
+function sharePriceFrom(form: FormData, field: string): SharePrice | null {
+  return parseSharePriceInput(readText(form, field), "USD");
 }
 
 async function requirePersonId(): Promise<string> {
@@ -158,7 +212,7 @@ export async function takeSnapshot(form: FormData): Promise<void> {
       throw new NoAccountsError();
     }
 
-    const snapshot = seedSnapshot({
+    const seeded = seedSnapshot({
       id: crypto.randomUUID(),
       takenOn,
       // One rate, stored on the snapshot. Every dollar figure inside it converts
@@ -168,8 +222,15 @@ export async function takeSnapshot(form: FormData): Promise<void> {
       previous: await findSnapshotBefore(takenOn),
     });
 
+    // The share price is stored beside the rate for the same reason, and the RSU
+    // line is derived from it before the snapshot is written — so the holding is
+    // never once in a state where somebody could have typed it.
+    const rsuPrice = sharePriceFrom(form, "sharePrice");
+    const statement = await derivedRsuStatement(seeded, rsuPrice);
+    const snapshot = statement === null ? seeded : restate(seeded, [statement]);
+
     const note = readText(form, "note").trim();
-    await insertSnapshot(snapshot, note.length === 0 ? null : note);
+    await insertSnapshot(snapshot, { note: note.length === 0 ? null : note, rsuPrice });
     return { code: null, done: "taken", snapshotId: snapshot.id };
   });
 }
@@ -177,6 +238,10 @@ export async function takeSnapshot(form: FormData): Promise<void> {
 /**
  * Restate a snapshot. A figure that changed is a measurement; one resubmitted
  * unchanged is not, unless the reader ticked נמדד to say they looked at it.
+ *
+ * The RSU account is the one row with no amount on this form. Its figure is
+ * derived from the position and the share price below, so submitting the form is
+ * also what brings it back into agreement after a vest or a sale was recorded.
  */
 export async function restateSnapshot(form: FormData): Promise<void> {
   await requirePersonId();
@@ -188,6 +253,13 @@ export async function restateSnapshot(form: FormData): Promise<void> {
       throw new UnknownSnapshotError(snapshotId);
     }
     const accounts = await loadAccounts();
+
+    // Read before the lines, so an unreadable price refuses the whole submission
+    // rather than writing half of it. A form that carries no price field at all —
+    // there is no RSU account named — leaves whatever the snapshot already holds.
+    const rsuPrice = form.has("sharePrice")
+      ? sharePriceFrom(form, "sharePrice")
+      : (await findSnapshotHeader(snapshotId))?.rsuPrice ?? null;
 
     const statements: AccountStatement[] = [];
     for (const line of snapshot.lines) {
@@ -210,6 +282,12 @@ export async function restateSnapshot(form: FormData): Promise<void> {
         measured: form.get(`${MEASURED_FIELD_PREFIX}${line.accountId}`) !== null,
       });
     }
+
+    if (form.has("sharePrice")) {
+      await saveSnapshotRsuPrice(snapshotId, rsuPrice);
+    }
+    const derived = await derivedRsuStatement(snapshot, rsuPrice);
+    if (derived !== null) statements.push(derived);
 
     await saveSnapshotLines(restate(snapshot, statements));
     return { code: null, done: "restated", snapshotId };

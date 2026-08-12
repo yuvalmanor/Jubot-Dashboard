@@ -45,7 +45,9 @@ import {
   UnavailablePanel,
   windowInWords,
 } from "./panels";
-import { SalePricingPanel, WaitingPanel, latestKnownPrice } from "./tax-panels";
+import { FundingPanel, SchedulePanel, readTarget } from "./funding-panels";
+import { latestKnownPrice } from "./known-price";
+import { SalePricingPanel, WaitingPanel } from "./tax-panels";
 
 export const dynamic = "force-dynamic";
 
@@ -67,6 +69,8 @@ interface SearchParams {
   asOf?: string | string[];
   sellShares?: string | string[];
   sellPrice?: string | string[];
+  target?: string | string[];
+  targetDate?: string | string[];
 }
 
 function first(value: string | string[] | undefined): string | undefined {
@@ -95,6 +99,9 @@ export default async function RsuPage({ searchParams }: { searchParams: Promise<
   const params = await searchParams;
   const today = dateOf(new Date());
   const asOf = tryParseDateKey(first(params.asOf)) ?? today;
+  // The funding question is asked about a date of its own: money needed in
+  // November may be raised out of a lot that vests in October.
+  const targetDate = tryParseDateKey(first(params.targetDate)) ?? asOf;
   const loaded = await loadPage(email, asOf);
 
   return (
@@ -127,6 +134,20 @@ export default async function RsuPage({ searchParams }: { searchParams: Promise<
               position={loaded.position}
               rates={loaded.rates}
               fees={loaded.fees}
+              salePrice={readPrice(first(params.sellPrice))}
+              known={latestKnownPrice(loaded.records)}
+            />
+            <FundingPanel
+              position={readPosition({ ...loaded.records, asOf: targetDate })}
+              target={readTarget(first(params.target))}
+              targetDate={targetDate}
+              salePrice={readPrice(first(params.sellPrice))}
+              known={latestKnownPrice(loaded.records)}
+              rates={loaded.rates}
+              fees={loaded.fees}
+            />
+            <SchedulePanel
+              position={loaded.position}
               salePrice={readPrice(first(params.sellPrice))}
               known={latestKnownPrice(loaded.records)}
             />

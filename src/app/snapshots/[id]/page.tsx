@@ -8,8 +8,16 @@ import { loadAccounts } from "@/db/accounts";
 import { DatabaseNotConfiguredError } from "@/db/client";
 import { loadEarmarks, loadPositions } from "@/db/holdings";
 import { type Person, findPersonByEmail, listPeople } from "@/db/people";
+import { loadRsuRecords } from "@/db/rsu";
+import { loadHouseholdSettings } from "@/db/settings";
 import { type SnapshotHeader, findSnapshot, findSnapshotHeader, loadSnapshotHeaders } from "@/db/snapshots";
 import { type Currency, format, isNegative, toDecimalString } from "@/domain/money/money";
+import {
+  formatSharePrice,
+  readPosition,
+  sharePriceToDecimalString,
+} from "@/domain/rsu/rsu-position";
+import { type RsuLineReading, readRsuLine } from "@/domain/snapshot/rsu-line";
 import {
   type AccountEarmarks,
   type Earmark,
@@ -44,7 +52,7 @@ import {
   snapshotReadings,
   snapshotTotal,
 } from "@/domain/snapshot/snapshot";
-import { compareDates, formatDate } from "@/domain/time/calendar-date";
+import { type CalendarDate, compareDates, formatDate } from "@/domain/time/calendar-date";
 import { requireHouseholdEmail } from "@/session";
 
 import { fillMissingAccounts, restateSnapshot } from "../actions";
@@ -111,6 +119,7 @@ export default async function SnapshotPage({
               people={loaded.people}
               positions={loaded.positions}
               earmarks={loaded.earmarks}
+              rsu={loaded.rsu}
             />
           </>
         ) : (
@@ -135,6 +144,8 @@ type Loaded =
       history: readonly SnapshotHeader[];
       positions: readonly Position[];
       earmarks: readonly Earmark[];
+      /** The RSU account's line as the position and this snapshot's price say it must be. */
+      rsu: RsuLineReading;
     }
   | { kind: "missing" }
   | { kind: "unavailable"; reason: string };
@@ -148,15 +159,18 @@ async function loadPage(email: string, id: string): Promise<Loaded> {
         reason: `הכתובת ${email} אינה משויכת לאף אדם בטבלת people. יש לעדכן את שתי הכתובות במסד (ראו README).`,
       };
     }
-    const [people, accounts, snapshot, header, history, positions, earmarks] = await Promise.all([
-      listPeople(),
-      loadAccounts(),
-      findSnapshot(id),
-      findSnapshotHeader(id),
-      loadSnapshotHeaders(),
-      loadPositions(),
-      loadEarmarks(),
-    ]);
+    const [people, accounts, snapshot, header, history, positions, earmarks, settings, records] =
+      await Promise.all([
+        listPeople(),
+        loadAccounts(),
+        findSnapshot(id),
+        findSnapshotHeader(id),
+        loadSnapshotHeaders(),
+        loadPositions(),
+        loadEarmarks(),
+        loadHouseholdSettings(),
+        loadRsuRecords(),
+      ]);
     if (snapshot === null) return { kind: "missing" };
     return {
       kind: "ok",
@@ -168,6 +182,15 @@ async function loadPage(email: string, id: string): Promise<Loaded> {
       history,
       positions,
       earmarks,
+      // The position as of *this snapshot's* date, never today's: a sale made in
+      // March cannot reach back and reduce January's reading.
+      rsu: readRsuLine({
+        snapshot,
+        accounts,
+        accountId: settings.rsuAccountId,
+        position: readPosition({ ...records, asOf: snapshot.takenOn }),
+        price: header?.rsuPrice ?? null,
+      }),
     };
   } catch (error) {
     if (error instanceof DatabaseNotConfiguredError) {
@@ -237,12 +260,14 @@ function SnapshotView({
   people,
   positions,
   earmarks,
+  rsu,
 }: {
   snapshot: Snapshot;
   accounts: readonly Account[];
   people: readonly Person[];
   positions: readonly Position[];
   earmarks: readonly Earmark[];
+  rsu: RsuLineReading;
 }) {
   // Every screen figure is converted at the snapshot's own rate, so a snapshot
   // without one is readable in native currencies and rolls up to nothing. Taking
@@ -309,6 +334,8 @@ function SnapshotView({
         </div>
       )}
 
+      <RsuHoldingPanel rsu={rsu} snapshot={snapshot} />
+
       <EarmarksPanel funding={earmarkFunding({ snapshot, accounts, earmarks })} />
 
       {convertible ? (
@@ -320,6 +347,8 @@ function SnapshotView({
         snapshotId={snapshot.id}
         people={people}
         positions={positions}
+        rsu={rsu}
+        takenOn={snapshot.takenOn}
       />
     </div>
   );
@@ -584,6 +613,103 @@ function NativeAndConverted({ reading }: { reading: ConvertedReading }) {
   );
 }
 
+// --- the RSU holding ---------------------------------------------------------
+
+/**
+ * The one line on this screen nobody typed. Its share count comes from the
+ * recorded grants, vests and sales as of this snapshot's own date; its price is
+ * the one stored on the snapshot, the way the exchange rate is; and if the account
+ * is not held in dollars, the conversion is the snapshot's own rate and can be
+ * nothing else.
+ *
+ * The panel shows the arithmetic rather than only its answer, so the household can
+ * check the figure instead of trusting it — and reports a recorded figure that has
+ * fallen out of step rather than quietly rewriting it.
+ */
+function RsuHoldingPanel({ rsu, snapshot }: { rsu: RsuLineReading; snapshot: Snapshot }) {
+  if (rsu.kind === "unnamed") return null;
+
+  return (
+    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
+      <h2 className="text-sm font-semibold tracking-wide text-stone-500">
+        החזקת ה־<bdi>RSU</bdi> במיפוי — נגזרת
+      </h2>
+
+      {rsu.kind === "unknown" ? (
+        <p className="mt-2 text-sm text-amber-800">
+          ההגדרות מפנות לחשבון <bdi>{rsu.accountId}</bdi> שאינו קיים.{" "}
+          <Link href="/settings" className="underline underline-offset-4">
+            בחירת חשבון
+          </Link>
+        </p>
+      ) : rsu.kind === "not-open" ? (
+        <p className="mt-2 text-sm text-stone-600">
+          <bdi className="font-medium">{rsu.account.name}</bdi> נפתח אחרי {formatDate(snapshot.takenOn)},
+          ולכן אין בצילום הזה שורה שלו ואין לתוכה מה לגזור.
+        </p>
+      ) : rsu.kind === "unpriced" ? (
+        <p className="mt-2 text-sm text-amber-800">
+          לצילום הזה לא נרשם מחיר למניה, ולכן אין ממה לגזור את היתרה של{" "}
+          <bdi className="font-medium">{rsu.account.name}</bdi>. מוחזקות{" "}
+          <bdi className="tabular">{rsu.shares}</bdi> מניות; הסכום הרשום כרגע נשאר כפי שהוא ולא מאופס.
+          המחיר נרשם בטופס שלמטה.
+        </p>
+      ) : rsu.kind === "unconvertible" ? (
+        <p className="mt-2 text-sm text-amber-800">
+          ההחזקה היא <bdi className="tabular">{format(rsu.holding.value)}</bdi>, אך הצילום הזה אינו
+          נושא שער שממיר <bdi>{rsu.holding.value.currency}</bdi> ל־<bdi>{rsu.account.currency}</bdi>.
+          המרה בשער אחר תהיה שער שאיש לא נקב בו, ולכן אין המרה.
+        </p>
+      ) : (
+        <>
+          <p className="mt-2 text-2xl font-semibold">
+            <bdi className="tabular">{format(rsu.balance)}</bdi>
+          </p>
+          <p className="mt-1 text-sm text-stone-600">
+            <bdi className="tabular">{rsu.holding.shares}</bdi> מניות מוחזקות ב־
+            {formatDate(rsu.holding.asOf)} × <bdi className="tabular">{formatSharePrice(rsu.holding.price)}</bdi>{" "}
+            = <bdi className="tabular">{format(rsu.holding.value)}</bdi>
+            {rsu.account.currency === rsu.holding.value.currency ? null : (
+              <>
+                , בשער של הצילום —{" "}
+                <bdi className="tabular">
+                  {hasRateWithin(snapshot, "USD", "ILS") ? rateWithin(snapshot, "USD", "ILS").rate : "—"}
+                </bdi>
+              </>
+            )}
+            .
+          </p>
+          <p className="mt-1 text-sm text-stone-600">
+            מספר המניות אינו מוקלד בשום מקום — הוא נגזר מההקצאות, ההבשלות והמכירות הרשומות ב־
+            <Link href="/rsu" className="underline underline-offset-4">
+              מחשבון RSU
+            </Link>
+            . לכן ההחזקה אינה מתוחזקת בשני מקומות ואינה יכולה להיפרד מעצמה.
+          </p>
+
+          {rsu.recorded === null ? (
+            <p className="mt-3 text-sm text-amber-800">
+              הצילום עדיין אינו נושא שורה לחשבון הזה. שמירת הטופס למטה תכתוב אותה.
+            </p>
+          ) : rsu.agrees ? (
+            <p className="mt-3 text-sm font-medium text-emerald-800">
+              זה בדיוק מה שרשום בצילום.
+            </p>
+          ) : (
+            <p className="mt-3 text-sm text-amber-800">
+              בצילום רשום כרגע <bdi className="tabular">{format(rsu.recorded)}</bdi> — הפרש של{" "}
+              <bdi className="tabular font-medium">
+                {rsu.difference === null ? "—" : format(rsu.difference)}
+              </bdi>
+              . המצב הרשום השתנה מאז; שמירת הטופס למטה תגזור מחדש.
+            </p>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
 // --- ייעודים -----------------------------------------------------------------
 
 const STATUS_STYLES = {
@@ -740,14 +866,26 @@ function RestateForm({
   snapshotId,
   people,
   positions,
+  rsu,
+  takenOn,
 }: {
   readings: readonly SnapshotReading[];
   snapshotId: string;
   people: readonly Person[];
   positions: readonly Position[];
+  rsu: RsuLineReading;
+  takenOn: CalendarDate;
 }) {
   const nameOf = (personId: string) =>
     people.find((person) => person.id === personId)?.displayName ?? personId;
+
+  // The one account with no amount field on this form. Everything about its
+  // balance is derived, so offering a box to type it in would be offering a way
+  // to disagree with the records.
+  const derivedAccountId =
+    rsu.kind === "derived" || rsu.kind === "unpriced" || rsu.kind === "unconvertible"
+      ? rsu.account.id
+      : null;
 
   return (
     <form action={restateSnapshot} className="space-y-6">
@@ -758,6 +896,8 @@ function RestateForm({
         שנשלח כמו שהוא נשאר גרור — אלא אם סימנתם <span className="font-medium">נמדד</span>, שזו הדרך
         להגיד ״הסתכלתי, וזה באמת הערך״.
       </p>
+
+      <RsuPriceField rsu={rsu} takenOn={takenOn} />
 
       {/* Grouped from the readings themselves, so the form renders with no rate at all. */}
       {ASSET_CATEGORIES.flatMap((category) => {
@@ -786,29 +926,45 @@ function RestateForm({
                     <SourceBadge reading={reading} />
                   </div>
 
-                  <label className="block">
-                    <span className="block text-xs text-stone-500">
-                      יתרה ב־<bdi>{reading.account.currency}</bdi>
-                    </span>
-                    {/* The exact decimal goes back in, so a row nobody touches
-                        round-trips to the same minor units and stays carried. */}
-                    <input
-                      name={`amount:${reading.account.id}`}
-                      defaultValue={toDecimalString(reading.native)}
-                      inputMode="decimal"
-                      dir="ltr"
-                      className="tabular mt-1 w-40 rounded-md border border-stone-300 px-3 py-2 text-end"
-                    />
-                  </label>
+                  {reading.account.id === derivedAccountId ? (
+                    <div className="pb-2">
+                      <p className="text-xs text-stone-500">
+                        יתרה ב־<bdi>{reading.account.currency}</bdi>
+                      </p>
+                      <p className="tabular mt-1 text-lg font-medium">
+                        <bdi>{format(reading.native)}</bdi>
+                      </p>
+                      <p className="text-xs text-stone-500">
+                        נגזרת מהמצב הרשום ומהמחיר שלמעלה — אין כאן מה להקליד
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <label className="block">
+                        <span className="block text-xs text-stone-500">
+                          יתרה ב־<bdi>{reading.account.currency}</bdi>
+                        </span>
+                        {/* The exact decimal goes back in, so a row nobody touches
+                            round-trips to the same minor units and stays carried. */}
+                        <input
+                          name={`amount:${reading.account.id}`}
+                          defaultValue={toDecimalString(reading.native)}
+                          inputMode="decimal"
+                          dir="ltr"
+                          className="tabular mt-1 w-40 rounded-md border border-stone-300 px-3 py-2 text-end"
+                        />
+                      </label>
 
-                  <label className="flex items-center gap-2 pb-2 text-sm">
-                    <input
-                      type="checkbox"
-                      name={`measured:${reading.account.id}`}
-                      className="size-4 rounded border-stone-300"
-                    />
-                    <span>נמדד</span>
-                  </label>
+                      <label className="flex items-center gap-2 pb-2 text-sm">
+                        <input
+                          type="checkbox"
+                          name={`measured:${reading.account.id}`}
+                          className="size-4 rounded border-stone-300"
+                        />
+                        <span>נמדד</span>
+                      </label>
+                    </>
+                  )}
                 </div>
               </li>
             ))}
@@ -829,6 +985,47 @@ function RestateForm({
         </Link>
       </div>
     </form>
+  );
+}
+
+/**
+ * The share price this reading was taken at — the only thing about the RSU
+ * holding anybody states, because nothing in this system reads a market. It sits
+ * on the snapshot beside its exchange rate, so correcting it here corrects this
+ * reading and no other, and a snapshot from last year keeps the price it was read
+ * at.
+ */
+function RsuPriceField({ rsu, takenOn }: { rsu: RsuLineReading; takenOn: CalendarDate }) {
+  if (rsu.kind === "unnamed" || rsu.kind === "unknown" || rsu.kind === "not-open") return null;
+
+  const current = rsu.kind === "unpriced" ? null : rsu.holding.price;
+
+  return (
+    <section className="rounded-lg border border-stone-300 bg-white px-5 py-4">
+      <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+        <label className="block">
+          <span className="block text-sm font-medium text-stone-700">
+            מחיר מניית <bdi>RSU</bdi> בתאריך הצילום
+          </span>
+          <span className="block text-xs text-stone-500">
+            דולרים למניה — ריק פירושו שאיש לא נקב במחיר
+          </span>
+          <input
+            name="sharePrice"
+            inputMode="decimal"
+            dir="ltr"
+            defaultValue={current === null ? "" : sharePriceToDecimalString(current)}
+            className="tabular mt-1 w-40 rounded-md border border-stone-300 px-3 py-2 text-end"
+          />
+        </label>
+
+        <p className="max-w-lg text-sm text-stone-600">
+          היתרה של <bdi className="font-medium">{rsu.account.name}</bdi> נגזרת ממנו וממספר המניות
+          המוחזק ב־{formatDate(takenOn)}. שמירת הטופס גוזרת אותה מחדש — גם אחרי שנרשמה הבשלה או
+          מכירה.
+        </p>
+      </div>
+    </section>
   );
 }
 

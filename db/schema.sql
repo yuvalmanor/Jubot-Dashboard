@@ -207,12 +207,44 @@ comment on column accounts.asset_kind is
 
 -- A complete dated restatement of every Account. `taken_on` is unique so "the
 -- previous snapshot" is never ambiguous; there is no cadence beyond that.
+--
+-- `rsu_price_*` is the share price the reading was taken at, held here for exactly
+-- the reason `snapshot_rates` holds the exchange rate: it is a dated fact about the
+-- world, and the account it values must keep reading as it read on the day. The RSU
+-- account's balance is derived from it and the position's own share count — never
+-- typed — so the holding cannot be maintained in two places and drift, which is
+-- what the sheet's hardcoded 3.602 did against מיפוי's live rate.
 create table if not exists snapshots (
   id         uuid        primary key default gen_random_uuid(),
   taken_on   date        not null unique,
   note       text,
-  created_at timestamptz not null default now()
+  rsu_price_ten_thousandths bigint check (rsu_price_ten_thousandths >= 0),
+  rsu_price_currency        text   check (char_length(rsu_price_currency) = 3),
+  created_at timestamptz not null default now(),
+  -- The figure and its currency arrive together or not at all, as everywhere else.
+  constraint snapshots_rsu_price_has_currency
+    check ((rsu_price_ten_thousandths is null) = (rsu_price_currency is null))
 );
+
+-- The two columns above landed after the first snapshots were taken.
+alter table snapshots add column if not exists rsu_price_ten_thousandths bigint;
+alter table snapshots add column if not exists rsu_price_currency        text;
+
+do $do$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'snapshots_rsu_price_has_currency'
+  ) then
+    alter table snapshots add constraint snapshots_rsu_price_has_currency
+      check ((rsu_price_ten_thousandths is null) = (rsu_price_currency is null));
+  end if;
+end;
+$do$;
+
+comment on column snapshots.rsu_price_ten_thousandths is
+  'The share price this reading was taken at, in integer ten-thousandths — the same '
+  'scale a GP is held at, because cents cannot hold 149.4219. A dated fact, stored '
+  'on the snapshot the way its exchange rate is, so re-reading it never re-prices.';
 
 -- The snapshot's own rate. The primary key is what makes it exactly one per pair,
 -- so every dollar figure inside one snapshot converts identically — and a

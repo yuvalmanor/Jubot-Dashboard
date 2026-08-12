@@ -41,6 +41,7 @@
 import {
   type Currency,
   type Money,
+  add,
   fromScaledInteger,
   money,
   sum,
@@ -948,6 +949,78 @@ export function nextQualificationDate(position: RsuPosition): CalendarDate | nul
     .map((lot) => lot.qualifiedFrom)
     .sort(compareDates);
   return pending[0] ?? null;
+}
+
+// --- the forward schedule ----------------------------------------------------
+
+/**
+ * One vest still ahead, priced. The price is whatever was handed in and is the
+ * same for every row: a forecast here is flat, with no growth assumption in it at
+ * all. Assuming a rate would make the schedule a claim about the share price, and
+ * what it is for is the opposite — what is already promised, at what a share is
+ * worth today.
+ */
+export interface ScheduledVest {
+  readonly vest: Vest;
+  readonly grant: Grant;
+  readonly qualifiedFrom: CalendarDate;
+  /** `shares × price`. Flat: nothing between here and the vest date grows it. */
+  readonly value: Money;
+  readonly cumulativeShares: number;
+  readonly cumulativeValue: Money;
+}
+
+export interface VestSchedule {
+  /** The one price every row is valued at, named so the reader can see it is one price. */
+  readonly price: SharePrice;
+  readonly rows: readonly ScheduledVest[];
+  readonly totalShares: number;
+  readonly totalValue: Money;
+}
+
+/**
+ * The vests still ahead of the position's own reading date, soonest first, each
+ * valued at today's price and nothing else.
+ */
+export function forwardSchedule(position: RsuPosition, price: SharePrice): VestSchedule {
+  let cumulativeShares = 0;
+  let cumulativeValue = zero(price.currency);
+
+  const rows = position.future.map((entry) => {
+    const value = valueOf(price, entry.vest.shares);
+    cumulativeShares += entry.vest.shares;
+    cumulativeValue = add(cumulativeValue, value);
+    return { ...entry, value, cumulativeShares, cumulativeValue };
+  });
+
+  return { price, rows, totalShares: cumulativeShares, totalValue: cumulativeValue };
+}
+
+// --- the position as a מיפוי figure -------------------------------------------
+
+/**
+ * What the RSU holding is worth: the shares the position says are held, at a
+ * price somebody stated. The share count is never an input — it is derived from
+ * the grants, vests and sales on every read — so the holding cannot be maintained
+ * in two places and cannot drift the way the sheet's hardcoded figure did.
+ *
+ * The price is an input because nothing here reads a market. It is a dated fact
+ * about the world, recorded the same way an exchange rate is.
+ */
+export interface RsuHolding {
+  readonly asOf: CalendarDate;
+  readonly shares: number;
+  readonly price: SharePrice;
+  readonly value: Money;
+}
+
+export function rsuHolding(position: RsuPosition, price: SharePrice): RsuHolding {
+  return {
+    asOf: position.asOf,
+    shares: position.remainingShares,
+    price,
+    value: valueOf(price, position.remainingShares),
+  };
 }
 
 /** An empty position, for a household that has recorded nothing yet. */

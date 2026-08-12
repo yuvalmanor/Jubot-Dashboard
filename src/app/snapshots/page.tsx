@@ -6,8 +6,11 @@ import { loadAccounts } from "@/db/accounts";
 import { DatabaseNotConfiguredError } from "@/db/client";
 import { findLatestRate } from "@/db/money-settings";
 import { type Person, findPersonByEmail } from "@/db/people";
+import { loadRsuRecords } from "@/db/rsu";
+import { loadHouseholdSettings } from "@/db/settings";
 import { loadSnapshots } from "@/db/snapshots";
 import { format } from "@/domain/money/money";
+import { sharePriceToDecimalString } from "@/domain/rsu/rsu-position";
 import {
   type Account,
   type Snapshot,
@@ -21,6 +24,7 @@ import {
 import { dateKey, dateOf, formatDate } from "@/domain/time/calendar-date";
 import { requireHouseholdEmail } from "@/session";
 
+import { type KnownPrice, latestKnownPrice } from "../rsu/known-price";
 import { takeSnapshot } from "./actions";
 import { Notices, UnavailablePanel } from "./panels";
 
@@ -71,6 +75,8 @@ export default async function SnapshotsPage({ searchParams }: { searchParams: Pr
               accounts={loaded.accounts}
               latest={loaded.snapshots[0] ?? null}
               defaultRate={loaded.defaultRate}
+              rsuAccount={loaded.rsuAccount}
+              knownPrice={loaded.knownPrice}
             />
 
             {loaded.snapshots.length === 0 ? (
@@ -98,6 +104,10 @@ type Loaded =
       accounts: readonly Account[];
       snapshots: readonly Snapshot[];
       defaultRate: number;
+      /** The account whose balance is derived from the RSU position, where one is named. */
+      rsuAccount: Account | null;
+      /** The last price anybody recorded, offered as a default. Not a market price. */
+      knownPrice: KnownPrice | null;
     }
   | { kind: "unavailable"; reason: string };
 
@@ -110,12 +120,22 @@ async function loadPage(email: string): Promise<Loaded> {
         reason: `הכתובת ${email} אינה משויכת לאף אדם בטבלת people. יש לעדכן את שתי הכתובות במסד (ראו README).`,
       };
     }
-    const [accounts, snapshots, rate] = await Promise.all([
+    const [accounts, snapshots, rate, settings, records] = await Promise.all([
       loadAccounts(),
       loadSnapshots(),
       findLatestRate("USD", "ILS"),
+      loadHouseholdSettings(),
+      loadRsuRecords(),
     ]);
-    return { kind: "ok", person, accounts, snapshots, defaultRate: rate?.rate ?? 3.65 };
+    return {
+      kind: "ok",
+      person,
+      accounts,
+      snapshots,
+      defaultRate: rate?.rate ?? 3.65,
+      rsuAccount: accounts.find((account) => account.id === settings.rsuAccountId) ?? null,
+      knownPrice: latestKnownPrice(records),
+    };
   } catch (error) {
     if (error instanceof DatabaseNotConfiguredError) {
       return { kind: "unavailable", reason: "משתנה הסביבה DATABASE_URL אינו מוגדר." };
@@ -130,10 +150,14 @@ function TakePanel({
   accounts,
   latest,
   defaultRate,
+  rsuAccount,
+  knownPrice,
 }: {
   accounts: readonly Account[];
   latest: Snapshot | null;
   defaultRate: number;
+  rsuAccount: Account | null;
+  knownPrice: KnownPrice | null;
 }) {
   const today = dateOf(new Date());
   const openToday = accountsOpenOn(accounts, today);
@@ -170,6 +194,13 @@ function TakePanel({
             )}
           </p>
 
+          {rsuAccount === null ? null : (
+            <p className="mt-2 text-sm text-stone-600">
+              היתרה של <bdi className="font-medium">{rsuAccount.name}</bdi> לא תוקלד: היא תיגזר ממספר
+              המניות המוחזק בתאריך הזה ומהמחיר שלמטה, וההמרה תיעשה בשער של הצילום.
+            </p>
+          )}
+
           <form action={takeSnapshot} className="mt-4 grid gap-4 sm:grid-cols-4">
             <label className="block">
               <span className="block text-sm font-medium text-stone-700">תאריך</span>
@@ -198,7 +229,25 @@ function TakePanel({
               />
             </label>
 
-            <label className="block sm:col-span-2">
+            {rsuAccount === null ? null : (
+              <label className="block">
+                <span className="block text-sm font-medium text-stone-700">
+                  מחיר מניית <bdi>RSU</bdi>
+                </span>
+                <span className="block text-xs text-stone-500">
+                  דולרים למניה — נשמר על הצילום כמו השער
+                </span>
+                <input
+                  name="sharePrice"
+                  inputMode="decimal"
+                  dir="ltr"
+                  defaultValue={knownPrice === null ? "" : sharePriceToDecimalString(knownPrice.price)}
+                  className="tabular mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-end"
+                />
+              </label>
+            )}
+
+            <label className={`block ${rsuAccount === null ? "sm:col-span-2" : ""}`}>
               <span className="block text-sm font-medium text-stone-700">הערה</span>
               <input
                 name="note"

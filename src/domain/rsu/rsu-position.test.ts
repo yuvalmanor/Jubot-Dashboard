@@ -30,6 +30,7 @@ import {
   closesInWindow,
   emptyPosition,
   estimateGrantPrice,
+  forwardSchedule,
   gpWindowKey,
   gpWindowsEqual,
   isEstimated,
@@ -45,6 +46,7 @@ import {
   requireVest,
   requireWithinGrant,
   requireWithinLot,
+  rsuHolding,
   sharePrice,
   sharePriceFromMajorUnits,
   sharePriceToDecimalString,
@@ -610,5 +612,115 @@ describe("estimating GP from market data", () => {
     expect(isStaleEstimate(estimate as never, SECTION_102_WINDOW)).toBe(true);
     // A stated price depends on no window, so no window can make it stale.
     expect(isStaleEstimate(statedGrantPrice(price("149.4219")), SECTION_102_WINDOW)).toBe(false);
+  });
+});
+
+// --- the forward schedule ----------------------------------------------------
+
+describe("the forward vest schedule", () => {
+  it("lists the vests still ahead, at today's price", () => {
+    const { reading } = position(READ_ON);
+    const schedule = forwardSchedule(reading, price("300"));
+
+    expect(schedule.rows.map((row) => row.vest.id)).toEqual(["v-future"]);
+    // 60 shares at $300, and nothing about the vest's own recorded price of $250.
+    expect(schedule.rows[0]?.value).toEqual(usd(18_000));
+    expect(schedule.totalShares).toBe(60);
+    expect(schedule.totalValue).toEqual(usd(18_000));
+  });
+
+  it("prices every row flat, with no growth between them", () => {
+    const older = buildGrant("g-old", {
+      personId: "eden",
+      reference: "RSU-2024-A",
+      grantedOn: d(2024, 1, 15),
+      totalShares: 400,
+    });
+    const vests = [
+      buildVest("v-1", { grantId: "g-old", vestedOn: d(2026, 11, 11), shares: 10, priceAtVest: price("100") }, older),
+      buildVest("v-2", { grantId: "g-old", vestedOn: d(2027, 11, 11), shares: 10, priceAtVest: price("500") }, older),
+    ];
+    const reading = readPosition({ grants: [older], vests, sales: [], asOf: READ_ON });
+    const schedule = forwardSchedule(reading, price("200"));
+
+    // The two vests recorded wildly different prices; the forecast uses neither,
+    // and uses one price for both. A schedule that grew would be a claim about
+    // the share price rather than about what is already promised.
+    expect(schedule.rows.map((row) => row.value)).toEqual([usd(2_000), usd(2_000)]);
+    expect(schedule.price).toEqual(price("200"));
+  });
+
+  it("runs a cumulative total, soonest first", () => {
+    const older = buildGrant("g-old", {
+      personId: "eden",
+      reference: "RSU-2024-A",
+      grantedOn: d(2024, 1, 15),
+      totalShares: 400,
+    });
+    const vests = [
+      buildVest("v-2", { grantId: "g-old", vestedOn: d(2027, 11, 11), shares: 25, priceAtVest: price("100") }, older),
+      buildVest("v-1", { grantId: "g-old", vestedOn: d(2026, 11, 11), shares: 15, priceAtVest: price("100") }, older),
+    ];
+    const reading = readPosition({ grants: [older], vests, sales: [], asOf: READ_ON });
+    const schedule = forwardSchedule(reading, price("100"));
+
+    expect(schedule.rows.map((row) => row.vest.id)).toEqual(["v-1", "v-2"]);
+    expect(schedule.rows.map((row) => row.cumulativeShares)).toEqual([15, 40]);
+    expect(schedule.rows.map((row) => row.cumulativeValue)).toEqual([usd(1_500), usd(4_000)]);
+  });
+
+  it("holds nothing for a position with no vests ahead of it", () => {
+    const schedule = forwardSchedule(emptyPosition(READ_ON), price("300"));
+    expect(schedule.rows).toEqual([]);
+    expect(schedule.totalValue).toEqual(usd(0));
+  });
+});
+
+// --- the position as a מיפוי figure ------------------------------------------
+
+describe("the RSU holding", () => {
+  it("is the held share count times a price, and the count comes from the records", () => {
+    const { reading } = position(READ_ON);
+    const holding = rsuHolding(reading, price("300"));
+
+    // 120 Qualified + 80 Unqualified. The 60 shares vesting in 2027 are not held.
+    expect(holding.shares).toBe(200);
+    expect(holding.value).toEqual(usd(60_000));
+    expect(holding.asOf).toEqual(READ_ON);
+  });
+
+  it("falls as shares are sold, with nothing to maintain beside it", () => {
+    const before = position(READ_ON);
+    const vest = before.vests.find((candidate) => candidate.id === "v-old");
+    if (vest === undefined) throw new Error("fixture produced no lot");
+
+    const after = position(READ_ON, [
+      buildSale("s1", { vestId: "v-old", soldOn: d(2026, 6, 1), shares: 20, price: price("290") }, vest),
+    ]);
+
+    expect(rsuHolding(before.reading, price("300")).value).toEqual(usd(60_000));
+    expect(rsuHolding(after.reading, price("300")).value).toEqual(usd(54_000));
+  });
+
+  it("is nothing for a position holding nothing, rather than an absent figure", () => {
+    const holding = rsuHolding(emptyPosition(READ_ON), price("300"));
+    expect(holding.shares).toBe(0);
+    expect(holding.value).toEqual(usd(0));
+  });
+
+  it("rounds the product once, at the end", () => {
+    const older = buildGrant("g-old", {
+      personId: "eden",
+      reference: "RSU-2024-A",
+      grantedOn: d(2024, 1, 15),
+      totalShares: 400,
+    });
+    const vests = [
+      buildVest("v-1", { grantId: "g-old", vestedOn: d(2024, 2, 1), shares: 3, priceAtVest: price("100") }, older),
+    ];
+    const reading = readPosition({ grants: [older], vests, sales: [], asOf: READ_ON });
+
+    // 3 × 149.4219 = 448.2657, one cent either way depending on where it rounds.
+    expect(rsuHolding(reading, price("149.4219")).value).toEqual(money(44_827, "USD"));
   });
 });

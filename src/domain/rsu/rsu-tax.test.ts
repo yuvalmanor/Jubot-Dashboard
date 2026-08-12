@@ -17,18 +17,21 @@ import {
 import { calendarDate } from "@/domain/time/calendar-date";
 
 import {
+  DuplicateLotAllocationError,
   InvalidFeeScheduleError,
   InvalidSaleQuantityError,
   InvalidTaxRatesError,
   MissingGrantPriceError,
   NO_FEES,
   SECTION_102_RATES,
+  allocateInOrder,
   buildFeeSchedule,
   buildTaxRates,
   chargeFees,
   oldestFirst,
   sellFrom,
   sellFromPosition,
+  sellShares,
   taxOnLotSale,
   treatmentOn,
   waitingValue,
@@ -668,5 +671,117 @@ describe("the rates are settings", () => {
     expect(asRead.ordinaryTax.minorUnits).toBe(176_502);
     expect(corrected.ordinaryTax.minorUnits).toBe(141_951);
     expect(corrected.capitalGainsTax).toEqual(asRead.capitalGainsTax);
+  });
+});
+
+// --- the allocation seam -------------------------------------------------------
+
+describe("an allocation is the whole of what a strategy decides", () => {
+  const soldOn = d(2026, 8, 11);
+
+  it("prices an allocation identically to drawing the same shares in order", () => {
+    const lots = [lotOf(30), lotOf(50)];
+    const { allocations, shortfallShares } = allocateInOrder(lots, 60);
+
+    expect(allocations.map((allocation) => allocation.shares)).toEqual([30, 30]);
+    expect(shortfallShares).toBe(0);
+
+    const drawn = sellFrom({ lots, shares: 60, salePrice: price("280"), soldOn, rates: SECTION_102_RATES });
+    const allocated = sellShares({
+      allocations,
+      salePrice: price("280"),
+      soldOn,
+      rates: SECTION_102_RATES,
+    });
+
+    expect(allocated.totalTax).toEqual(drawn.totalTax);
+    expect(allocated.netProceeds).toEqual(drawn.netProceeds);
+    expect(allocated.shares).toBe(drawn.shares);
+  });
+
+  it("prices an allocation no drawing order could produce", () => {
+    // 10 out of the first lot and 10 out of the second: an order-based draw fills
+    // one lot before touching the next and can never land here. The arithmetic
+    // does not care, which is the point of the seam.
+    const lots = [lotOf(30), lotOf(50)];
+    const sale = sellShares({
+      allocations: [
+        { lot: lots[0] as never, shares: 10 },
+        { lot: lots[1] as never, shares: 10 },
+      ],
+      salePrice: price("280"),
+      soldOn,
+      rates: SECTION_102_RATES,
+    });
+
+    expect(sale.shares).toBe(20);
+    expect(sale.lines.map((line) => line.shares)).toEqual([10, 10]);
+  });
+
+  it("refuses the same lot twice, which would take more than the lot holds", () => {
+    const lot = lotOf(30);
+    expect(() =>
+      sellShares({
+        allocations: [
+          { lot, shares: 20 },
+          { lot, shares: 20 },
+        ],
+        salePrice: price("280"),
+        soldOn,
+        rates: SECTION_102_RATES,
+      }),
+    ).toThrow(DuplicateLotAllocationError);
+  });
+
+  it("charges a flat fee once over the sale however many lots it drew on", () => {
+    const lots = [lotOf(30), lotOf(50)];
+    const fees = { brokerPerShare: null, brokerFlat: usd(15), trusteeBasisPoints: 0 };
+
+    const oneLot = sellShares({
+      allocations: [{ lot: lots[0] as never, shares: 10 }],
+      salePrice: price("280"),
+      soldOn,
+      rates: SECTION_102_RATES,
+      fees,
+    });
+    const twoLots = sellShares({
+      allocations: [
+        { lot: lots[0] as never, shares: 5 },
+        { lot: lots[1] as never, shares: 5 },
+      ],
+      salePrice: price("280"),
+      soldOn,
+      rates: SECTION_102_RATES,
+      fees,
+    });
+
+    expect(oneLot.fees.total).toEqual(usd(15));
+    expect(twoLots.fees.total).toEqual(usd(15));
+  });
+
+  it("reports a request larger than the allocation could fill", () => {
+    const sale = sellShares({
+      allocations: [{ lot: lotOf(30), shares: 30 }],
+      salePrice: price("280"),
+      soldOn,
+      rates: SECTION_102_RATES,
+      requestedShares: 50,
+    });
+
+    expect(sale.shares).toBe(30);
+    expect(sale.requestedShares).toBe(50);
+    expect(sale.shortfallShares).toBe(20);
+  });
+
+  it("refuses a request smaller than what was allocated", () => {
+    expect(() =>
+      sellShares({
+        allocations: [{ lot: lotOf(30), shares: 30 }],
+        salePrice: price("280"),
+        soldOn,
+        rates: SECTION_102_RATES,
+        requestedShares: 10,
+      }),
+    ).toThrow(InvalidSaleQuantityError);
   });
 });

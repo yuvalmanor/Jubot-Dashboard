@@ -11,6 +11,7 @@ import {
   saveFeeSchedule,
   saveGpWindow,
   saveMarketMovingAccounts,
+  saveRsuAccount,
   saveTaxRates,
 } from "@/db/settings";
 import { InvalidMoneyError, parseMoneyInput } from "@/domain/money/money";
@@ -144,6 +145,8 @@ async function run(work: () => Promise<Outcome>): Promise<never> {
   revalidatePath("/rsu");
   // The dashboard carries the reconciliation, which reads the marks below.
   revalidatePath("/");
+  // The מיפוי screens derive the RSU line from the account named below.
+  revalidatePath("/snapshots");
   backTo(outcome);
 }
 
@@ -246,6 +249,23 @@ export async function setGpWindow(form: FormData): Promise<void> {
       }),
     );
     return { code: null, done: "gp-window" };
+  });
+}
+
+/**
+ * Which מיפוי account carries the RSU position. Naming one is what makes the
+ * holding derived: from then on that account's balance is worked out from the
+ * recorded grants, vests and sales at the price the snapshot itself records, and
+ * the restatement form stops offering a box to type it into. It is what the sheet
+ * could not do, and why its RSU figure drifted from its own grant tables.
+ */
+export async function setRsuAccount(form: FormData): Promise<void> {
+  await requireSignedIn();
+
+  await run(async () => {
+    const accountId = readText(form, "accountId").trim();
+    await saveRsuAccount(accountId.length === 0 ? null : accountId);
+    return { code: null, done: "rsu-account" };
   });
 }
 

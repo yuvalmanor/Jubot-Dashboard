@@ -817,15 +817,63 @@ live rate.
 
 ### Acceptance criteria
 
-- [ ] Given a target amount and date, a set of lots is selected that reaches at least the
+- [x] Given a target amount and date, a set of lots is selected that reaches at least the
       target
-- [ ] No cheaper valid selection exists, verified by exhaustive search on small cases
-- [ ] Lots not yet vested at the target date are excluded from selection
-- [ ] The selection strategy is isolated from the tax calculation
-- [ ] A forward vest schedule displays upcoming vests with projected value at today's price
-- [ ] Forecast prices are flat at the current price with no growth assumption
-- [ ] The RSU account's value in מיפוי is derived from the position, not entered separately
-- [ ] The RSU figure in מיפוי uses the snapshot's FX rate, not a hardcoded one
+      <!-- The target is measured on the **net**, not the gross: selling to the target in
+           gross would leave the household short by exactly the tax, which is the thing the
+           question is for. Verified live: against $5,000 the selector took 33 shares out of
+           the Qualified lot for $5,097.18 net, and 32 would have brought $4,942.72. A target
+           larger than the position fills what exists and states the shortfall rather than
+           refusing to answer. -->
+- [x] No cheaper valid selection exists, verified by exhaustive search on small cases
+      <!-- The tests enumerate every way of splitting a sale across the candidate lots — not
+           just every subset — and assert that nothing reaching the target costs less tax
+           than what was returned. Held across two clocks, four lots, a price below GP, fees
+           charged over the sale, and a sweep of twenty targets. The answer is exact rather
+           than greedy on purpose: rounding at the cent makes a lot's per-share tax not
+           quite constant, so sorting by a per-share rate is right almost always, and
+           "almost always" is not something a household can check. -->
+- [x] Lots not yet vested at the target date are excluded from selection
+      <!-- And named, with the reason, beside the answer: "we are short until November" is
+           the useful reply. Verified live — the 60 shares vesting 2026-11-11 are excluded
+           for money needed in August and are candidates for money needed in December, where
+           the position reads 240 held rather than 180. A lot that would be a Qualified sale
+           out of a grant with no GP is excluded the same way rather than blocking the whole
+           question, which is what Phase 13's refusal would otherwise do here. -->
+- [x] The selection strategy is isolated from the tax calculation
+      <!-- `RsuTax` was given one entry point, `sellShares`, which takes an allocation —
+           which lots, how many out of each — and never learns how it was arrived at.
+           Oldest-first is now one strategy over that seam (`allocateInOrder`) and
+           `LotSelector` is another. Tested by pricing the selector's allocation again from
+           outside and getting the identical figures, and by pricing an allocation no
+           drawing order could produce. -->
+- [x] A forward vest schedule displays upcoming vests with projected value at today's price
+      <!-- Verified live: 60 shares vesting 2026-11-11 read as $16,800.00 at $280.0000, with
+           a running cumulative beside them and each row's own qualification date. -->
+- [x] Forecast prices are flat at the current price with no growth assumption
+      <!-- One price for every row, and there is no parameter that could make it otherwise.
+           Verified live: the vest's own recorded price of $250.0000 is not what values it —
+           the schedule uses the one price handed in, because what it answers is what is
+           already promised, not what a share will be worth. -->
+- [x] The RSU account's value in מיפוי is derived from the position, not entered separately
+      <!-- The restatement form has no amount box for that account at all. Its share count is
+           `remainingShares` read as of the snapshot's own date; the only thing anybody
+           states is the price, which the snapshot stores the way it stores its exchange
+           rate. Verified live: 180 × $300.0000 = $54,000.00; recording a 45-share sale left
+           the snapshot reading $54,000.00 and the screen reported the $13,500.00 gap rather
+           than rewriting it behind the reader, and saving the form re-derived it to
+           $40,500.00. A snapshot taken before a sale keeps the shares that were held then. -->
+- [x] The RSU figure in מיפוי uses the snapshot's FX rate, not a hardcoded one
+      <!-- Verified live on two snapshots holding the same 135 shares at the same $300.0000:
+           ₪147,825.00 at the August 12 reading's 3.65 and ₪129,600.00 at the August 20
+           reading's 3.20, each after the other was written. The conversion path is
+           `convertWithin`, which cannot reach today's rate; a snapshot carrying no rate for
+           the pair yields no figure rather than one converted at a rate nobody quoted. -->
+
+The share price is stored on the snapshot rather than looked up, for the same reason its
+exchange rate is: a reading must keep reading as it did on the day. The account that carries
+the position is a `/settings` dial named by id, so renaming it cannot quietly detach the
+derivation — and naming none is a position too, under which nothing is derived at all.
 
 ---
 

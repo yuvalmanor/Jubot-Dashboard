@@ -29,6 +29,12 @@
  * impossible to read apart. They are charged once over a whole sale rather than
  * per lot, because a flat commission on one sale is one commission however many
  * lots the shares came out of.
+ *
+ * **A sale arrives as an allocation.** Which lots the shares come out of, and how
+ * many out of each, is decided elsewhere and handed in whole: `sellShares` is the
+ * only way into the arithmetic below, and it never learns how the allocation was
+ * arrived at. Drawing oldest-first is one strategy over it (`allocateInOrder`) and
+ * `LotSelector` is another, and neither can disturb a figure here by changing.
  */
 
 import {
@@ -384,44 +390,99 @@ export function oldestFirst(position: RsuPosition): readonly Lot[] {
 }
 
 /**
- * Sell a number of shares, drawing on the given lots in the order given. The
- * order *is* the selection strategy, which is why it is an argument: the tax
- * arithmetic below never has to know how the lots were chosen, and replacing the
- * strategy cannot disturb it.
+ * A number of shares taken out of one named lot. An allocation is the whole of
+ * what a selection strategy decides, and it is the only shape this module accepts
+ * — so "which lots" and "what the sale costs" are two questions that cannot leak
+ * into each other.
+ */
+export interface LotAllocation {
+  readonly lot: Lot;
+  readonly shares: number;
+}
+
+/**
+ * The same lot allocated twice. Refused rather than summed: two lines against one
+ * lot could each pass their own remaining-shares check and together take more than
+ * the lot holds, which is the negative position `LotOversoldError` exists to stop.
+ */
+export class DuplicateLotAllocationError extends Error {
+  constructor(readonly vestId: string) {
+    super(`Lot ${vestId} appears twice in one allocation; a lot is allocated once or not at all`);
+    this.name = "DuplicateLotAllocationError";
+  }
+}
+
+/**
+ * Draw shares from lots in the order given, filling each before moving on. The
+ * order *is* the strategy — hand it `oldestFirst` and it draws oldest-first — and
+ * it produces an allocation rather than a figure, so nothing about the tax below
+ * depends on it.
  *
  * Asking for more than the lots hold fills what it can and reports the rest as a
  * shortfall. This is a planning question — "what would selling 500 bring" — and
  * refusing to answer it is less useful than answering the part that exists.
  */
-export function sellFrom(input: {
-  readonly lots: readonly Lot[];
-  readonly shares: number;
-  readonly salePrice: SharePrice;
-  readonly soldOn: CalendarDate;
-  readonly rates: TaxRates;
-  readonly fees?: FeeSchedule;
-}): SaleProceeds {
-  const { lots, salePrice, soldOn } = input;
-  const rates = buildTaxRates(input.rates);
-  const fees = buildFeeSchedule(input.fees ?? NO_FEES);
-  const currency: Currency = salePrice.currency;
-
-  if (!Number.isSafeInteger(input.shares) || input.shares < 0) {
-    throw new InvalidSaleQuantityError(`Shares are a whole count, received ${String(input.shares)}`);
+export function allocateInOrder(
+  lots: readonly Lot[],
+  shares: number,
+): { readonly allocations: readonly LotAllocation[]; readonly shortfallShares: number } {
+  if (!Number.isSafeInteger(shares) || shares < 0) {
+    throw new InvalidSaleQuantityError(`Shares are a whole count, received ${String(shares)}`);
   }
 
-  const lines: LotSaleTax[] = [];
-  let remaining = input.shares;
+  const allocations: LotAllocation[] = [];
+  let remaining = shares;
 
   for (const lot of lots) {
     if (remaining === 0) break;
     const take = Math.min(remaining, lot.remainingShares);
     if (take === 0) continue;
-    lines.push(taxOnLotSale({ lot, shares: take, salePrice, soldOn, rates }));
+    allocations.push({ lot, shares: take });
     remaining -= take;
   }
 
-  const filled = input.shares - remaining;
+  return { allocations, shortfallShares: remaining };
+}
+
+/**
+ * What an allocation costs and what arrives at the end of it. The one entry point
+ * into the arithmetic: every figure below is the sum of what each lot met on its
+ * own clock, with the fees charged once over the whole sale.
+ */
+export function sellShares(input: {
+  readonly allocations: readonly LotAllocation[];
+  readonly salePrice: SharePrice;
+  readonly soldOn: CalendarDate;
+  readonly rates: TaxRates;
+  readonly fees?: FeeSchedule;
+  /** What was asked for, where that is more than the allocation could fill. */
+  readonly requestedShares?: number;
+}): SaleProceeds {
+  const { salePrice, soldOn } = input;
+  const rates = buildTaxRates(input.rates);
+  const fees = buildFeeSchedule(input.fees ?? NO_FEES);
+  const currency: Currency = salePrice.currency;
+
+  const seen = new Set<string>();
+  const lines: LotSaleTax[] = [];
+
+  for (const allocation of input.allocations) {
+    if (seen.has(allocation.lot.vest.id)) {
+      throw new DuplicateLotAllocationError(allocation.lot.vest.id);
+    }
+    seen.add(allocation.lot.vest.id);
+    if (allocation.shares === 0) continue;
+    lines.push(taxOnLotSale({ lot: allocation.lot, shares: allocation.shares, salePrice, soldOn, rates }));
+  }
+
+  const filled = lines.reduce((running, line) => running + line.shares, 0);
+  const requested = input.requestedShares ?? filled;
+  if (!Number.isSafeInteger(requested) || requested < filled) {
+    throw new InvalidSaleQuantityError(
+      `A sale cannot fill ${filled} shares out of a request for ${String(requested)}`,
+    );
+  }
+
   const totals = (of: (line: LotSaleTax) => Money): Money => sum(lines.map(of), currency);
 
   const grossProceeds = totals((line) => line.grossProceeds);
@@ -433,9 +494,9 @@ export function sellFrom(input: {
   return {
     soldOn,
     salePrice,
-    requestedShares: input.shares,
+    requestedShares: requested,
     shares: filled,
-    shortfallShares: remaining,
+    shortfallShares: requested - filled,
     lines,
     grossProceeds,
     ordinaryIncome: totals((line) => line.ordinaryIncome),
@@ -454,6 +515,24 @@ export function sellFrom(input: {
       .reduce((running, line) => running + line.shares, 0),
     restsOnEstimate: lines.some((line) => line.restsOnEstimate),
   };
+}
+
+/**
+ * Sell a number of shares, drawing on the given lots in the order given —
+ * `allocateInOrder` followed by `sellShares`, which is the whole of what a
+ * strategy is. Kept as one call because "draw oldest-first and price it" is the
+ * stated convention every screen but the funding one reads by.
+ */
+export function sellFrom(input: {
+  readonly lots: readonly Lot[];
+  readonly shares: number;
+  readonly salePrice: SharePrice;
+  readonly soldOn: CalendarDate;
+  readonly rates: TaxRates;
+  readonly fees?: FeeSchedule;
+}): SaleProceeds {
+  const { allocations } = allocateInOrder(input.lots, input.shares);
+  return sellShares({ ...input, allocations, requestedShares: input.shares });
 }
 
 /** Selling a number of shares out of a whole position, oldest lot first. */

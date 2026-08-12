@@ -26,6 +26,7 @@ import {
   setFees,
   setGpWindow,
   setMarketMovingAccounts,
+  setRsuAccount,
   setTaxRates,
 } from "./actions";
 
@@ -81,6 +82,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <ConcentrationPanel settings={loaded.settings} accounts={loaded.accounts} />
             <MarketMovingPanel settings={loaded.settings} accounts={loaded.accounts} />
             <GpWindowPanel settings={loaded.settings} />
+            <RsuAccountPanel settings={loaded.settings} accounts={loaded.accounts} />
             <TaxRatesPanel settings={loaded.settings} />
             <FeesPanel settings={loaded.settings} />
           </>
@@ -429,6 +431,81 @@ function GpWindowPanel({ settings }: { settings: HouseholdSettings }) {
   );
 }
 
+// --- which מיפוי account carries the position --------------------------------
+
+/**
+ * The one dial that removes a field rather than adding one. Naming an account here
+ * makes its balance in מיפוי *derived* — the share count comes from the recorded
+ * grants, vests and sales, and the price comes off the snapshot itself — and the
+ * restatement form stops offering a box to type it into. The sheet kept the same
+ * holding in two places and they drifted; this is the shape that cannot.
+ */
+function RsuAccountPanel({
+  settings,
+  accounts,
+}: {
+  settings: HouseholdSettings;
+  accounts: readonly Account[];
+}) {
+  const open = accountsOpenOn(accounts, dateOf(new Date()));
+  const named = accounts.find((account) => account.id === settings.rsuAccountId) ?? null;
+
+  return (
+    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
+      <h2 className="text-sm font-semibold tracking-wide text-stone-500">
+        החשבון במיפוי שנושא את החזקת ה־<bdi>RSU</bdi>
+      </h2>
+      <p className="mt-1 text-sm text-stone-600">
+        אחרי שנבחר חשבון, היתרה שלו במיפוי <span className="font-medium">נגזרת</span> ואינה מוקלדת:
+        מספר המניות מגיע מההקצאות, ההבשלות והמכירות הרשומות, והמחיר למניה נרשם על הצילום עצמו — כמו
+        שער החליפין שלו. ההמרה לשקלים נעשית בשער של אותו צילום ובשום שער אחר.
+      </p>
+      <p className="mt-2 text-sm text-stone-600">
+        לא לבחור חשבון זו עמדה: משק הבית פשוט אינו עוקב אחרי ההחזקה במיפוי, ושום שורה לא נגזרת.
+      </p>
+
+      {open.length === 0 ? (
+        <p className="mt-3 text-sm text-stone-600">
+          אין חשבונות פתוחים.{" "}
+          <Link href="/accounts" className="underline underline-offset-4">
+            הגדרת חשבון
+          </Link>{" "}
+          קודמת לכל דבר אחר כאן.
+        </p>
+      ) : (
+        <form action={setRsuAccount} className="mt-4 flex flex-wrap items-end gap-4">
+          <label className="block">
+            <span className="block text-sm font-medium text-stone-700">חשבון</span>
+            <select
+              name="accountId"
+              defaultValue={settings.rsuAccountId ?? ""}
+              className="mt-1 w-full min-w-64 rounded-md border border-stone-300 bg-white px-3 py-2"
+            >
+              <option value="">— אין חשבון נושא —</option>
+              {open.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.name} · {ASSET_CATEGORY_LABELS[account.category]} · {account.currency}
+                </option>
+              ))}
+            </select>
+          </label>
+          <SaveButton label="שמירת החשבון" />
+        </form>
+      )}
+
+      {named === null ? null : (
+        <p className="mt-3 text-sm text-stone-500">
+          כרגע: <bdi className="font-medium text-stone-700">{named.name}</bdi> (
+          {VALUE_BASIS_LABELS[named.valueBasis]} · <bdi>{named.currency}</bdi>).{" "}
+          <Link href="/snapshots" className="underline underline-offset-4">
+            מיפוי
+          </Link>
+        </p>
+      )}
+    </section>
+  );
+}
+
 // --- the two rates a sale can meet -------------------------------------------
 
 /**
@@ -586,6 +663,7 @@ const DONE_MESSAGES: Record<string, string> = {
   concentration: "המעקב נשמר.",
   "market-moving": "הסימון נשמר. פירוק השינוי ייקרא לפיו, ויאמר על מה הוא נשען.",
   "gp-window": "החלון נשמר. אומדנים שכבר חושבו שומרים את החלון שבו נלקחו, ויסומנו ככאלה.",
+  "rsu-account": "החשבון נשמר. היתרה שלו במיפוי תיגזר מהמצב הרשום ומהמחיר שעל הצילום.",
   "tax-rates": "השיעורים נשמרו. כל מכירה תתומחר לפיהם, ותאמר אותם.",
   fees: "העמלות נשמרו. הן יורדות מהנטו, ולא מהבסיס החייב במס.",
 };

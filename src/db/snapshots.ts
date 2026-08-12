@@ -1,4 +1,5 @@
 import { type ExchangeRate, exchangeRate, isCurrency, money } from "@/domain/money/money";
+import { type SharePrice, sharePrice } from "@/domain/rsu/rsu-position";
 import {
   type Snapshot,
   type SnapshotLine,
@@ -25,6 +26,8 @@ interface SnapshotRow extends Record<string, unknown> {
   id: string;
   taken_on: string;
   note: string | null;
+  rsu_price_ten_thousandths: string | null;
+  rsu_price_currency: string | null;
 }
 
 interface RateRow extends Record<string, unknown> {
@@ -55,6 +58,14 @@ export interface SnapshotHeader {
   readonly id: string;
   readonly takenOn: CalendarDate;
   readonly note: string | null;
+  /**
+   * The share price this reading was taken at, or `null` where nobody stated one.
+   * It sits beside the domain `Snapshot` rather than inside it because a Snapshot
+   * is about Accounts and this is a fact about an instrument — but it is stored on
+   * the snapshot row, and read from it, for the same reason the exchange rate is:
+   * the figure it derives must keep reading as it read on the day.
+   */
+  readonly rsuPrice: SharePrice | null;
 }
 
 function toRate(row: RateRow): ExchangeRate {
@@ -85,11 +96,30 @@ function toLine(row: LineRow): SnapshotLine {
 }
 
 const SELECT_SNAPSHOTS = `
-  select id, to_char(taken_on, 'YYYY-MM-DD') as taken_on, note
+  select id, to_char(taken_on, 'YYYY-MM-DD') as taken_on, note,
+         rsu_price_ten_thousandths, rsu_price_currency
     from snapshots`;
 
+function toRsuPrice(row: SnapshotRow): SharePrice | null {
+  if (row.rsu_price_ten_thousandths === null || row.rsu_price_currency === null) return null;
+
+  const tenThousandths = Number(row.rsu_price_ten_thousandths);
+  if (!Number.isSafeInteger(tenThousandths)) {
+    throw new MalformedSnapshotRowError(row.id, `share price ${row.rsu_price_ten_thousandths} is not an integer`);
+  }
+  if (!isCurrency(row.rsu_price_currency)) {
+    throw new MalformedSnapshotRowError(row.id, `unknown currency ${row.rsu_price_currency}`);
+  }
+  return sharePrice(tenThousandths, row.rsu_price_currency);
+}
+
 function toHeader(row: SnapshotRow): SnapshotHeader {
-  return { id: row.id, takenOn: parseDateKey(row.taken_on), note: row.note };
+  return {
+    id: row.id,
+    takenOn: parseDateKey(row.taken_on),
+    note: row.note,
+    rsuPrice: toRsuPrice(row),
+  };
 }
 
 /** Every snapshot's header, newest first. */
@@ -163,13 +193,22 @@ export async function loadSnapshots(): Promise<readonly Snapshot[]> {
  * snapshot that landed without its lines would be a partial restatement, which is
  * the one thing a snapshot is defined not to be.
  */
-export async function insertSnapshot(snapshot: Snapshot, note: string | null): Promise<void> {
+export async function insertSnapshot(
+  snapshot: Snapshot,
+  header: { readonly note: string | null; readonly rsuPrice: SharePrice | null },
+): Promise<void> {
   await withTransaction(async (run) => {
-    await run(`insert into snapshots (id, taken_on, note) values ($1, $2::date, $3)`, [
-      snapshot.id,
-      dateKey(snapshot.takenOn),
-      note,
-    ]);
+    await run(
+      `insert into snapshots (id, taken_on, note, rsu_price_ten_thousandths, rsu_price_currency)
+       values ($1, $2::date, $3, $4, $5)`,
+      [
+        snapshot.id,
+        dateKey(snapshot.takenOn),
+        header.note,
+        header.rsuPrice?.tenThousandths ?? null,
+        header.rsuPrice?.currency ?? null,
+      ],
+    );
 
     for (const rate of snapshot.rates) {
       await run(`insert into snapshot_rates (snapshot_id, base, quote, rate) values ($1, $2, $3, $4)`, [
@@ -227,4 +266,24 @@ export async function saveSnapshotLines(snapshot: Snapshot): Promise<void> {
       );
     }
   });
+}
+
+/**
+ * The share price a snapshot was read at. Written apart from the lines because it
+ * is a different kind of fact: a price is stated by a person, and the RSU
+ * account's line is derived from it and from the position's own share count.
+ * Clearing it leaves the derived figure standing as the last one anybody stated,
+ * rather than silently zeroing a holding.
+ */
+export async function saveSnapshotRsuPrice(
+  snapshotId: string,
+  price: SharePrice | null,
+): Promise<void> {
+  await query(
+    `update snapshots
+        set rsu_price_ten_thousandths = $2,
+            rsu_price_currency        = $3
+      where id = $1`,
+    [snapshotId, price?.tenThousandths ?? null, price?.currency ?? null],
+  );
 }

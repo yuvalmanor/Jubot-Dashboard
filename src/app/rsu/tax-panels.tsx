@@ -1,7 +1,6 @@
 import Link from "next/link";
 
 import { type DatedRate } from "@/db/money-settings";
-import { type RsuRecords } from "@/db/rsu";
 import { type Money, convert, format, isNegative, isZero } from "@/domain/money/money";
 import {
   type RsuPosition,
@@ -23,8 +22,9 @@ import {
   sellFromPosition,
   waitingValues,
 } from "@/domain/rsu/rsu-tax";
-import { type CalendarDate, compareDates, dateKey, dateOf, formatDate } from "@/domain/time/calendar-date";
+import { dateKey, dateOf, formatDate } from "@/domain/time/calendar-date";
 
+import { type KnownPrice } from "./known-price";
 import { Field, Shares, SubmitButton } from "./panels";
 
 /**
@@ -37,34 +37,6 @@ import { Field, Shares, SubmitButton } from "./panels";
  * screen beside the figures they produced, because a net figure whose
  * assumptions are elsewhere is a number nobody can check.
  */
-
-/** The most recent price anybody recorded. Not a market price, and it says so. */
-export interface KnownPrice {
-  readonly price: SharePrice;
-  readonly from: string;
-}
-
-function latestBy<T>(items: readonly T[], on: (item: T) => CalendarDate): T | null {
-  return items.reduce<T | null>(
-    (latest, item) =>
-      latest === null || compareDates(on(item), on(latest)) > 0 ? item : latest,
-    null,
-  );
-}
-
-export function latestKnownPrice(records: RsuRecords): KnownPrice | null {
-  const latestSale = latestBy(records.sales, (sale) => sale.soldOn);
-  if (latestSale !== null) {
-    return { price: latestSale.price, from: `המכירה האחרונה שנרשמה, ${formatDate(latestSale.soldOn)}` };
-  }
-
-  const latestVest = latestBy(records.vests, (vest) => vest.vestedOn);
-  if (latestVest !== null) {
-    return { price: latestVest.priceAtVest, from: `ההבשלה האחרונה שנרשמה, ${formatDate(latestVest.vestedOn)}` };
-  }
-
-  return null;
-}
 
 type Priced =
   | { readonly kind: "ok"; readonly sale: SaleProceeds }

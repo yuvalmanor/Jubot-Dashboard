@@ -43,6 +43,7 @@ const TARGET_PREFIX = "allocation_target.";
 const CONCENTRATION_KEY = "concentration.account_ids";
 const MARKET_MOVING_KEY = "decomposition.market_account_ids";
 const GP_WINDOW_KEY = "rsu.gp_window";
+const RSU_ACCOUNT_KEY = "rsu.holding_account_id";
 const ORDINARY_RATE_KEY = "rsu.tax.ordinary_bp";
 const CAPITAL_GAINS_RATE_KEY = "rsu.tax.capital_gains_bp";
 const BROKER_PER_SHARE_KEY = "rsu.fees.broker_per_share";
@@ -79,6 +80,13 @@ export interface HouseholdSettings {
    */
   readonly gpWindow: GpWindow;
   /**
+   * The מיפוי account the RSU position is carried in, or `null` while nobody has
+   * named one. One account, not a set: the position is one holding, and its value
+   * is derived into exactly one line. Named by id rather than matched on a name,
+   * so renaming the account cannot quietly detach the derivation from it.
+   */
+  readonly rsuAccountId: string | null;
+  /**
    * The two rates a sale can meet. Settings rather than constants because a
    * marginal rate that could only move by shipping a deploy would stop reading as
    * the household's belief and start reading as a fact of the world.
@@ -94,6 +102,7 @@ export const DEFAULT_SETTINGS: HouseholdSettings = {
   concentrationAccountIds: [],
   marketMovingAccountIds: [],
   gpWindow: DEFAULT_GP_WINDOW,
+  rsuAccountId: null,
   taxRates: SECTION_102_RATES,
   fees: NO_FEES,
 };
@@ -148,6 +157,7 @@ export async function loadHouseholdSettings(): Promise<HouseholdSettings> {
   const concentration = byKey.get(CONCENTRATION_KEY);
   const marketMoving = byKey.get(MARKET_MOVING_KEY);
   const gpWindow = byKey.get(GP_WINDOW_KEY);
+  const rsuAccount = byKey.get(RSU_ACCOUNT_KEY)?.trim();
   const ordinary = byKey.get(ORDINARY_RATE_KEY);
   const capitalGains = byKey.get(CAPITAL_GAINS_RATE_KEY);
   const brokerPerShare = byKey.get(BROKER_PER_SHARE_KEY);
@@ -170,6 +180,7 @@ export async function loadHouseholdSettings(): Promise<HouseholdSettings> {
       concentration === undefined ? [] : splitIds(concentration),
     marketMovingAccountIds: marketMoving === undefined ? [] : splitIds(marketMoving),
     gpWindow: gpWindow === undefined ? DEFAULT_GP_WINDOW : parseGpWindow(gpWindow),
+    rsuAccountId: rsuAccount === undefined || rsuAccount.length === 0 ? null : rsuAccount,
     taxRates: buildTaxRates({
       ordinaryBasisPoints:
         ordinary === undefined
@@ -255,6 +266,21 @@ export async function saveMarketMovingAccounts(accountIds: readonly string[]): P
  */
 export async function saveGpWindow(window: GpWindow): Promise<void> {
   await put(GP_WINDOW_KEY, gpWindowKey(buildGpWindow(window)));
+}
+
+/**
+ * Which מיפוי account carries the RSU position. Naming one is what turns the
+ * position into a snapshot figure: from then on that account's balance is derived
+ * from the recorded grants, vests and sales, and there is no field to type it in.
+ * Naming none is a position too — the household simply does not track it there.
+ */
+export async function saveRsuAccount(accountId: string | null): Promise<void> {
+  const id = accountId?.trim() ?? "";
+  if (id.length === 0) {
+    await query(`delete from settings where key = $1`, [RSU_ACCOUNT_KEY]);
+    return;
+  }
+  await put(RSU_ACCOUNT_KEY, id);
 }
 
 /**
