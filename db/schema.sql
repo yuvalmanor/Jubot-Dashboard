@@ -572,3 +572,59 @@ begin
   end if;
 end;
 $do$;
+
+-- --------------------------------------------------------------------------
+-- לוח תכנון
+-- --------------------------------------------------------------------------
+
+-- תרחיש — a named what-if. These three tables are the only ones the planning
+-- screens write, and they write nothing else: a scenario exists so that "CGM 3 in
+-- 2027" can be thought about without disturbing anything recorded.
+create table if not exists scenarios (
+  id         uuid primary key default gen_random_uuid(),
+  name       text not null unique,
+  note       text,
+  created_on date not null
+);
+
+-- תוכנית מימון — what a future investment needs, and by when. At most one row per
+-- scenario: a scenario is one what-if about one investment, and two requirements
+-- inside it would be two scenarios. A scenario with no row here is a legitimate
+-- state — a name and a thought, before anybody has priced it.
+create table if not exists funding_plans (
+  scenario_id        uuid   primary key references scenarios (id) on delete cascade,
+  needs_amount_minor bigint not null check (needs_amount_minor > 0),
+  needs_currency     text   not null check (char_length(needs_currency) = 3),
+  needed_by          date   not null
+);
+
+-- One source that would cover part of a plan — the *before* of a funding leg.
+--
+-- There is deliberately no rate column and no date. A future conversion has no rate
+-- yet, and a rate written down before the money moved would be a number nobody
+-- used; the day it moves is not knowable either. Both arrive when the plan is
+-- executed and its lines become real legs.
+--
+-- `origin` says where the amount came from. `stated` is a figure somebody typed;
+-- `seeded` is one the system read out of recorded data, and then it must say which
+-- figure and on which day — so a seeded amount can always be held against the
+-- reading it came from rather than quietly ageing into a number of unknown vintage.
+create table if not exists funding_plan_sources (
+  id           uuid   primary key default gen_random_uuid(),
+  scenario_id  uuid   not null references scenarios (id) on delete cascade,
+  source       text   not null,
+  amount_minor bigint not null check (amount_minor > 0),
+  currency     text   not null check (char_length(currency) = 3),
+  origin       text   not null check (origin in ('stated', 'seeded')),
+  seed_figure  text   check (seed_figure in ('free-liquid')),
+  seeded_as_of date,
+  unique (scenario_id, source),
+  -- A seeded figure states its provenance and a stated one has none to state, so
+  -- the two can never read alike — the same rule an estimated GP holds against a
+  -- price read off a document.
+  check ((origin = 'seeded') = (seed_figure is not null)),
+  check ((seed_figure is null) = (seeded_as_of is null))
+);
+
+create index if not exists funding_plan_sources_scenario_idx
+  on funding_plan_sources (scenario_id);

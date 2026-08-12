@@ -896,12 +896,57 @@ starts from current real numbers, so planning never begins from stale figures.
 
 ### Acceptance criteria
 
-- [ ] A scenario can be created with a name and no effect on any recorded data
-- [ ] A funding plan records what a future investment needs and which sources would cover it
-- [ ] The funding gap is computed and displayed
-- [ ] Months-to-close-the-gap is computed from the current savings rate
-- [ ] A new scenario is seeded from current real figures, not from stale or typed-in ones
-- [ ] No scenario operation modifies a ledger entry, snapshot, account or project
+- [x] A scenario can be created with a name and no effect on any recorded data
+      <!-- A name is all it takes, and a scenario with no plan stays a legitimate state — a
+           name and a thought — rather than reading as something half-finished. Verified
+           live, and the "no effect" half is the last criterion below. -->
+- [x] A funding plan records what a future investment needs and which sources would cover it
+      <!-- The requirement is one figure with a date, corrected in place; the sources are
+           rows. A planned source deliberately carries **no rate and no date**: a future
+           conversion has no rate yet, and one written down before the money moved would be
+           a number nobody used. Reading a shekel source into a dollar plan therefore needs
+           a rate handed in from outside, which is named and dated on screen — and a source
+           no stored rate can read is listed beside the gap rather than converted, so the
+           covered figure is the *most* that is covered. -->
+- [x] The funding gap is computed and displayed
+      <!-- Verified live: $100,000 against 180,000₪ of free liquid money read $49,315.07
+           covered at 3.6500 and a $50,684.93 gap; adding a stated $45,000.50 source took it
+           to $5,684.43, and needing $90,000 against the same sources read as $4,315.57
+           *over* rather than as a negative requirement. Computed on every read with nowhere
+           to store it. -->
+- [x] Months-to-close-the-gap is computed from the current savings rate
+      <!-- Verified live: 15,000₪ a month, read through the Ledger over the six months the
+           מאזן holds (פברואר–יולי 2026, denominator stated), converted to $4,109.59 and
+           divided into the gap — 13 months on $50,684.93, 10 on $40,684.93, 15 on
+           $61,643.84. Rounded **up**: saving arrives in monthly lumps and a part-month
+           closes nothing. Where there is no answer the screen says which of four things is
+           true — nothing recorded, a pace of nought or less, no rate between two
+           currencies, or a plan already covered — rather than printing a number. -->
+- [x] A new scenario is seeded from current real figures, not from stale or typed-in ones
+      <!-- Free liquid money out of the latest מיפוי, written in as a `seeded` source stamped
+           with that reading's date. Verified live twice against the same reading restated:
+           the first scenario seeded 180,000₪ and the second, after the liquid account was
+           restated, seeded 140,000₪ — so the seed is read at creation and never copied from
+           an older scenario. The seeded line is *not* rewritten behind the reader when the
+           figure moves: it states the drift (−40,000₪) and leaves the decision to a person.
+           A shortfall seeds nothing, because a promise with nothing behind it is not money
+           to invest. -->
+- [x] No scenario operation modifies a ledger entry, snapshot, account or project
+      <!-- Verified two ways. Empirically: every recorded table was fingerprinted (row count
+           and an order-independent hash), a scenario was then created, seeded, given a plan,
+           given and stripped of a source, renamed and removed through the screens, and every
+           fingerprint came back byte-identical. Structurally:
+           `src/domain/planning/writes-nothing-recorded.test.ts` reads the area off disk and
+           fails on a write statement against any recorded table or on an imported writer
+           from another area — a write reached through somebody else's function reaches the
+           same table. Removing a scenario cascades to its plan and its sources and nothing
+           else is reachable from there. -->
+
+The plan header sketched two tables; there are three. The requirement and the sources have
+different lifetimes — a scenario may need $100,000 before anybody has said where a shekel of
+it comes from — so `funding_plans` holds the requirement, one row per scenario, and
+`funding_plan_sources` holds the lines. `FundingPlan` in the domain is still the whole thing
+CONTEXT.md describes; it is assembled on read.
 
 ---
 

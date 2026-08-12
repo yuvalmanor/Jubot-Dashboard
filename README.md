@@ -571,3 +571,51 @@ the sheet deducted the selling cost from what it taxed, which is the one thing t
 as wrong; the remaining agora is that each component here is a real amount rounded to the
 cent once, where the sheet carried unrounded floats into a single total. Reproducing the
 sheet exactly would mean reproducing that, and this does not.
+
+## לוח תכנון
+
+`src/domain/planning/scenarios.ts` holds the what-ifs, and `/planning` reads them. A
+**Scenario** (תרחיש) is a thought with a name — "CGM 3 ב־2027" — and the whole point of it is
+that thinking it disturbs nothing. A **Funding Plan** (תוכנית מימון) is what a future
+investment needs and which sources would cover it: the *before* of a Project's Funding Legs,
+the same facts in the future tense.
+
+Three rules give the area its shape:
+
+- **It reads recorded data and writes none of it.** The only tables the planning screens
+  write are `scenarios`, `funding_plans` and `funding_plan_sources`; the מאזן, מיפוי,
+  the accounts and the projects are read and never touched. `src/domain/planning/
+  writes-nothing-recorded.test.ts` is the guard on that — it reads the area off disk and
+  fails on a write statement or on an imported writer, because a rule worth stating is worth
+  something that keeps it from eroding one query at a time. Removing a scenario deletes a
+  thought and not a fact: the cascade reaches its plan and its sources, and nothing recorded
+  is reachable from there.
+- **A planned source carries no rate and no date.** A future conversion has no rate yet, and
+  one written down before the money moved would be a number nobody used. Both arrive when the
+  plan is *executed* and its lines become real legs, which is Phase 16's work. Reading a
+  shekel source into a dollar plan therefore needs a rate handed in from outside: it is named
+  and dated on the screen, and a source that cannot be read at any rate the system holds is
+  listed beside the gap rather than converted at one nobody quoted — so the covered figure is
+  the *most* that is covered.
+- **A new scenario is seeded from what is recorded, and the seed states its vintage.** Free
+  liquid money out of the latest מיפוי — the נזילות bucket less what is already promised out of
+  it — is written in as a source marked `seeded`, stamped with that reading's own date. It
+  stays editable, because a plan is a what-if; what it is not is a figure of unknown
+  provenance. When the same figure now reads differently the screen says so and leaves the
+  line alone: silently moving a number somebody already decided against is the failure, not
+  the drift. A shortfall seeds nothing — a promise with nothing behind it is not money to
+  invest.
+
+From those come the two answers the area exists for. The **gap** is `needs − Σ(sources)`,
+computed on every read with nowhere to store it, and being over-covered reads as a surplus
+rather than as a negative requirement. **Months to close it** is that gap over what the
+household actually saves a month, read through the Ledger so it is the same חיסכון the מאזן
+screens show, and rounded *up*: saving arrives in monthly lumps and a part-month closes
+nothing. The pace divides by the months that hold a figure rather than by the length of the
+window, states that denominator, and names the months that are only half recorded — an
+unfinished month understates its own חיסכון, so a pace resting on one is understated too.
+
+Where there is no answer the screen says which of four things is true rather than printing a
+number: nothing recorded to measure a pace over, a pace of nought or less at which the gap
+never closes, a gap and a pace in different currencies with no rate between them, or a plan
+the sources already cover.
