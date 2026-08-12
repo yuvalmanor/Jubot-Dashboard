@@ -8,6 +8,12 @@ import { DatabaseNotConfiguredError } from "@/db/client";
 import { loadLedger } from "@/db/ledger";
 import { type DatedRate, type StoredAmount, findLatestRate, findStoredAmount } from "@/db/money-settings";
 import { findPersonByEmail } from "@/db/people";
+import {
+  loadAllocations,
+  loadFundingPlans,
+  loadPlannedSources,
+  loadScenarios,
+} from "@/db/planning";
 import { loadHouseholdSettings } from "@/db/settings";
 import { loadSnapshots } from "@/db/snapshots";
 import { format, isNegative, negate } from "@/domain/money/money";
@@ -16,14 +22,24 @@ import {
   decomposeChange,
   reconcileMoneyAdded,
 } from "@/domain/networth/net-worth-analytics";
+import { type AllocationPlan, projectAllocations } from "@/domain/planning/allocations";
+import {
+  type Scenario,
+  type ScenarioReading,
+  activeScenario,
+  readScenario,
+} from "@/domain/planning/scenarios";
 import {
   type Account,
   type Snapshot,
   canConvertWithin,
   snapshotReadings,
 } from "@/domain/snapshot/snapshot";
-import { formatDate } from "@/domain/time/calendar-date";
+import { formatDate, monthContaining } from "@/domain/time/calendar-date";
+import { compareMonths, formatMonth, monthOf } from "@/domain/time/calendar-month";
 import { requireHouseholdEmail } from "@/session";
+
+import { currentPace } from "./planning/panels";
 
 // Reads a live database on every request; nothing here is prerendered at build.
 export const dynamic = "force-dynamic";
@@ -46,6 +62,7 @@ export default async function DashboardPage() {
 
   const tracer = await readTracerAmount();
   const reconciliation = await readReconciliation();
+  const activePlan = await readActivePlan();
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
@@ -58,6 +75,7 @@ export default async function DashboardPage() {
 
       <main className="mt-6 space-y-6 sm:mt-8">
         {reconciliation === null ? null : <ReconciliationBanner reconciliation={reconciliation} />}
+        {activePlan === null ? null : <ActivePlanBanner plan={activePlan} />}
 
         <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
           <h2 className="text-sm font-semibold tracking-wide text-stone-500">סכום לדוגמה מהמסד</h2>
@@ -111,6 +129,156 @@ export default async function DashboardPage() {
         </section>
       </main>
     </div>
+  );
+}
+
+// --- the plan the household says it is following ------------------------------
+
+interface ActivePlanReading {
+  readonly scenario: Scenario;
+  readonly reading: ScenarioReading;
+  readonly allocations: AllocationPlan | null;
+}
+
+/**
+ * The one scenario marked as the plan being followed, and the household measured
+ * against it.
+ *
+ * A plan nobody is held to is a thought. This is where the holding happens: the
+ * gap it still has, whether saving closes it before the date it is needed by, and —
+ * where the plan allocates its saving across goals — whether the household is
+ * actually saving what it promised. Every figure is computed on read out of the
+ * same functions the לוח תכנון screens use, so the dashboard cannot disagree with
+ * the scenario's own page.
+ *
+ * Marking none is a legitimate state, and it is silence here rather than a panel
+ * asking to be filled in.
+ */
+async function readActivePlan(): Promise<ActivePlanReading | null> {
+  try {
+    const scenarios = await loadScenarios();
+    const scenario = activeScenario(scenarios);
+    if (scenario === null) return null;
+
+    const [plans, sources, ledger, categories, rate, allocations] = await Promise.all([
+      loadFundingPlans(),
+      loadPlannedSources(),
+      loadLedger(),
+      loadCategories(),
+      findLatestRate("USD", "ILS"),
+      loadAllocations(),
+    ]);
+
+    const pace = currentPace(ledger, categories);
+    const own = allocations.filter((allocation) => allocation.scenarioId === scenario.id);
+
+    return {
+      scenario,
+      reading: readScenario({ scenario, plans, sources, pace, rate }),
+      allocations:
+        own.length === 0
+          ? null
+          : projectAllocations({
+              allocations: own,
+              scenarioId: scenario.id,
+              from: monthOf(new Date()),
+              months: 12,
+              pace: pace.monthly,
+              rate,
+            }),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function ActivePlanBanner({ plan }: { plan: ActivePlanReading }) {
+  const { reading, allocations } = plan;
+  const { gap, closure } = reading;
+  const neededBy = reading.plan === null ? null : monthContaining(reading.plan.neededBy);
+  const closesIn = closure?.closesIn ?? null;
+  const inTime =
+    closesIn === null || neededBy === null ? null : compareMonths(closesIn, neededBy) <= 0;
+
+  return (
+    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <h2 className="text-sm font-semibold tracking-wide text-stone-500">
+          התוכנית שאחריה עוקבים
+        </h2>
+        <p className="text-sm">
+          <Link
+            href={`/planning/${plan.scenario.id}`}
+            className="underline underline-offset-4 text-stone-700"
+          >
+            <bdi>{plan.scenario.name}</bdi> ←
+          </Link>
+        </p>
+      </div>
+
+      {gap === null || reading.plan === null ? (
+        <p className="mt-2 text-sm text-stone-600">
+          לתוכנית הזו עדיין לא נרשם מה ההשקעה דורשת, ולכן אין מול מה למדוד. זה מצב תקין — שם
+          ומחשבה.
+        </p>
+      ) : (
+        <>
+          <dl className="mt-3 grid gap-4 sm:grid-cols-3">
+            <div>
+              <dt className="text-xs text-stone-500">דרוש עד {formatDate(reading.plan.neededBy)}</dt>
+              <dd className="tabular mt-1 text-lg">
+                <bdi>{format(gap.needs)}</bdi>
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-stone-500">מכוסה ממקורות</dt>
+              <dd className="tabular mt-1 text-lg">
+                <bdi>{format(gap.covered)}</bdi>
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-stone-500">{gap.closed ? "מעל הדרוש" : "חסר"}</dt>
+              <dd className="tabular mt-1 text-xl font-semibold">
+                <bdi>{format(gap.surplus ?? gap.gap)}</bdi>
+              </dd>
+            </div>
+          </dl>
+
+          {closesIn === null || inTime === null ? null : (
+            <p
+              className={`mt-3 rounded-md border p-3 text-sm ${
+                inTime
+                  ? "border-emerald-300 bg-emerald-50 text-emerald-900"
+                  : "border-amber-300 bg-amber-50 text-amber-900"
+              }`}
+              role={inTime ? "status" : "alert"}
+            >
+              בקצב החיסכון הנוכחי הפער נסגר ב{formatMonth(closesIn)}, וההשקעה נדרשת עד{" "}
+              {formatDate(reading.plan.neededBy)} — {inTime ? "כלומר בזמן." : "כלומר באיחור."}
+            </p>
+          )}
+        </>
+      )}
+
+      {allocations === null || allocations.paceStanding !== "computed" || allocations.pace === null ? null : (
+        <p
+          className={`mt-3 text-sm ${allocations.over === null ? "text-stone-600" : "text-amber-900"}`}
+        >
+          התוכנית מקצה <bdi className="tabular">{format(allocations.committed)}</bdi> בחודש בין{" "}
+          {allocations.goals.length === 1 ? "ייעוד אחד" : `${allocations.goals.length} ייעודים`},
+          והמאזן אומר שנחסכים <bdi className="tabular">{format(allocations.pace)}</bdi>
+          {allocations.over === null ? (
+            <> — כלומר ההקצאות מכוסות.</>
+          ) : (
+            <>
+              {" "}
+              — כלומר <bdi className="tabular font-medium">{format(allocations.over)}</bdi> יותר
+              ממה שיש.
+            </>
+          )}
+        </p>
+      )}
+    </section>
   );
 }
 

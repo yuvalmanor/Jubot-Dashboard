@@ -80,13 +80,23 @@ export default async function PlanningPage({
                 אותה בלי לגעת בשום דבר שנרשם.
               </p>
             ) : (
-              <ul className="space-y-4">
-                {loaded.readings.map((reading) => (
-                  <li key={reading.scenario.id}>
-                    <ScenarioCard reading={reading} rate={loaded.rate} />
-                  </li>
-                ))}
-              </ul>
+              <>
+                <ul className="space-y-4">
+                  {loaded.readings.map((reading) => (
+                    <li key={reading.scenario.id}>
+                      <ScenarioCard reading={reading} rate={loaded.rate} />
+                    </li>
+                  ))}
+                </ul>
+
+                {loaded.readings.length < 2 ? null : (
+                  <p className="text-sm">
+                    <Link href="/planning/compare" className="underline underline-offset-4">
+                      השוואת שני תרחישים זה מול זה ←
+                    </Link>
+                  </p>
+                )}
+              </>
             )}
 
             <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
@@ -186,6 +196,11 @@ function ScenarioCard({ reading, rate }: { reading: ScenarioReading; rate: Dated
           <Link href={`/planning/${scenario.id}`} className="underline-offset-4 hover:underline">
             <bdi>{scenario.name}</bdi>
           </Link>
+          {scenario.active ? (
+            <span className="ms-2 rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 align-middle text-xs font-medium text-emerald-900">
+              התוכנית שאחריה עוקבים
+            </span>
+          ) : null}
         </h2>
         <p className="text-sm text-stone-500">
           נוצר ב־{formatDate(scenario.createdOn)}

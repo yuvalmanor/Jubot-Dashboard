@@ -22,6 +22,14 @@ const ERROR_MESSAGES: Record<PlanningErrorCode, string> = {
   "bad-plan": "פרטי תוכנית המימון אינם תקינים.",
   "bad-source": "פרטי המקור אינם תקינים.",
   "duplicate-source": "כבר קיים מקור בשם הזה בתרחיש.",
+  "bad-allocation": "פרטי ההקצאה אינם תקינים.",
+  "duplicate-allocation": "כבר קיימת הקצאה לייעוד הזה בתרחיש.",
+  "bad-pattern": "פרטי הדפוס החוזר אינם תקינים.",
+  "bad-terms": "תנאי העסקה שהוזנו אינם תקינים.",
+  "unknown-project": "הפרוייקט אינו קיים.",
+  "already-executed":
+    "התוכנית כבר בוצעה. תוכנית שבוצעה היא רישום של מה שקרה, ולא מחשבה שאפשר לערוך — תיקון של רגל מימון נעשה במסך הפרוייקט.",
+  "bad-execution": "לא ניתן לבצע את התוכנית.",
   failed: "הפעולה נכשלה.",
 };
 
@@ -33,6 +41,15 @@ const DONE_MESSAGES: Record<string, string> = {
   "plan-saved": "תוכנית המימון נשמרה",
   "source-added": "נוסף מקור",
   "source-removed": "המקור הוסר",
+  "allocation-added": "נוספה הקצאה",
+  "allocation-removed": "ההקצאה הוסרה",
+  "pattern-saved": "הדפוס החוזר נשמר",
+  "pattern-removed": "הדפוס החוזר הוסר",
+  "terms-saved": "תנאי העסקה של התרחיש נשמרו",
+  "terms-cleared": "התרחיש חזר לתנאים הרשומים",
+  "plan-marked": "זו התוכנית שאחריה עוקבים",
+  "plan-unmarked": "אין תוכנית פעילה",
+  executed: "תוכנית המימון בוצעה, ורגלי המימון נרשמו בפרוייקט",
 };
 
 function isErrorCode(value: string | undefined): value is PlanningErrorCode {
@@ -161,6 +178,23 @@ export function formatRate(rate: number): string {
 
 export function RateFigure({ rate }: { rate: number }) {
   return <bdi className="tabular">{formatRate(rate)}</bdi>;
+}
+
+const PERCENT = new Intl.NumberFormat("he-IL", {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 2,
+});
+
+/** Whole basis points read as a percentage — 1,825 is 18.25%. */
+export function formatBasisPoints(basisPoints: number): string {
+  return `${PERCENT.format(basisPoints / 100)}%`;
+}
+
+/** A number of months, said the way Hebrew says it. */
+export function monthsCount(months: number): string {
+  if (months === 1) return "חודש אחד";
+  if (months === 2) return "חודשיים";
+  return `${months} חודשים`;
 }
 
 /**

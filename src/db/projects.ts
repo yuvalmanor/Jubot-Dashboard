@@ -15,7 +15,7 @@ import {
 } from "@/domain/projects/projects";
 import { dateKey, parseDateKey } from "@/domain/time/calendar-date";
 
-import { query } from "./client";
+import { type TransactionQuery, query } from "./client";
 
 /**
  * Reading and writing Projects, their Funding Legs, their expense ledger and their
@@ -163,13 +163,20 @@ export async function loadFundingLegs(projects: readonly Project[]): Promise<rea
   return rows.map((row) => toFundingLeg(row, projects));
 }
 
+/**
+ * `run` is the runner to write through, and defaults to a statement of its own.
+ * Executing a Funding Plan writes several legs and the record that it happened in
+ * one transaction — half a plan in a pot is worse than none of it — and it does so
+ * through here rather than through a second copy of this statement.
+ */
 export async function insertFundingLeg(
   id: string,
   definition: FundingLegDefinition,
   project: Project,
+  run: TransactionQuery = query,
 ): Promise<FundingLeg> {
   const leg = buildFundingLeg(id, definition, project);
-  await query(
+  await run(
     `insert into funding_legs (id, project_id, source, amount_minor, currency, usd_ils_rate, paid_on)
      values ($1, $2, $3, $4, $5, $6, $7::date)`,
     [

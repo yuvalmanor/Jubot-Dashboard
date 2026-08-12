@@ -970,16 +970,80 @@ rates — the transition from planning to record is not re-typing.
 
 ### Acceptance criteria
 
-- [ ] Monthly saving allocations can be set across multiple goals and projected over time
-- [ ] Two scenarios can be compared side by side
-- [ ] A repeating investment pattern can be projected over multiple years
-- [ ] Projections default to the project's recorded Deal Terms
-- [ ] Deal Terms can be overridden inside a scenario without changing the recorded terms
-- [ ] Exactly one scenario can be marked as the active plan, and the dashboard measures
+- [x] Monthly saving allocations can be set across multiple goals and projected over time
+      <!-- Verified live on the PRD's own example: 5,000₪ to קרן חירום and 10,000₪ to
+           נדל"ן read 90,000₪ after six months and 450,000₪ after thirty. Every goal
+           accumulates from nought, because these are contributions and the balance a
+           goal already holds is an Earmark somebody measured in מיפוי — mixing the two
+           would put a plan and a measurement in one figure. Deliberately not damped by
+           the pace: promising 15,000₪ out of a 12,000₪ month is reported as 3,000₪
+           over-committed and the promise is still played out as written, because a
+           quietly reduced number hides which of the two is wrong. -->
+- [x] Two scenarios can be compared side by side
+      <!-- Verified live: CGM 3 at $100,000 against Meteor 7 at $60,000 read a −$40,000
+           difference on the requirement, −$40,000 on the gap and −9 on the months. Every
+           figure is one each scenario already shows on its own page, read through the
+           same functions, so a scenario cannot say one thing alone and another beside its
+           rival. A difference is stated only where the two are the same question — a
+           dollar plan against a shekel one has none — and the column says which is
+           smaller, never which is better. -->
+- [x] A repeating investment pattern can be projected over multiple years
+      <!-- Verified live on "a CGM every year for ten years": $100,000 × 10 from January
+           2027, played out to January 2039. The first is missed with $36,986.30 short and
+           the eighth is where the money runs out; a missed occurrence is *not* slid
+           forward, because a delay invents a schedule nobody chose. What comes back pays
+           for what comes next — the fifth reads $178,524.02 available because the second's
+           $118,250 landed that January. -->
+- [x] Projections default to the project's recorded Deal Terms
+      <!-- Verified live: the pattern named CGM 1 and read 18.25% over 36 months straight
+           off the recorded row. One reading had to be chosen and is stated on screen
+           rather than buried: the percentage is taken as the **total return over the hold
+           period**, not per year, because it sits beside a hold period on a document that
+           says nothing about compounding. A project with no terms, or a row of nulls,
+           returns nothing and says so — a promise of nothing is not a promise. -->
+- [x] Deal Terms can be overridden inside a scenario without changing the recorded terms
+      <!-- Verified live both ways: overriding the return to 8% moved every distribution
+           from $118,250 to $108,000 and the ending cash from $800,794.66 to $718,794.66,
+           while `deal_terms` still read 1,825bp and 36 months in the database. A null
+           field is not an override but an absence of opinion, so the hold period stayed
+           the document's; the screen names the recorded figure beside the overridden one,
+           so a stress test never hides what was actually promised. -->
+- [x] Exactly one scenario can be marked as the active plan, and the dashboard measures
       against its targets
-- [ ] Executing a funding plan creates the project's funding legs at real rates
-- [ ] Execution is the only scenario operation that writes recorded data, and it is
+      <!-- Verified live: marking a second scenario released the first, and a direct
+           `update` marking two was refused by `scenarios_one_active_plan`. Marking none is
+           a legitimate state and reads as silence rather than as an empty panel. The
+           dashboard states the gap, whether saving closes it before the date the plan
+           needs it (October 2027 against 30 June 2027 — late), and what the plan allocates
+           against what the מאזן says is saved. -->
+- [x] Executing a funding plan creates the project's funding legs at real rates
+      <!-- Verified live end to end: 140,000₪ of planned source became a funding leg paid
+           2027-01-15 at 3.650000, and CGM 1's pot read $38,356.16 with an effective rate
+           of 3.6500 — the project screen renders it exactly as it renders a leg typed into
+           it, because it is written through the same `insertFundingLeg`. The household's
+           own name for the source travels onto the leg, which is the whole point: the
+           transition from plan to record is not re-typing. Sources falling short of the
+           requirement are executed and the difference stated; a conversion with no rate is
+           refused whole, and the refusal names the line. -->
+- [x] Execution is the only scenario operation that writes recorded data, and it is
       explicit
+      <!-- Explicit in three ways. It asks twice: the household names the project, the day
+           and the rate, reads back exactly which legs that produces, and confirms — and
+           the action rebuilds that preview from stored data rather than trusting the form.
+           It happens once: the scenario is the execution row's primary key, and the
+           reference to `scenarios` deliberately does not cascade, so an executed scenario
+           cannot be edited or deleted — verified live, where adding a source afterwards was
+           refused. And it is findable: `writes-nothing-recorded.test.ts` now reads the whole
+           area off disk and asserts that no file writes a recorded table in SQL, that
+           exactly two files reach a writer at all — `plan-execution.ts` for the leg writer
+           and `actions.ts` for its single entry point — and that every other file in לוח
+           תכנון reaches neither. -->
+
+The plan header sketched three planning tables; there are six. Allocations, the pattern and
+the overridden terms are three lifetimes rather than one — a scenario may have a pattern
+before it has a requirement, and an override outlives whichever projection asked for it —
+and `funding_plan_executions` is the record that the exception ran, kept apart from the plan
+it executed so that deleting a thought and deleting a fact cannot be the same statement.
 
 ---
 

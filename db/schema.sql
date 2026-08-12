@@ -628,3 +628,91 @@ create table if not exists funding_plan_sources (
 
 create index if not exists funding_plan_sources_scenario_idx
   on funding_plan_sources (scenario_id);
+
+-- הקצאת חיסכון — how much of a month's saving goes to which goal. 5,000 to the
+-- emergency fund and 10,000 to real estate: an intention about future money, so
+-- it is typed and never derived. Whether the household actually saves the sum of
+-- these is a question for the מאזן, and the projection answers it rather than
+-- assuming it.
+--
+-- `target_minor` is what the goal is aiming at, and is optional: "10,000 a month
+-- to real estate" is a complete intention with no finish line on it.
+create table if not exists scenario_allocations (
+  id                   uuid   primary key default gen_random_uuid(),
+  scenario_id          uuid   not null references scenarios (id) on delete cascade,
+  goal                 text   not null,
+  monthly_amount_minor bigint not null check (monthly_amount_minor > 0),
+  target_minor         bigint check (target_minor > 0),
+  currency             text   not null check (char_length(currency) = 3),
+  unique (scenario_id, goal)
+);
+
+create index if not exists scenario_allocations_scenario_idx
+  on scenario_allocations (scenario_id);
+
+-- דפוס חוזר — "a CGM every year for ten years". One row per scenario, because a
+-- pattern is the shape of one strategy and two of them are two scenarios.
+--
+-- `modelled_on` names the project whose Deal Terms the projection reads: what
+-- comes back, and after how long. It is a promise off a sponsor's paperwork and
+-- not a measurement, which is why the scenario may override it below — and why
+-- naming no project at all is legitimate, under which nothing ever comes back and
+-- the projection says so.
+create table if not exists scenario_patterns (
+  scenario_id  uuid    primary key references scenarios (id) on delete cascade,
+  amount_minor bigint  not null check (amount_minor > 0),
+  currency     text    not null check (char_length(currency) = 3),
+  every_months integer not null check (every_months > 0),
+  occurrences  integer not null check (occurrences > 0),
+  first_on     date    not null,
+  modelled_on  uuid    references projects (id) on delete set null
+);
+
+-- תנאי עסקה בתוך תרחיש — the sponsor's promise, stress-tested. A row here
+-- overrides what `deal_terms` records, *for this scenario only*: the recorded
+-- terms are what the paperwork said and nothing in a what-if may edit them.
+--
+-- A null column is not an override. It means "this scenario says nothing about
+-- that term", and the recorded one still stands — so overriding the return
+-- without touching the hold period is one row, not a copy of the document.
+create table if not exists scenario_deal_terms (
+  scenario_id      uuid not null references scenarios (id) on delete cascade,
+  project_id       uuid not null references projects (id) on delete cascade,
+  target_return_bp integer,
+  hold_months      integer check (hold_months > 0),
+  primary key (scenario_id, project_id)
+);
+
+-- The one scenario the household says it is actually following. The dashboard
+-- measures against this one, so there must never be two: the partial unique index
+-- indexes only the rows that are marked, and uniqueness over them permits exactly
+-- one. Marking none is a legitimate state — "we are not following a plan".
+alter table scenarios add column if not exists is_active boolean not null default false;
+
+create unique index if not exists scenarios_one_active_plan
+  on scenarios ((is_active)) where is_active;
+
+-- ביצוע תוכנית מימון — the moment a plan stopped being a what-if.
+--
+-- This is the only table in לוח תכנון whose writing also writes something
+-- recorded: executing a plan inserts a Funding Leg per planned source, at the
+-- rate actually used, into the project named here. Everything else the planning
+-- board does writes nothing but its own three tables.
+--
+-- The reference to `scenarios` deliberately does *not* cascade. A scenario that
+-- was executed is no longer only a thought — it is how a project came to be
+-- funded — so the database refuses to delete it, and the legs it created keep
+-- their provenance. Its `project_id` does not cascade either: a project cannot be
+-- deleted out from under the record of how it was funded.
+create table if not exists funding_plan_executions (
+  scenario_id  uuid    primary key references scenarios (id),
+  project_id   uuid    not null references projects (id),
+  executed_on  date    not null,
+  usd_ils_rate numeric(18, 6) check (usd_ils_rate > 0),
+  leg_count    integer not null check (leg_count > 0)
+);
+
+comment on column funding_plan_executions.usd_ils_rate is
+  'The rate the sources were actually converted at, or null where none of them '
+  'changed currency. The same rule a funding leg holds: a rate beside money that '
+  'was never converted is a number nobody used.';

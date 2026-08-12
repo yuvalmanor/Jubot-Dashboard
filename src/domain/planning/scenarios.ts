@@ -61,6 +61,16 @@ export interface Scenario {
   /** What the thought is, in the household's own words. `null` when it needs none. */
   readonly note: string | null;
   readonly createdOn: CalendarDate;
+  /**
+   * Whether this is the plan the household says it is actually following. At most
+   * one scenario carries it, and none carrying it is a legitimate state: "we are
+   * thinking about four things and following none of them" is a real answer.
+   *
+   * It is what the dashboard measures the household against, which is the whole
+   * reason a what-if needs a mark at all — an intention nobody is held to is a
+   * thought, and this is the one thought that has become a plan.
+   */
+  readonly active: boolean;
 }
 
 export class InvalidScenarioError extends Error {
@@ -120,6 +130,7 @@ export interface ScenarioDefinition {
   readonly name: string;
   readonly note?: string | null;
   readonly createdOn: CalendarDate;
+  readonly active?: boolean;
 }
 
 const scenarioFailure = (message: string) => new InvalidScenarioError(message);
@@ -130,6 +141,9 @@ export function buildScenario(id: string, definition: ScenarioDefinition): Scena
     name: requireText(definition.name, "A scenario name", 80, scenarioFailure),
     note: optionalText(definition.note, "A scenario note", 400, scenarioFailure),
     createdOn: definition.createdOn,
+    // A new scenario is a thought, not a plan. Becoming the one being followed is
+    // something a person does on purpose, afterwards.
+    active: definition.active ?? false,
   };
 }
 
@@ -141,6 +155,15 @@ export function requireScenario(scenarios: readonly Scenario[], id: string): Sce
   const scenario = findScenario(scenarios, id);
   if (scenario === undefined) throw new UnknownScenarioError(id);
   return scenario;
+}
+
+/**
+ * The plan the household says it is following, or `null` when it is following
+ * none. Two marked scenarios is a state the database refuses, so finding one is
+ * finding the one.
+ */
+export function activeScenario(scenarios: readonly Scenario[]): Scenario | null {
+  return scenarios.find((scenario) => scenario.active) ?? null;
 }
 
 /** Newest first: a what-if is usually read while it is still being thought about. */
@@ -339,11 +362,15 @@ export interface FundingGap {
 }
 
 /**
- * Read an amount into the plan's currency at the rate handed in. The rate may be
+ * Read an amount into another currency at the rate handed in. The rate may be
  * quoted in either direction — one stored `USD/ILS` number, never two — and a rate
  * for the wrong pair is no rate at all.
+ *
+ * `null` is the answer to "what is this worth in dollars" when nobody has quoted a
+ * rate. Every caller in this area reports that rather than converting: the whole
+ * point of a gap is that somebody decides against it.
  */
-function readInto(amount: Money, to: Currency, rate: ExchangeRate | null): Money | null {
+export function readInto(amount: Money, to: Currency, rate: ExchangeRate | null): Money | null {
   if (amount.currency === to) return amount;
   if (rate === null) return null;
   if (rate.from === amount.currency && rate.to === to) return convert(amount, rate);

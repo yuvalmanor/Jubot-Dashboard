@@ -22,6 +22,7 @@ import {
   UnknownScenarioError,
   buildFundingPlan,
   buildPlannedSource,
+  activeScenario,
   buildScenario,
   fundingGap,
   monthsToClose,
@@ -74,7 +75,21 @@ describe("a scenario is a name and a thought", () => {
       name: "CGM 3 ב־2027",
       note: "אם המכירה של הלוט הראשון תצא",
       createdOn: d(2026, 8, 12),
+      active: false,
     });
+  });
+
+  it("starts as a thought rather than as the plan being followed", () => {
+    const thought = buildScenario("s1", { name: "CGM 3", createdOn: d(2026, 8, 12) });
+    const followed = buildScenario("s2", {
+      name: "Meteor 7",
+      createdOn: d(2026, 1, 4),
+      active: true,
+    });
+
+    expect(thought.active).toBe(false);
+    expect(activeScenario([thought])).toBeNull();
+    expect(activeScenario([thought, followed])).toBe(followed);
   });
 
   it("treats a blank note as no note rather than as an empty thought", () => {

@@ -9,19 +9,56 @@ import { loadEarmarks } from "@/db/holdings";
 import { loadLedger } from "@/db/ledger";
 import { type DatedRate, findLatestRate } from "@/db/money-settings";
 import { type Person, findPersonByEmail } from "@/db/people";
-import { loadFundingPlans, loadPlannedSources, loadScenarios } from "@/db/planning";
+import {
+  loadAllocations,
+  loadFundingPlans,
+  loadPatterns,
+  loadPlanExecutions,
+  loadPlannedSources,
+  loadScenarioTerms,
+  loadScenarios,
+} from "@/db/planning";
+import { loadDealTerms, loadProjects } from "@/db/projects";
 import { loadSnapshots } from "@/db/snapshots";
-import { type Currency, type Money, equals, format, subtract, toDecimalString } from "@/domain/money/money";
+import {
+  type Currency,
+  type ExchangeRate,
+  type Money,
+  equals,
+  exchangeRate,
+  format,
+  subtract,
+  toDecimalString,
+  zero,
+} from "@/domain/money/money";
+import { type AllocationPlan, type SavingAllocation, projectAllocations } from "@/domain/planning/allocations";
+import {
+  type ExecutionPreview,
+  type PlanExecution,
+  executionFor,
+  previewExecution,
+} from "@/domain/planning/execution";
+import {
+  type EffectiveTerms,
+  type InvestmentPattern,
+  type PatternProjection,
+  effectiveTerms,
+  patternFor,
+  projectPattern,
+} from "@/domain/planning/patterns";
 import {
   type PlannedSource,
   type SavingPace,
   type ScenarioReading,
   findScenario,
+  planFor,
+  readInto,
   readScenario,
 } from "@/domain/planning/scenarios";
+import { type Project, findProject } from "@/domain/projects/projects";
 import { freeLiquid } from "@/domain/snapshot/holdings";
-import { type CalendarDate, dateKey, dateOf, formatDate, monthContaining } from "@/domain/time/calendar-date";
-import { compareMonths, formatMonth } from "@/domain/time/calendar-month";
+import { type CalendarDate, dateKey, dateOf, formatDate, monthContaining, tryParseDateKey } from "@/domain/time/calendar-date";
+import { compareMonths, formatMonth, monthOf } from "@/domain/time/calendar-month";
 import { requireHouseholdEmail } from "@/session";
 
 import { addSource, editScenario, removeScenario, removeSource, savePlan } from "../actions";
@@ -38,6 +75,14 @@ import {
   formatRate,
   monthsText,
 } from "../panels";
+import {
+  ALLOCATION_HORIZON_MONTHS,
+  ActivePlanControl,
+  AllocationsPanel,
+  ExecutionPanel,
+  PatternPanel,
+  TermsOverridePanel,
+} from "./scenario-panels";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +102,11 @@ interface SearchParams {
   error?: string | string[];
   detail?: string | string[];
   done?: string | string[];
+  /** The execution preview: what would be written, asked for before it is. */
+  execute?: string | string[];
+  projectId?: string | string[];
+  paidOn?: string | string[];
+  rate?: string | string[];
 }
 
 function first(value: string | string[] | undefined): string | undefined {
@@ -73,7 +123,7 @@ export default async function ScenarioPage({
   const email = await requireHouseholdEmail();
   const { id } = await params;
   const query = await searchParams;
-  const loaded = await loadPage(email, id);
+  const loaded = await loadPage(email, id, query);
 
   if (loaded.kind === "missing") notFound();
 
@@ -99,8 +149,38 @@ export default async function ScenarioPage({
               measuredOn={loaded.measuredOn}
             />
             <PlanPanel reading={loaded.reading} />
+            <AllocationsPanel
+              scenario={loaded.reading.scenario}
+              allocations={loaded.allocations}
+              plan={loaded.allocationPlan}
+              currency={loaded.allocationPlan?.currency ?? "ILS"}
+            />
+            <PatternPanel
+              scenario={loaded.reading.scenario}
+              pattern={loaded.pattern}
+              projection={loaded.patternProjection}
+              projects={loaded.projects}
+              opening={loaded.patternOpening}
+              monthly={loaded.patternMonthly}
+            />
+            {loaded.terms === null ? null : (
+              <TermsOverridePanel
+                scenario={loaded.reading.scenario}
+                terms={loaded.terms}
+                projectName={
+                  findProject(loaded.projects, loaded.terms.projectId)?.name ?? loaded.terms.projectId
+                }
+              />
+            )}
+            <ExecutionPanel
+              scenario={loaded.reading.scenario}
+              projects={loaded.projects}
+              executed={loaded.executed}
+              preview={loaded.preview}
+              rate={loaded.rate}
+            />
             <PacePanel pace={loaded.pace} />
-            <DefinitionPanel reading={loaded.reading} />
+            <DefinitionPanel reading={loaded.reading} executed={loaded.executed} />
           </>
         ) : (
           <UnavailablePanel reason={loaded.reason} />
@@ -122,28 +202,60 @@ type Loaded =
       /** Free liquid money as the latest מיפוי reads it now, for holding a seeded line against. */
       currentFreeLiquid: Money | null;
       measuredOn: CalendarDate | null;
+      allocations: readonly SavingAllocation[];
+      allocationPlan: AllocationPlan | null;
+      pattern: InvestmentPattern | null;
+      patternProjection: PatternProjection | null;
+      /** What the pattern starts with and adds each month, in the pattern's own currency. */
+      patternOpening: Money | null;
+      patternMonthly: Money | null;
+      terms: EffectiveTerms | null;
+      projects: readonly Project[];
+      executed: PlanExecution | null;
+      preview: ExecutionPreview | null;
     }
   | { kind: "missing" }
   | { kind: "unavailable"; reason: string };
 
-async function loadPage(email: string, id: string): Promise<Loaded> {
+async function loadPage(email: string, id: string, query: SearchParams): Promise<Loaded> {
   try {
     const scenarios = await loadScenarios();
     const scenario = findScenario(scenarios, id);
     if (scenario === undefined) return { kind: "missing" };
 
-    const [person, plans, sources, ledger, categories, rate, snapshots, accounts, earmarks] =
-      await Promise.all([
-        findPersonByEmail(email),
-        loadFundingPlans(),
-        loadPlannedSources(),
-        loadLedger(),
-        loadCategories(),
-        findLatestRate("USD", "ILS"),
-        loadSnapshots(),
-        loadAccounts(),
-        loadEarmarks(),
-      ]);
+    const [
+      person,
+      plans,
+      sources,
+      ledger,
+      categories,
+      rate,
+      snapshots,
+      accounts,
+      earmarks,
+      allocations,
+      patterns,
+      overrides,
+      executions,
+      projects,
+      dealTerms,
+    ] = await Promise.all([
+      findPersonByEmail(email),
+      loadFundingPlans(),
+      loadPlannedSources(),
+      loadLedger(),
+      loadCategories(),
+      findLatestRate("USD", "ILS"),
+      loadSnapshots(),
+      loadAccounts(),
+      loadEarmarks(),
+      loadAllocations(),
+      loadPatterns(),
+      loadScenarioTerms(),
+      loadPlanExecutions(),
+      loadProjects(),
+      loadDealTerms(),
+    ]);
 
     const pace = currentPace(ledger, categories);
     // Newest first out of the database. A figure that cannot be read is absent
@@ -158,14 +270,92 @@ async function loadPage(email: string, id: string): Promise<Loaded> {
       }
     }
 
+    const reading = readScenario({ scenario, plans, sources, pace, rate });
+    const own = allocations.filter((allocation) => allocation.scenarioId === scenario.id);
+
+    // Forward from this month: an allocation is about the saving still to come.
+    const from = monthOf(new Date());
+    const allocationPlan =
+      own.length === 0
+        ? null
+        : projectAllocations({
+            allocations: own,
+            scenarioId: scenario.id,
+            from,
+            months: ALLOCATION_HORIZON_MONTHS,
+            pace: pace.monthly,
+            rate,
+          });
+
+    const pattern = patternFor(patterns, scenario.id);
+    const terms =
+      pattern === null || pattern.modelledOn === null
+        ? null
+        : effectiveTerms({
+            scenarioId: scenario.id,
+            projectId: pattern.modelledOn,
+            recorded: dealTerms,
+            overrides,
+          });
+
+    // Both are read into the pattern's own currency at a rate that is named on
+    // screen; where no rate is stored the pattern simply starts from nothing and
+    // saves nothing, which is visible rather than assumed.
+    const patternCurrency = pattern?.amount.currency ?? "ILS";
+    const patternMonthly =
+      pattern === null || pace.monthly === null
+        ? null
+        : readInto(pace.monthly, patternCurrency, rate);
+    const patternOpening =
+      pattern === null || reading.gap === null
+        ? null
+        : readInto(reading.gap.covered, patternCurrency, rate);
+
+    const patternProjection =
+      pattern === null
+        ? null
+        : projectPattern({
+            pattern,
+            terms,
+            from,
+            monthly: patternMonthly,
+            opening: patternOpening,
+          });
+
+    const executed = executionFor(executions, scenario.id);
+    const asked = first(query.execute) === "1";
+    const project = findProject(projects, first(query.projectId) ?? "");
+    const preview =
+      !asked || project === undefined
+        ? null
+        : previewExecution({
+            scenarioId: scenario.id,
+            plan: planFor(plans, scenario.id),
+            sources,
+            project,
+            paidOn: tryParseDateKey(first(query.paidOn)) ?? dateOf(new Date()),
+            rate: parseRate(first(query.rate)),
+            executed,
+          });
+
     return {
       kind: "ok",
       person,
-      reading: readScenario({ scenario, plans, sources, pace, rate }),
+      reading,
       pace,
       rate,
       currentFreeLiquid,
       measuredOn: snapshot?.takenOn ?? null,
+      allocations: own,
+      allocationPlan,
+      pattern,
+      patternProjection,
+      patternOpening: pattern === null ? null : (patternOpening ?? zero(patternCurrency)),
+      patternMonthly,
+      terms,
+      projects,
+      executed,
+      preview,
     };
   } catch (error) {
     if (error instanceof DatabaseNotConfiguredError) {
@@ -173,6 +363,14 @@ async function loadPage(email: string, id: string): Promise<Loaded> {
     }
     return { kind: "unavailable", reason: error instanceof Error ? error.message : String(error) };
   }
+}
+
+/** A rate typed into the preview form. Anything unusable is no rate at all. */
+function parseRate(text: string | undefined): ExchangeRate | null {
+  const trimmed = (text ?? "").trim();
+  const value = Number(trimmed);
+  if (trimmed.length === 0 || !Number.isFinite(value) || value <= 0) return null;
+  return exchangeRate("USD", "ILS", value);
 }
 
 // --- the gap, and how long it takes to close ----------------------------------
@@ -544,12 +742,22 @@ function PlanPanel({ reading }: { reading: ScenarioReading }) {
 
 // --- the scenario itself ------------------------------------------------------
 
-function DefinitionPanel({ reading }: { reading: ScenarioReading }) {
+function DefinitionPanel({
+  reading,
+  executed,
+}: {
+  reading: ScenarioReading;
+  executed: PlanExecution | null;
+}) {
   const { scenario } = reading;
 
   return (
     <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
       <h2 className="text-sm font-semibold tracking-wide text-stone-500">הגדרת התרחיש</h2>
+
+      <div className="mt-4 border-b border-stone-200 pb-4">
+        <ActivePlanControl scenario={scenario} />
+      </div>
 
       <form action={editScenario} className="mt-4 grid gap-4 sm:grid-cols-2">
         <input type="hidden" name="scenarioId" value={scenario.id} />
@@ -583,22 +791,30 @@ function DefinitionPanel({ reading }: { reading: ScenarioReading }) {
         </div>
       </form>
 
-      <form action={removeScenario} className="mt-4 border-t border-stone-200 pt-4">
-        <input type="hidden" name="scenarioId" value={scenario.id} />
-        <button
-          type="submit"
-          className="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium hover:bg-stone-50"
-        >
-          הסרת התרחיש
-        </button>
-        <p className="mt-2 text-xs text-stone-500">
-          הסרת תרחיש מוחקת מחשבה ולא עובדה: נמחקים התרחיש, תוכנית המימון שלו והמקורות המתוכננים
-          שלו, ושום רישום, צילום, חשבון או פרוייקט אינו נגיש מכאן כדי להימחק איתם.{" "}
-          <Link href="/projects" className="underline underline-offset-4">
-            הפרוייקטים עצמם
-          </Link>
+      {executed !== null ? (
+        <p className="mt-4 border-t border-stone-200 pt-4 text-xs text-stone-500">
+          התרחיש הזה בוצע ב־{formatDate(executed.executedOn)}, ולכן אינו נמחק: הוא כבר לא רק מחשבה
+          אלא הדרך שבה פרוייקט מומן, והרגליים שנוצרו ממנו שומרות על המקור שלהן.
         </p>
-      </form>
+      ) : (
+        <form action={removeScenario} className="mt-4 border-t border-stone-200 pt-4">
+          <input type="hidden" name="scenarioId" value={scenario.id} />
+          <button
+            type="submit"
+            className="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium hover:bg-stone-50"
+          >
+            הסרת התרחיש
+          </button>
+          <p className="mt-2 text-xs text-stone-500">
+            הסרת תרחיש מוחקת מחשבה ולא עובדה: נמחקים התרחיש, תוכנית המימון שלו, המקורות המתוכננים,
+            ההקצאות, הדפוס והתנאים שנדרסו בו — ושום רישום, צילום, חשבון או פרוייקט אינו נגיש מכאן
+            כדי להימחק איתם.{" "}
+            <Link href="/projects" className="underline underline-offset-4">
+              הפרוייקטים עצמם
+            </Link>
+          </p>
+        </form>
+      )}
     </section>
   );
 }

@@ -7,17 +7,44 @@ import { redirect } from "next/navigation";
 import { loadAccounts } from "@/db/accounts";
 import { loadEarmarks } from "@/db/holdings";
 import { findPersonByEmail } from "@/db/people";
+import { executeFundingPlan } from "@/db/plan-execution";
 import {
+  deleteAllocation,
+  deletePattern,
   deletePlannedSource,
   deleteScenario,
+  insertAllocation,
   insertPlannedSource,
   insertScenario,
+  loadFundingPlans,
+  loadPlanExecutions,
+  loadPlannedSources,
   loadScenarios,
+  savePattern,
   saveFundingPlan,
+  saveScenarioTerms,
+  setActivePlan,
   updateScenario,
 } from "@/db/planning";
+import { loadProjects } from "@/db/projects";
 import { loadSnapshots } from "@/db/snapshots";
-import { type Currency, InvalidMoneyError, isCurrency, parseMoneyInput } from "@/domain/money/money";
+import {
+  type Currency,
+  type ExchangeRate,
+  InvalidMoneyError,
+  exchangeRate,
+  isCurrency,
+  parseMoneyInput,
+} from "@/domain/money/money";
+import { InvalidAllocationError } from "@/domain/planning/allocations";
+import {
+  InvalidExecutionError,
+  PlanAlreadyExecutedError,
+  executionFor,
+  previewExecution,
+  requireNotExecuted,
+} from "@/domain/planning/execution";
+import { InvalidPatternError } from "@/domain/planning/patterns";
 import {
   type Scenario,
   InvalidFundingPlanError,
@@ -25,21 +52,31 @@ import {
   InvalidScenarioError,
   UnknownScenarioError,
   buildScenario,
+  planFor,
   proposedFreeLiquid,
   requireScenario,
 } from "@/domain/planning/scenarios";
+import { UnknownProjectError, requireProject } from "@/domain/projects/projects";
 import { freeLiquid } from "@/domain/snapshot/holdings";
 import { dateOf, tryParseDateKey } from "@/domain/time/calendar-date";
 import { requireHouseholdEmail } from "@/session";
 
 /**
- * Writing the לוח תכנון — and nothing else.
+ * Writing the לוח תכנון — its own tables, and one deliberate exception.
  *
- * Every action here touches exactly three tables: `scenarios`, `funding_plans` and
- * `funding_plan_sources`. A scenario reads the מאזן and מיפוי freely, so it can be
- * seeded from real figures and measured against the real saving pace, but it has no
- * path back into them: no writer from another area is imported, and
- * `src/domain/planning/writes-nothing-recorded.test.ts` is the guard on that.
+ * Almost every action here touches only the planning tables: `scenarios`,
+ * `funding_plans`, `funding_plan_sources`, `scenario_allocations`,
+ * `scenario_patterns` and `scenario_deal_terms`. A scenario reads the מאזן, מיפוי
+ * and the projects freely — it is seeded from real figures, measured against the
+ * real saving pace, and projected on real Deal Terms — but it has no path back into
+ * any of them.
+ *
+ * The exception is `executePlan`, and it is the point of the whole area: a plan
+ * that can never become a project is a plan nobody ever acts on. It writes Funding
+ * Legs, through one named function in one file (`@/db/plan-execution`), only after
+ * the household has read back exactly which legs it would create. Everything about
+ * it is deliberate — `src/domain/planning/writes-nothing-recorded.test.ts` asserts
+ * that it is the only one and that no other file in the area acquires the habit.
  *
  * Either Person may write any of it: a what-if about the household's money is not
  * one Person's own naming.
@@ -53,6 +90,13 @@ export type PlanningErrorCode =
   | "bad-plan"
   | "bad-source"
   | "duplicate-source"
+  | "bad-allocation"
+  | "duplicate-allocation"
+  | "bad-pattern"
+  | "bad-terms"
+  | "unknown-project"
+  | "already-executed"
+  | "bad-execution"
   | "failed";
 
 interface Outcome {
@@ -85,11 +129,35 @@ function isUniqueViolation(error: unknown): boolean {
 function failureFor(error: unknown, uniqueCode: PlanningErrorCode): Omit<Outcome, "scenarioId"> {
   if (error instanceof InvalidScenarioError) return { code: "bad-scenario", detail: error.message };
   if (error instanceof UnknownScenarioError) return { code: "unknown-scenario" };
+  if (error instanceof UnknownProjectError) return { code: "unknown-project" };
   if (error instanceof InvalidFundingPlanError) return { code: "bad-plan", detail: error.message };
   if (error instanceof InvalidPlannedSourceError) return { code: "bad-source", detail: error.message };
+  if (error instanceof InvalidAllocationError) return { code: "bad-allocation", detail: error.message };
+  if (error instanceof InvalidPatternError) return { code: "bad-pattern", detail: error.message };
+  if (error instanceof PlanAlreadyExecutedError) {
+    return { code: "already-executed", detail: error.message };
+  }
+  if (error instanceof InvalidExecutionError) return { code: "bad-execution", detail: error.message };
   if (error instanceof InvalidMoneyError) return { code: "bad-source", detail: error.message };
   if (isUniqueViolation(error)) return { code: uniqueCode };
+  // The execution record's foreign key, which deliberately does not cascade: a
+  // scenario that funded a project is not a thought anybody may drop.
+  if (isForeignKeyViolation(error)) return { code: "already-executed" };
   return { code: "failed" };
+}
+
+function isForeignKeyViolation(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "23503";
+}
+
+/**
+ * The plan and its lines, frozen once the money has actually moved. Correcting a
+ * leg afterwards is the project screen's job, where the leg lives — editing the
+ * what-if behind it would leave the two saying different things about the same
+ * event.
+ */
+async function requireStillAWhatIf(scenarioId: string): Promise<void> {
+  requireNotExecuted(executionFor(await loadPlanExecutions(), scenarioId));
 }
 
 function readText(form: FormData, field: string): string {
@@ -118,6 +186,10 @@ async function run(
   }
   revalidatePath("/planning");
   if (scenarioId !== null) revalidatePath(`/planning/${scenarioId}`);
+  // The dashboard measures against the active plan and the projects carry the legs
+  // an execution creates, so both can go stale from in here.
+  revalidatePath("/");
+  revalidatePath("/projects");
   backTo({ scenarioId, ...outcome });
 }
 
@@ -212,6 +284,7 @@ export async function editScenario(form: FormData): Promise<void> {
       name: readText(form, "name"),
       note: readText(form, "note"),
       createdOn: existing.createdOn,
+      active: existing.active,
     });
     await updateScenario(scenario);
     return { code: null, done: `saved:${scenario.name}` };
@@ -224,8 +297,31 @@ export async function removeScenario(form: FormData): Promise<void> {
 
   await run(null, "duplicate-name", async () => {
     const scenario = await scenarioFrom(form);
+    await requireStillAWhatIf(scenario.id);
     await deleteScenario(scenario.id);
     return { code: null, done: `removed:${scenario.name}`, scenarioId: null };
+  });
+}
+
+/**
+ * Mark the one plan the household is actually following, or unmark it.
+ *
+ * At most one, held by the database. Marking a second is not an error to report —
+ * it is what the household meant, so the first is unmarked and the new one takes
+ * its place.
+ */
+export async function markActivePlan(form: FormData): Promise<void> {
+  await requirePerson();
+  const scenarioId = readText(form, "scenarioId");
+
+  await run(scenarioId, "duplicate-name", async () => {
+    const scenario = await scenarioFrom(form);
+    const following = readText(form, "active") === "yes";
+    await setActivePlan(following ? scenario.id : null);
+    return {
+      code: null,
+      done: `${following ? "plan-marked" : "plan-unmarked"}:${scenario.name}`,
+    };
   });
 }
 
@@ -238,6 +334,7 @@ export async function savePlan(form: FormData): Promise<void> {
 
   await run(scenarioId, "duplicate-name", async () => {
     const scenario = await scenarioFrom(form);
+    await requireStillAWhatIf(scenario.id);
     const currency = currencyFrom(form, "currency");
     const needs = parseMoneyInput(readText(form, "needs"), currency);
     if (needs === null) {
@@ -262,6 +359,7 @@ export async function addSource(form: FormData): Promise<void> {
 
   await run(scenarioId, "duplicate-source", async () => {
     const scenario = await scenarioFrom(form);
+    await requireStillAWhatIf(scenario.id);
     const currency = currencyFrom(form, "currency");
     const amount = parseMoneyInput(readText(form, "amount"), currency);
     if (amount === null) {
@@ -282,7 +380,185 @@ export async function removeSource(form: FormData): Promise<void> {
   const scenarioId = readText(form, "scenarioId");
 
   await run(scenarioId, "duplicate-source", async () => {
+    await requireStillAWhatIf(scenarioId);
     await deletePlannedSource(readText(form, "sourceId"));
     return { code: null, done: "source-removed:" };
+  });
+}
+
+// --- the saving allocations --------------------------------------------------
+
+/** One goal and what goes into it every month. An intention, so it is typed. */
+export async function addAllocation(form: FormData): Promise<void> {
+  await requirePerson();
+  const scenarioId = readText(form, "scenarioId");
+
+  await run(scenarioId, "duplicate-allocation", async () => {
+    const scenario = await scenarioFrom(form);
+    const currency = currencyFrom(form, "currency");
+    const monthly = parseMoneyInput(readText(form, "monthly"), currency);
+    if (monthly === null) {
+      throw new InvalidAllocationError("יש להזין כמה נחסך לייעוד הזה בכל חודש");
+    }
+
+    const line = await insertAllocation(crypto.randomUUID(), {
+      scenarioId: scenario.id,
+      goal: readText(form, "goal"),
+      monthly,
+      // A goal with no finish line is a complete intention, so a blank target is
+      // no target rather than a target of nothing.
+      target: parseMoneyInput(readText(form, "target"), currency),
+    });
+    return { code: null, done: `allocation-added:${line.goal}` };
+  });
+}
+
+export async function removeAllocation(form: FormData): Promise<void> {
+  await requirePerson();
+  const scenarioId = readText(form, "scenarioId");
+
+  await run(scenarioId, "duplicate-allocation", async () => {
+    await deleteAllocation(readText(form, "allocationId"));
+    return { code: null, done: "allocation-removed:" };
+  });
+}
+
+// --- the repeating pattern ---------------------------------------------------
+
+function wholeNumberFrom(form: FormData, field: string, what: string): number {
+  const value = Number(readText(form, field).trim());
+  if (!Number.isInteger(value)) {
+    throw new InvalidPatternError(`${what} הוא מספר שלם`);
+  }
+  return value;
+}
+
+/** "A CGM every year for ten years", written down so it can be followed forward. */
+export async function saveInvestmentPattern(form: FormData): Promise<void> {
+  await requirePerson();
+  const scenarioId = readText(form, "scenarioId");
+
+  await run(scenarioId, "duplicate-name", async () => {
+    const scenario = await scenarioFrom(form);
+    const currency = currencyFrom(form, "currency");
+    const amount = parseMoneyInput(readText(form, "amount"), currency);
+    if (amount === null) {
+      throw new InvalidPatternError("יש להזין כמה כל השקעה בדפוס דורשת");
+    }
+
+    const modelledOn = readText(form, "modelledOn").trim();
+    await savePattern({
+      scenarioId: scenario.id,
+      amount,
+      everyMonths: wholeNumberFrom(form, "everyMonths", "המרווח בין השקעות"),
+      occurrences: wholeNumberFrom(form, "occurrences", "מספר הפעמים"),
+      firstOn: tryParseDateKey(readText(form, "firstOn")) ?? dateOf(new Date()),
+      modelledOn: modelledOn.length === 0 ? null : modelledOn,
+    });
+    return { code: null, done: `pattern-saved:${scenario.name}` };
+  });
+}
+
+export async function removeInvestmentPattern(form: FormData): Promise<void> {
+  await requirePerson();
+  const scenarioId = readText(form, "scenarioId");
+
+  await run(scenarioId, "duplicate-name", async () => {
+    await deletePattern(scenarioId);
+    return { code: null, done: "pattern-removed:" };
+  });
+}
+
+// --- the deal terms this scenario disagrees with -----------------------------
+
+function optionalWholeNumber(form: FormData, field: string, what: string): number | null {
+  const text = readText(form, field).trim();
+  if (text.length === 0) return null;
+  const value = Number(text);
+  if (!Number.isInteger(value)) {
+    throw new InvalidPatternError(`${what} הוא מספר שלם`);
+  }
+  return value;
+}
+
+/**
+ * What this scenario says instead of what the paperwork says. It writes to the
+ * scenario's own table and never to `deal_terms`: stress-testing a promise must not
+ * edit the promise.
+ */
+export async function saveTermsOverride(form: FormData): Promise<void> {
+  await requirePerson();
+  const scenarioId = readText(form, "scenarioId");
+
+  await run(scenarioId, "duplicate-name", async () => {
+    const scenario = await scenarioFrom(form);
+    const projectId = readText(form, "projectId").trim();
+    requireProject(await loadProjects(), projectId);
+
+    // Stored in whole basis points, the way the recorded terms are: 8.5% is 850.
+    const percent = readText(form, "targetReturnPercent").trim();
+    const targetReturnBasisPoints =
+      percent.length === 0 ? null : Math.round(Number(percent) * 100);
+    if (targetReturnBasisPoints !== null && !Number.isFinite(targetReturnBasisPoints)) {
+      throw new InvalidPatternError("התשואה נרשמת כאחוז");
+    }
+
+    const saved = await saveScenarioTerms({
+      scenarioId: scenario.id,
+      projectId,
+      targetReturnBasisPoints,
+      holdMonths: optionalWholeNumber(form, "holdMonths", "תקופת ההחזקה"),
+    });
+    return { code: null, done: `${saved === null ? "terms-cleared" : "terms-saved"}:` };
+  });
+}
+
+// --- executing the plan ------------------------------------------------------
+
+function rateFrom(form: FormData): ExchangeRate | null {
+  const text = readText(form, "rate").trim();
+  if (text.length === 0) return null;
+  const value = Number(text);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new InvalidExecutionError("השער חייב להיות מספר חיובי");
+  }
+  return exchangeRate("USD", "ILS", value);
+}
+
+/**
+ * The one planning operation that writes something recorded: the plan's lines
+ * become the project's Funding Legs, at the rate actually used.
+ *
+ * Nothing here trusts the form. The preview the household confirmed is rebuilt from
+ * the stored plan, the stored sources and the named project, and the domain refuses
+ * it again before a single row is written — a confirmation travelled through a
+ * query string, and what is written is what the data says, not what the form said.
+ */
+export async function executePlan(form: FormData): Promise<void> {
+  await requirePerson();
+  const scenarioId = readText(form, "scenarioId");
+
+  await run(scenarioId, "duplicate-name", async () => {
+    const scenario = await scenarioFrom(form);
+    const [plans, sources, projects, executions] = await Promise.all([
+      loadFundingPlans(),
+      loadPlannedSources(),
+      loadProjects(),
+      loadPlanExecutions(),
+    ]);
+
+    const project = requireProject(projects, readText(form, "projectId").trim());
+    const preview = previewExecution({
+      scenarioId: scenario.id,
+      plan: planFor(plans, scenario.id),
+      sources,
+      project,
+      paidOn: tryParseDateKey(readText(form, "paidOn")) ?? dateOf(new Date()),
+      rate: rateFrom(form),
+      executed: executionFor(executions, scenario.id),
+    });
+
+    const outcome = await executeFundingPlan(preview);
+    return { code: null, done: `executed:${project.name} (${outcome.legIds.length})` };
   });
 }
