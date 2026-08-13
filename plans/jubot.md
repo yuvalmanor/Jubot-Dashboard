@@ -1067,10 +1067,46 @@ Reviews can be compared, making year-over-year progress visible at the top level
 
 ### Acceptance criteria
 
-- [ ] An annual review can be created for a year and covers מאזן, snapshot, projects and
+- [x] An annual review can be created for a year and covers מאזן, snapshot, projects and
       RSU on one page
-- [ ] Closing FX rate, share prices and project valuations are frozen on the review
-- [ ] הכנסות, הוצאות and חיסכון are recomputed live from the Ledger on every read
-- [ ] Correcting a ledger entry from a reviewed year changes that review's מאזן figures
-- [ ] Live figures are labelled as live, distinguishably from frozen ones
-- [ ] Two annual reviews can be compared side by side
+      <!-- Verified live on 2025: 480,000₪ / 300,000₪ / 180,000₪ from the מאזן, a closing
+           מיפוי of 736,695.88₪ at that reading's own 3.60, CGM 1 at $99,082.19 with
+           $21,188.00 left and Meteor at 200,000₪, and 180 shares held. Each area is read
+           through the function its own screens read through, so the page cannot state a
+           figure its area disagrees with. -->
+- [x] Closing FX rate, share prices and project valuations are frozen on the review
+      <!-- The three are columns; there is no column for a ledger figure, a net-worth total
+           or a share count. They are seeded from the last reading taken by 31 December —
+           2025 opened at 3.6000 and $250.0000 off that מיפוי — and stay editable: moving
+           the price to $280.0000 moved the holding to $50,400.00 and ₪181,440.00. A fact
+           nobody stated reads as missing and is named: the 2024 review has no closing price
+           and says so rather than valuing 100 shares at nothing. -->
+- [x] הכנסות, הוצאות and חיסכון are recomputed live from the Ledger on every read
+      <!-- Through the same `categoryBreakdown` the insights screens use, with the year's
+           denominator and recorded months beside them — a year recorded in part is never
+           shown as a cheap one. -->
+- [x] Correcting a ledger entry from a reviewed year changes that review's מאזן figures
+      <!-- Verified live end to end: יוני 2025's בריאות corrected from 15,000₪ to 5,000₪ on
+           the מאזן screen moved the 2025 review from 300,000₪ / 180,000₪ to 290,000₪ /
+           190,000₪, on the review and on the list, while every frozen figure — the
+           $280.0000 price, the $120,000 valuation, the 432,000₪ total — was unmoved. -->
+- [x] Live figures are labelled as live, distinguishably from frozen ones
+      <!-- Structurally rather than by discipline: the domain returns `Stated<Money>` and
+           never a bare Money, and the screens render every amount through a component that
+           takes only that. There are three bases and not two, because a mixture is neither:
+           the RSU holding is a live share count at a frozen price and reads "חי, לפי עובדה
+           שהוקפאה" rather than borrowing one of the other two labels. -->
+- [x] Two annual reviews can be compared side by side
+      <!-- Verified live: 2024 against 2025 read +36,000₪ income, +28,000₪ חיסכון,
+           +146,204.11₪ net worth and +80 shares. The earlier year is always the left-hand
+           side whichever way round they were picked, so the difference means progress; each
+           row carries its basis; a row only one year can answer says so rather than
+           subtracting against a blank. Two things the comparison states rather than hides:
+           each year's recorded months, so a part year is never set silently against a full
+           one, and the two frozen rates where they differ — 3.5500 against 3.6000 made the
+           identical funding legs read 4,954.11₪ apart, which is the rate moving and not
+           money moving. -->
+
+Removing a review takes its own row and its valuations and nothing else: verified by
+fingerprinting every recorded table before and after, where entries, snapshots, snapshot
+lines, accounts, projects, funding legs and vests all came back identical.

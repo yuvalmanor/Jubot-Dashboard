@@ -44,7 +44,7 @@ import { currentPace } from "./planning/panels";
 // Reads a live database on every request; nothing here is prerendered at build.
 export const dynamic = "force-dynamic";
 
-/** The areas this shell will grow into. Listed so the shape is visible from day one. */
+/** Every area of the system, each one now built and reachable. */
 const AREAS = [
   { title: "מאזן הכנסות-הוצאות", note: "רישום חודשי, קטגוריות, מגמות", href: "/balance" },
   { title: "מיפוי", note: "צילום מלא של כל החשבונות", href: "/snapshots" },
@@ -52,7 +52,7 @@ const AREAS = [
   { title: "נכסים ופרוייקטים", note: "רגלי מימון, הוצאות, יתרה", href: "/projects" },
   { title: "מחשבון RSU", note: "מניות לפני ואחרי התקופה, מס", href: "/rsu" },
   { title: "לוח תכנון", note: "תרחישים, פער מימון, בעוד כמה חודשים", href: "/planning" },
-  { title: "סיכום שנתי", note: "היכן הסתיימה השנה", href: null },
+  { title: "סיכום שנתי", note: "היכן הסתיימה השנה", href: "/annual" },
   { title: "הגדרות", note: "הנחות ויעדים של משק הבית", href: "/settings" },
 ] as const;
 
@@ -102,29 +102,18 @@ export default async function DashboardPage() {
             אזורים
           </h2>
           <ul className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {AREAS.map((area) =>
-              area.href === null ? (
-                <li
-                  key={area.title}
-                  className="rounded-lg border border-dashed border-stone-300 bg-white/60 p-4"
+            {AREAS.map((area) => (
+              <li key={area.title}>
+                <Link
+                  href={area.href}
+                  className="block h-full rounded-lg border border-stone-300 bg-white p-4 hover:bg-stone-50"
                 >
-                  <p className="font-medium text-stone-700">{area.title}</p>
+                  <p className="font-medium text-stone-900">{area.title}</p>
                   <p className="mt-1 text-sm text-stone-500">{area.note}</p>
-                  <p className="mt-2 text-xs font-medium tracking-wide text-stone-400">בקרוב</p>
-                </li>
-              ) : (
-                <li key={area.title}>
-                  <Link
-                    href={area.href}
-                    className="block h-full rounded-lg border border-stone-300 bg-white p-4 hover:bg-stone-50"
-                  >
-                    <p className="font-medium text-stone-900">{area.title}</p>
-                    <p className="mt-1 text-sm text-stone-500">{area.note}</p>
-                    <p className="mt-2 text-xs font-medium tracking-wide text-stone-600">פתיחה ←</p>
-                  </Link>
-                </li>
-              ),
-            )}
+                  <p className="mt-2 text-xs font-medium tracking-wide text-stone-600">פתיחה ←</p>
+                </Link>
+              </li>
+            ))}
           </ul>
         </section>
       </main>

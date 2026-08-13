@@ -716,3 +716,50 @@ comment on column funding_plan_executions.usd_ils_rate is
   'The rate the sources were actually converted at, or null where none of them '
   'changed currency. The same rule a funding leg holds: a rate beside money that '
   'was never converted is a number nobody used.';
+
+-- --------------------------------------------------------------------------
+-- סיכום שנתי
+-- --------------------------------------------------------------------------
+
+-- Where a year ended, across every feature at once.
+--
+-- ADR 0002: this table holds *only* what cannot be recomputed. There is no
+-- הכנסות column, no הוצאות column and no חיסכון column, because all three are a
+-- pure function of the ledger and a copy of them here would go stale the moment a
+-- typo from that year is corrected. What is here is the state of the world on the
+-- closing day — the rate, the share price, and which reading the household says
+-- the year closed on — none of which anything can reconstruct afterwards.
+--
+-- `closing_snapshot_id` does not cascade: a reading a year was closed on is not a
+-- snapshot anybody may quietly remove.
+create table if not exists annual_reviews (
+  year                                smallint primary key check (year between 2000 and 2100),
+  note                                text,
+  recorded_on                         date not null,
+  closing_snapshot_id                 uuid references snapshots (id),
+  closing_usd_ils_rate                numeric(18, 6) check (closing_usd_ils_rate > 0),
+  closing_share_price_ten_thousandths bigint check (closing_share_price_ten_thousandths >= 0),
+  closing_share_price_currency        text check (char_length(closing_share_price_currency) = 3),
+  -- The figure and its currency arrive together or not at all, as everywhere else.
+  constraint annual_reviews_share_price_has_currency
+    check ((closing_share_price_ten_thousandths is null) = (closing_share_price_currency is null))
+);
+
+comment on column annual_reviews.closing_usd_ils_rate is
+  'The rate the year closed at, quoted USD/ILS in both directions. Frozen because '
+  'nothing can reconstruct it later — and never applied to a snapshot, which keeps '
+  'converting at its own.';
+
+-- What somebody judged a project to be worth at the close. A project''s *cost* is
+-- recomputable from its funding legs forever, so it is not here; what a person
+-- thought it was worth on 31 December is not recomputable at all, so it is.
+--
+-- Per ADR 0003 this never becomes the project's מיפוי value. It sits beside the
+-- cost and the difference is stated; an illiquid asset is still held at cost.
+create table if not exists annual_review_valuations (
+  year         smallint not null references annual_reviews (year) on delete cascade,
+  project_id   uuid     not null references projects (id),
+  amount_minor bigint   not null check (amount_minor >= 0),
+  currency     text     not null check (char_length(currency) = 3),
+  primary key (year, project_id)
+);
