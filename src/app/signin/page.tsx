@@ -1,4 +1,5 @@
-import { signIn } from "@/auth";
+import { developmentSignInEnabled, householdAllowList, signIn } from "@/auth";
+import { listPeople } from "@/db/people";
 
 export const dynamic = "force-dynamic";
 
@@ -41,7 +42,55 @@ export default async function SignInPage({
         <p className="mt-4 text-sm text-stone-500">
           הגישה פתוחה לשני חשבונות משק הבית בלבד. כל כתובת אחרת תידחה.
         </p>
+
+        <DevelopmentSignIn />
       </main>
+    </div>
+  );
+}
+
+/**
+ * The local way in. Absent from a production build, because the provider behind
+ * it is absent too.
+ */
+async function DevelopmentSignIn() {
+  if (!developmentSignInEnabled()) return null;
+
+  const allowed = householdAllowList();
+  if (allowed.length === 0) return null;
+
+  // The Person row is what gives the button a name to show; without a reachable
+  // database the address itself will do.
+  const people = await listPeople().catch(() => []);
+  const entries = allowed.map((email) => ({
+    email,
+    label: people.find((person) => person.email === email)?.displayName ?? email,
+  }));
+
+  return (
+    <div className="mt-6 border-t border-dashed border-stone-300 pt-5">
+      <p className="text-sm font-medium text-stone-700">כניסה מקומית לפיתוח</p>
+      <p className="mt-1 text-sm text-stone-500">
+        זמין רק כשהאפליקציה רצה מקומית, ואינו קיים כלל בגרסה הפרוסה.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {entries.map((entry) => (
+          <form
+            key={entry.email}
+            action={async () => {
+              "use server";
+              await signIn("development", { email: entry.email, redirectTo: "/" });
+            }}
+          >
+            <button
+              type="submit"
+              className="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-medium hover:bg-stone-50"
+            >
+              כניסה כ<bdi>{entry.label}</bdi>
+            </button>
+          </form>
+        ))}
+      </div>
     </div>
   );
 }

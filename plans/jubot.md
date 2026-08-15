@@ -150,12 +150,20 @@ to readable (not enterable) on a phone. English terms are preserved inside Hebre
 
 ### Acceptance criteria
 
-- [ ] The app is deployed to Vercel and reachable at a stable URL, on free tiers only
-      <!-- Needs the household's Vercel and Neon/Supabase accounts; see README "Deploying". -->
+- [x] The app is deployed to Vercel and reachable at a stable URL, on free tiers only
+      <!-- https://jubot-dashboard.vercel.app — Vercel Hobby, Neon free tier in eu-central-1,
+           pooled connection. Deployed 2026-08-15. The five environment variables were first
+           created with empty values during the project import, which surfaced as
+           `MissingSecret` on every /api/auth route and as a name collision that stopped the
+           Neon integration attaching; both are described in README "Deploying". -->
 - [x] An address not on the two-account allow-list is refused, and no route renders data
       for it
-- [ ] Both household accounts can sign in with Google and reach the dashboard
-      <!-- Needs a real Google OAuth client and the two real addresses. -->
+- [x] Both household accounts can sign in with Google and reach the dashboard
+      <!-- Verified 2026-08-15 by both people signing in against the deployed instance. The
+           OAuth client is in Testing mode with the two addresses as test users, so the
+           unverified-app interstitial is expected. `JUBOT_ALLOWED_EMAILS` and the two
+           `people.email` rows were set to the same pair — the allow-list decides who may
+           sign in, the rows decide which of the two they are. -->
 - [x] The document is `dir="rtl"` and the shell renders in Hebrew
 - [x] `Money` is a framework-free module: conversion at an explicit rate, minor-unit
       rounding, an error when adding across currencies, Hebrew-locale formatting

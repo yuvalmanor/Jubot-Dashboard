@@ -5,9 +5,14 @@ build/
 next-env.d.ts
 *.tsbuildinfo
 
-.env
-.env.local
-.env*.local
+# Every environment file is local. `.env.example` is the committed template, and
+# `.env.production.local` is what `vercel env pull` writes — it carries the real
+# connection string and must never be committed.
+.env*
+!.env.example
 
 .vercel
 .DS_Store
+
+# The local PGlite data directory (npm run db:local).
+.pglite/

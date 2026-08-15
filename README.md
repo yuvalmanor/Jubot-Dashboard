@@ -37,9 +37,33 @@ npm test && npx tsc --noEmit && npm run build
    `db:local` is PGlite — real Postgres compiled to WebAssembly — served over the ordinary
    wire protocol on port 5433, with `db/schema.sql` and `db/seed.sql` already applied. The
    app connects to it with the same `pg` client it uses against Neon. It is a
-   devDependency: nothing in the deployed app imports it. It holds the database in memory,
-   so restarting it starts from the seed again.
+   devDependency: nothing in the deployed app imports it. It keeps the database in
+   `.pglite/` (gitignored), so a restart keeps whatever was entered; `LOCAL_PG_DATA=memory://`
+   opts back into a throwaway one, and `LOCAL_PG_PORT` moves it off 5433.
 4. `npm run dev`
+
+The seed is deliberately almost empty — two People and one tracer amount — because every
+category is named by the Person who owns it. To look at populated screens instead:
+
+```bash
+npm run db:demo
+```
+
+That empties every domain table and reloads one coherent household. The **מאזן is real**: it
+runs the committed sheet export through the very same importer `/balance/import` uses, which
+is 796 entries across 49 categories. **Everything else is invented** — nothing in the
+repository records the household's actual accounts, balances or grants — but it keeps the
+shapes and the round figures that CONTEXT.md and the PRD do name, so the screens are
+exercised the way real data would exercise them. It is destructive and repeatable: run it
+again and the same database comes back.
+
+### Signing in locally
+
+Real Google sign-in needs a real OAuth client (below), which a fresh checkout does not have.
+So in development — and only there — `/signin` also offers a button per allowed address,
+backed by an ordinary Auth.js Credentials provider that is subject to the same two-account
+allow-list. `NODE_ENV` is `production` in any `next build`, so the provider is absent from a
+deployment rather than merely refusing.
 
 ### Linking a sign-in to a Person
 
@@ -70,14 +94,48 @@ the `signIn` callback, so no session is ever issued for it.
 
 ## Deploying
 
-1. Create a Postgres database on Neon or Supabase (free tier) and run `db/schema.sql` and
-   `db/seed.sql` against it.
-2. Set the two real addresses on the `people` rows (see *Linking a sign-in to a Person*).
-3. Import the repository into Vercel (Hobby plan).
-4. Set `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `JUBOT_ALLOWED_EMAILS` and
-   `DATABASE_URL` as environment variables in the Vercel project.
-5. Add the deployed domain's callback URL to the Google OAuth client.
-6. Deploy.
+The domain and the Google OAuth client depend on each other: the client needs the deployed
+callback URL, and the URL is not known until something has been deployed. So the first
+deploy is expected to be one you cannot sign in to, and step 6 is what fixes that. Nothing
+is lost by it — no route renders data without a session.
+
+1. **Database.** Create a Postgres on Neon or Supabase (free tier). Neon through the Vercel
+   marketplace sets `DATABASE_URL` on the project for you; anything else, copy the *pooled*
+   connection string. Apply the schema and the seed:
+   ```bash
+   psql "$DATABASE_URL" -f db/schema.sql -f db/seed.sql
+   ```
+   `DATABASE_SSL` is not needed — TLS is on for every host except localhost.
+2. **The two People.** `db/seed.sql` ships placeholder addresses; put the two real ones on
+   the rows, or a sign-in lands in a signed-in shell with no ledger behind it:
+   ```sql
+   update people set email = 'yuval@…' where id = 'yuval';
+   update people set email = 'eden@…'  where id = 'eden';
+   ```
+3. **Import the repository into Vercel** (Hobby plan). The framework preset, build command
+   and output directory are all detected; nothing needs overriding.
+4. **Environment variables**, on Production and Preview both:
+
+   | Variable | Value |
+   | --- | --- |
+   | `AUTH_SECRET` | 32 random bytes, base64 — `npx auth secret` |
+   | `AUTH_GOOGLE_ID` | from the OAuth client, step 5 |
+   | `AUTH_GOOGLE_SECRET` | from the OAuth client, step 5 |
+   | `JUBOT_ALLOWED_EMAILS` | the two real addresses, comma separated |
+   | `DATABASE_URL` | pooled connection string from step 1 |
+
+   `JUBOT_ALLOWED_EMAILS` and the `people.email` values must agree — the first decides who
+   may sign in, the second decides which of the two they are.
+5. **Google OAuth client.** Cloud console → APIs & Services → Credentials → OAuth 2.0
+   Client ID, type *Web application*. Authorised redirect URIs:
+   - `http://localhost:3000/api/auth/callback/google`
+   - `https://<your-vercel-domain>/api/auth/callback/google`
+6. **Deploy, then add the real domain** to the client's redirect URIs and redeploy. Preview
+   deployments get their own URLs; each one that must be signed in to needs its callback
+   added too, which is the usual reason to keep reviewing on Production.
+
+The development sign-in buttons do not exist in any of this: `next build` sets
+`NODE_ENV=production`, and the provider behind them is only added when it is not.
 
 ## Money
 

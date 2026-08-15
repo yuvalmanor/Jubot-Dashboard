@@ -17,7 +17,16 @@ import { PGLiteSocketServer } from "@electric-sql/pglite-socket";
 const PORT = Number(process.env.LOCAL_PG_PORT ?? 5433);
 const root = new URL("../", import.meta.url);
 
-const database = await PGlite.create();
+/**
+ * Held on disk rather than in memory, so a restart keeps whatever was entered.
+ * An in-memory database is fine for a verification run that seeds what it needs,
+ * and hostile to actually using the app: an afternoon of typing disappears with
+ * the process. `LOCAL_PG_DATA=memory://` opts back into the throwaway behaviour.
+ */
+const DATA_DIR = process.env.LOCAL_PG_DATA ?? fileURLToPath(new URL(".pglite/", root));
+
+const database = await PGlite.create(DATA_DIR);
+console.log(DATA_DIR.startsWith("memory:") ? "using an in-memory database" : `data directory ${DATA_DIR}`);
 
 for (const file of ["db/schema.sql", "db/seed.sql"]) {
   await database.exec(readFileSync(fileURLToPath(new URL(file, root)), "utf8"));
