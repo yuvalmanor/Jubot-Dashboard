@@ -22,6 +22,7 @@ import {
   Notices,
   StatedFigure,
   UnavailablePanel,
+  monthsCounted,
   monthsRecorded,
 } from "./panels";
 import { REVIEW_CURRENCY } from "./reading";
@@ -197,6 +198,7 @@ async function loadPage(email: string): Promise<Loaded> {
 
 function ReviewCard({ reading }: { reading: AnnualReviewReading }) {
   const { review, balance } = reading;
+  const span = monthsCounted(balance.months);
 
   return (
     <article className="rounded-lg border border-stone-300 bg-white p-5">
@@ -221,7 +223,11 @@ function ReviewCard({ reading }: { reading: AnnualReviewReading }) {
         <StatedFigure
           label="חיסכון"
           figure={balance.saving}
-          note={monthsRecorded(balance.recordedMonths)}
+          note={
+            span === null
+              ? monthsRecorded(balance.recordedMonths)
+              : `${monthsRecorded(balance.recordedMonths)} מתוך ${String(balance.denominator)} (${span})`
+          }
           emphasis
         />
       </dl>

@@ -26,6 +26,7 @@ import {
   personMonthSummary,
   readAmount,
   recordedMonths,
+  recordedSpan,
 } from "./ledger";
 
 const JAN_2025 = calendarMonth(2025, 1);
@@ -213,6 +214,24 @@ describe("one continuous ledger", () => {
     });
 
     expect(recordedMonths(ledger)).toEqual([calendarMonth(2022, 3), DEC_2024, JAN_2025]);
+  });
+
+  it("reports the span it covers, first recorded month to last", () => {
+    const ledger = buildLedger({
+      entered: [
+        { personalCategoryId: "p-health", month: JAN_2025, amount: ils(1) },
+        { personalCategoryId: "p-power", month: calendarMonth(2024, 7), amount: ils(1) },
+        { personalCategoryId: "p-health", month: DEC_2024, amount: ils(1) },
+      ],
+    });
+
+    // What an average must not divide outside: the six months before יולי 2024
+    // never existed here, and nothing about that date is written into the code.
+    expect(recordedSpan(ledger)).toEqual({ first: calendarMonth(2024, 7), last: JAN_2025 });
+  });
+
+  it("has no span at all when nothing was ever recorded, rather than a span of nothing", () => {
+    expect(recordedSpan(EMPTY_LEDGER)).toBeNull();
   });
 
   it("reports a month once however many categories it holds", () => {

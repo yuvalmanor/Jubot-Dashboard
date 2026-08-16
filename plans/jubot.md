@@ -325,7 +325,11 @@ average it produces.
            compared against an invented zero, and one with history but no figure this
            month is reported rather than ranked as a fall to zero. Both sit below the
            measured deviations. -->
-- [x] Current-year averages divide by elapsed months; complete years divide by twelve
+- [x] ~~Current-year averages divide by elapsed months; complete years divide by twelve~~
+      **Superseded by [maazan-redesign](maazan-redesign.md) Phase 18.** The rule is now the
+      year's *closed* calendar months — those strictly before the current one — intersected
+      with the ledger's recorded span. So the month in progress feeds no aggregate, and 2024
+      divides by six rather than by twelve months of which six never existed.
 - [x] Every displayed average shows the denominator used
 - [x] Category breakdowns are available for a month or a year, at household and per-person
       level

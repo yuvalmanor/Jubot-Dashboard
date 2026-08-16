@@ -19,13 +19,23 @@
  * The two denominators here answer two different questions, and the difference is
  * deliberate:
  *
- * - A **period** average divides by *elapsed* months (twelve for a past year),
- *   because "what do we spend a month" must not read as half its true size just
- *   because half of 2026 has not happened yet.
+ * - A **period** average divides by the period's *closed calendar months* — the
+ *   months strictly before the current one — intersected with the span the ledger
+ *   actually covers. Two things follow from that. The month being lived is only
+ *   half lived, so it drags an average down for no reason and is left out of both
+ *   the total and the divisor. And a year the history reaches into only partway is
+ *   divided by the part it reaches: this ledger begins in יולי 2024, so a 2024
+ *   average divides by six rather than by twelve months of which six never
+ *   existed. Nothing about יולי 2024 is written down here — the span is read off
+ *   the ledger, so it stays right as history grows in either direction.
  * - A **trailing** average divides by the months that actually hold a figure,
  *   because the ledger says a missing month was never recorded — not that it was
  *   a month of zero. Dividing by the window would answer a question about a zero
  *   nobody wrote down.
+ *
+ * Both kinds carry the months they divided by and not merely how many of them, so
+ * no caller can total one span and divide by another, and no screen can print a
+ * divisor without being able to say which months it counted.
  */
 
 import {
@@ -42,16 +52,19 @@ import {
   type Ledger,
   type MonthCompleteness,
   type MonthSummary,
+  type RecordedSpan,
   completenessOf,
   householdMonthSummary,
   isRecorded,
   personMonthSummary,
   readAmount,
+  recordedSpan,
 } from "@/domain/ledger/ledger";
 import {
   type CalendarMonth,
   addMonths,
   calendarMonth,
+  compareMonths,
   monthRange,
 } from "@/domain/time/calendar-month";
 
@@ -187,27 +200,47 @@ export function periodMonths(period: Period): readonly CalendarMonth[] {
 }
 
 /**
- * What an average over a period divides by.
+ * The months an average over a period is totalled across and divided by — one
+ * list, so a caller cannot total one span and divide by another.
  *
- * A past year divides by twelve. The current year divides by the months that have
- * elapsed, so a June reading of 2026 compares against a full 2025 rather than
- * looking half as expensive. A year that has not started has no elapsed months at
- * all, and an average over none of them is undefined rather than zero.
+ * A year contributes its **closed calendar months**: the months strictly before
+ * the current one, intersected with the span the ledger covers. So in August 2026
+ * the year 2026 counts ינואר–יולי; 2025 counts all twelve; 2024 counts יולי–דצמבר,
+ * because the history starts there and the six months before it never existed;
+ * and 2027 counts none, which makes an average over it undefined rather than
+ * nought. The in-progress month is in none of them — a month half lived would drag
+ * the average down for no reason other than the date.
+ *
+ * A month period is that month, whatever the date. There is no aggregate for the
+ * current month to distort, and answering "what did August cost" with nothing
+ * because August is not over would be a stranger reading than answering it.
  *
  * `today` is a parameter and never read from the clock inside: a function that
- * asks the system for the time cannot be tested against a boundary.
+ * asks the system for the time cannot be tested against a boundary. The span is a
+ * parameter for the same reason.
  */
-export function periodDenominator(period: Period, today: CalendarMonth): number {
-  if (period.kind === "month") return 1;
-  if (period.year < today.year) return 12;
-  if (period.year > today.year) return 0;
-  return today.month;
+export function denominatorMonths(
+  period: Period,
+  today: CalendarMonth,
+  span: RecordedSpan | null,
+): readonly CalendarMonth[] {
+  if (period.kind === "month") return [period.month];
+  if (span === null) return [];
+  return periodMonths(period).filter(
+    (month) =>
+      compareMonths(month, today) < 0 &&
+      compareMonths(month, span.first) >= 0 &&
+      compareMonths(month, span.last) <= 0,
+  );
 }
 
-/** The months of a period that have actually elapsed, ascending. */
-export function elapsedPeriodMonths(period: Period, today: CalendarMonth): readonly CalendarMonth[] {
-  const count = periodDenominator(period, today);
-  return periodMonths(period).slice(0, count);
+/** How many months an average over a period divides by. Always `denominatorMonths().length`. */
+export function periodDenominator(
+  period: Period,
+  today: CalendarMonth,
+  span: RecordedSpan | null,
+): number {
+  return denominatorMonths(period, today, span).length;
 }
 
 // --- averages, which never travel without their denominator ------------------
@@ -218,15 +251,27 @@ export interface Average {
   readonly amount: Money | null;
   /** What the total was divided by. Displayed with every average; never implied. */
   readonly denominator: number;
+  /**
+   * The months that denominator counted, ascending — the same months the total was
+   * summed over. `denominator === months.length` always, which is what makes
+   * totalling one span and dividing by another impossible rather than merely
+   * discouraged, and what lets a screen say *which* months it divided by.
+   */
+  readonly months: readonly CalendarMonth[];
   /** How many of those months hold a figure. A total over 3 of 12 months says so. */
   readonly recordedMonths: number;
 }
 
-function averageOf(total: Money, denominator: number, recordedMonths: number): Average {
+function averageOf(
+  total: Money,
+  months: readonly CalendarMonth[],
+  recordedMonths: number,
+): Average {
   return {
     total,
-    amount: denominator === 0 ? null : divide(total, denominator),
-    denominator,
+    amount: months.length === 0 ? null : divide(total, months.length),
+    denominator: months.length,
+    months,
     recordedMonths,
   };
 }
@@ -236,7 +281,6 @@ function averageOverMonths(
   group: CategoryGroup,
   months: readonly CalendarMonth[],
   currency: Currency,
-  denominator: number,
 ): Average {
   let total = zero(currency);
   let recordedMonths = 0;
@@ -245,7 +289,7 @@ function averageOverMonths(
     total = add(total, reading.amount);
     if (reading.recorded) recordedMonths += 1;
   }
-  return averageOf(total, denominator, recordedMonths);
+  return averageOf(total, months, recordedMonths);
 }
 
 // --- חיסכון as a share of הכנסות ---------------------------------------------
@@ -403,15 +447,17 @@ export function rankCategoryDeviations(
 
       // A trailing average divides by the months that hold a figure: the ledger
       // says an absent month was never recorded, not that it was a month of zero.
+      // Those months are the average's own, so a two-month average drawn out of a
+      // six-month window carries the two and never the six.
       let total = zero(currency);
-      let recordedMonths = 0;
+      const counted: CalendarMonth[] = [];
       for (const past of trailingMonths) {
         const pastReading = readGroupMonth(ledger, group, past, currency);
         if (!pastReading.recorded) continue;
         total = add(total, pastReading.amount);
-        recordedMonths += 1;
+        counted.push(past);
       }
-      const trailing = averageOf(total, recordedMonths, recordedMonths);
+      const trailing = averageOf(total, counted, counted.length);
 
       // Nothing this month and nothing before it is not a finding.
       if (current === null && trailing.amount === null) return [];
@@ -504,13 +550,12 @@ export function categoryBreakdown(
   currency: Currency,
   today: CalendarMonth,
 ): Breakdown {
-  const denominator = periodDenominator(period, today);
-  const months = elapsedPeriodMonths(period, today);
+  const months = denominatorMonths(period, today, recordedSpan(ledger));
 
   const summaries = months.map((month) => summaryFor(ledger, categories, scope, month, currency));
   const recordedMonths = summaries.filter((summary) => summary.recordedCount > 0).length;
   const totalOf = (pick: (summary: MonthSummary) => Money) =>
-    averageOf(sum(summaries.map(pick), currency), denominator, recordedMonths);
+    averageOf(sum(summaries.map(pick), currency), months, recordedMonths);
 
   const totals = {
     income: totalOf((summary) => summary.income),
@@ -521,12 +566,12 @@ export function categoryBreakdown(
   const linesFor = (type: CategoryType, typeTotal: Money): readonly BreakdownLine[] =>
     groupsFor(categories, scope, { type })
       .map((group) => {
-        const average = averageOverMonths(ledger, group, months, currency, denominator);
+        const average = averageOverMonths(ledger, group, months, currency);
         return {
           ...identify(group),
           average,
           share: ratio(average.total, typeTotal),
-          contributions: contributionsOf(ledger, group, months, currency, denominator, average.total),
+          contributions: contributionsOf(ledger, group, months, currency, average.total),
         };
       })
       // A category with nothing recorded in the period is not a fact about it.
@@ -536,7 +581,7 @@ export function categoryBreakdown(
   return {
     period,
     scope,
-    denominator,
+    denominator: months.length,
     months,
     income: linesFor("income", totals.income.total),
     expenses: linesFor("expense", totals.expenses.total),
@@ -558,14 +603,13 @@ function contributionsOf(
   group: CategoryGroup,
   months: readonly CalendarMonth[],
   currency: Currency,
-  denominator: number,
   groupTotal: Money,
 ): readonly BreakdownLine[] {
   if (group.members.length < 2) return [];
 
   const contributions = membersAsGroups(group)
     .map((member) => {
-      const average = averageOverMonths(ledger, member, months, currency, denominator);
+      const average = averageOverMonths(ledger, member, months, currency);
       return {
         ...identify(member),
         average,
@@ -608,6 +652,10 @@ export interface YearOverYear {
   readonly comparisonYear: number;
   /** The same span of months on both sides — Jan–Jun against Jan–Jun, never against a full year. */
   readonly months: number;
+  /** Which months those are, on the current side. Stated, so "6 months" is never "which six?". */
+  readonly currentMonths: readonly CalendarMonth[];
+  /** The same months a year earlier — never clamped, or the two sides would not match. */
+  readonly previousMonths: readonly CalendarMonth[];
   readonly lines: readonly YearOverYearLine[];
 }
 
@@ -630,22 +678,24 @@ export function yearOverYear(
   today: CalendarMonth,
   options: { readonly type?: CategoryType } = {},
 ): YearOverYear {
-  const months = periodDenominator(yearPeriod(year), today);
   const comparisonYear = year - 1;
 
-  const currentMonths = monthRange(calendarMonth(year, 1), calendarMonth(year, 12)).slice(0, months);
-  const previousMonths = monthRange(
-    calendarMonth(comparisonYear, 1),
-    calendarMonth(comparisonYear, 12),
-  ).slice(0, months);
+  // The current side is the months the year's own average divides by. The
+  // comparison side is those very months a year earlier — matched one for one and
+  // never clamped to the ledger's span, because a comparison whose two sides
+  // divided by different numbers would report the difference between the divisors
+  // as a change in spending.
+  const currentMonths = denominatorMonths(yearPeriod(year), today, recordedSpan(ledger));
+  const previousMonths = currentMonths.map((month) => addMonths(month, -12));
+  const months = currentMonths.length;
 
   const lines = groupsFor(categories, scope, { type: options.type }).flatMap<YearOverYearLine>((group) => {
-    const current = averageOverMonths(ledger, group, currentMonths, currency, months);
+    const current = averageOverMonths(ledger, group, currentMonths, currency);
     const existedBefore = previousMonths.some((month) =>
       group.members.some((member) => isActiveIn(member, month) || isRecorded(ledger, member.id, month)),
     );
     const previous = existedBefore
-      ? averageOverMonths(ledger, group, previousMonths, currency, months)
+      ? averageOverMonths(ledger, group, previousMonths, currency)
       : null;
 
     if (current.recordedMonths === 0 && (previous === null || previous.recordedMonths === 0)) return [];
@@ -666,6 +716,8 @@ export function yearOverYear(
     year,
     comparisonYear,
     months,
+    currentMonths,
+    previousMonths,
     lines: [...lines].sort((left, right) => {
       const bySize = right.current.total.minorUnits - left.current.total.minorUnits;
       if (bySize !== 0) return bySize;

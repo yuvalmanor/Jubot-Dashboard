@@ -10,7 +10,12 @@ import {
   type YearOverYear,
 } from "@/domain/ledger/ledger-analytics";
 import { type Money, format, isNegative } from "@/domain/money/money";
-import { formatMonth } from "@/domain/time/calendar-month";
+import {
+  type CalendarMonth,
+  formatMonth,
+  formatMonthRange,
+  monthsAreContiguous,
+} from "@/domain/time/calendar-month";
 
 /**
  * The reading half of the מאזן, on screen.
@@ -45,15 +50,39 @@ function denominatorPhrase(count: number): string {
   return `חלוקה ב־${count} חודשים`;
 }
 
+/**
+ * Which months a denominator counted, as a phrase.
+ *
+ * A run of months reads as itself. A set drawn out of a longer window — a
+ * trailing average over the two of six months that hold a figure — reads as what
+ * it was drawn *from*, so two months are never presented as six months' evidence.
+ */
+export function monthsPhrase(months: readonly CalendarMonth[]): string | null {
+  const first = months[0];
+  const last = months[months.length - 1];
+  if (first === undefined || last === undefined) return null;
+
+  const range = formatMonthRange(first, last);
+  return monthsAreContiguous(months) ? range : `מתוך ${range}`;
+}
+
 /** The months an average divided by, stated on the average itself. Never implied. */
 export function Denominator({ average }: { average: Average }) {
   if (average.denominator === 0) {
     return <span className="text-xs text-stone-500">אין חודשים לחלק בהם</span>;
   }
 
+  const span = monthsPhrase(average.months);
+
   return (
     <span className="text-xs text-stone-500">
       <bdi>{denominatorPhrase(average.denominator)}</bdi>
+      {span === null ? null : (
+        <>
+          {" "}
+          <bdi>({span})</bdi>
+        </>
+      )}
       {average.recordedMonths === average.denominator ? null : (
         <>
           {" "}
@@ -453,10 +482,17 @@ function BreakdownRow({
 // --- the same period last year -------------------------------------------------
 
 export function YearOverYearPanel({ comparison, title }: { comparison: YearOverYear; title: string }) {
+  const current = monthsPhrase(comparison.currentMonths);
+  const previous = monthsPhrase(comparison.previousMonths);
+
   return (
     <Panel
       title={title}
-      note={`אותו מספר חודשים בשני הצדדים — ${comparison.months} חודשים של ${comparison.year} מול ${comparison.months} חודשים של ${comparison.comparisonYear}.`}
+      note={
+        current === null || previous === null
+          ? `אין חודשים סגורים ב־${comparison.year} להשוות בהם.`
+          : `אותם חודשים עצמם בשני הצדדים — ${current} מול ${previous}, ${comparison.months} בכל צד.`
+      }
     >
       {comparison.lines.length === 0 ? (
         <Empty>אין קטגוריה עם סכום באף אחת משתי התקופות.</Empty>

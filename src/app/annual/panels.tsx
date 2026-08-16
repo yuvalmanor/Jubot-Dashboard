@@ -1,5 +1,6 @@
 import { type FigureBasis, type FrozenFact, type Stated } from "@/domain/annual/annual-review";
 import { type Money, format } from "@/domain/money/money";
+import { type CalendarMonth, formatMonthRange } from "@/domain/time/calendar-month";
 
 import { type AnnualErrorCode } from "./actions";
 
@@ -243,4 +244,18 @@ export function monthsRecorded(count: number): string {
   if (count === 1) return "חודש אחד נרשם";
   if (count === 2) return "חודשיים נרשמו";
   return `${count} חודשים נרשמו`;
+}
+
+/**
+ * The months a year's figures were divided by, named.
+ *
+ * The denominator is the year's closed months as far as the ledger's history
+ * reaches, so it is not always twelve — and "2" without "ינואר–פברואר" would read
+ * as a year fully recorded rather than a year barely begun.
+ */
+export function monthsCounted(months: readonly CalendarMonth[]): string | null {
+  const first = months[0];
+  const last = months[months.length - 1];
+  if (first === undefined || last === undefined) return null;
+  return formatMonthRange(first, last);
 }

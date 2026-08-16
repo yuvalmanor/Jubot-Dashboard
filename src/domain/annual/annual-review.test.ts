@@ -423,7 +423,27 @@ describe("the מאזן bottom line is recomputed from the ledger on every read",
   });
 
   it("says how much of the year was recorded rather than reading a part year as a cheap one", () => {
-    const half = reading({
+    // The ledger reaches both ends of 2025 but holds only three of its months, so
+    // the year still divides by twelve and the gap is stated rather than hidden.
+    const gappy = reading({
+      ledger: buildLedger({
+        entered: entries({
+          "p-salary": { "2025-01": 30_000, "2025-02": 30_000, "2025-12": 30_000 },
+          "p-health": { "2025-01": 15_000, "2025-02": 15_000, "2025-12": 15_000 },
+        }),
+      }),
+    }).balance;
+
+    expect(gappy.recordedMonths).toBe(3);
+    expect(gappy.denominator).toBe(12);
+    expect(gappy.saving.value).toEqual(ils(45_000));
+  });
+
+  it("names the months it divided by, so a clamped denominator cannot read as a full year", () => {
+    // Here the whole history is two months. The year divides by those two — not by
+    // twelve months of which ten never existed — and carries them, because "2"
+    // alone would read as a year fully recorded rather than a year barely begun.
+    const barely = reading({
       ledger: buildLedger({
         entered: entries({
           "p-salary": { "2025-01": 30_000, "2025-02": 30_000 },
@@ -432,9 +452,18 @@ describe("the מאזן bottom line is recomputed from the ledger on every read",
       }),
     }).balance;
 
-    expect(half.recordedMonths).toBe(2);
-    expect(half.denominator).toBe(12);
-    expect(half.saving.value).toEqual(ils(30_000));
+    expect(barely.recordedMonths).toBe(2);
+    expect(barely.denominator).toBe(2);
+    expect(barely.months).toEqual([m(2025, 1), m(2025, 2)]);
+    expect(barely.saving.value).toEqual(ils(30_000));
+  });
+
+  it("carries the months behind every denominator it reports", () => {
+    const balance = reading().balance;
+
+    expect(balance.months).toHaveLength(balance.denominator);
+    expect(balance.months[0]).toEqual(m(2025, 1));
+    expect(balance.months[balance.months.length - 1]).toEqual(m(2025, 12));
   });
 });
 

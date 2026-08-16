@@ -25,6 +25,7 @@ import {
   StatedFigure,
   UnavailablePanel,
   formatRate,
+  monthsCounted,
   monthsRecorded,
 } from "../panels";
 import { type ReviewContext, contextFor } from "../reading";
@@ -149,6 +150,7 @@ function ReviewBody({ context }: { context: ReviewContext }) {
 
 function BalancePanel({ reading }: { reading: AnnualReviewReading }) {
   const { balance } = reading;
+  const span = monthsCounted(balance.months);
 
   return (
     <Section title="מאזן הכנסות-הוצאות" subtitle={`שנת ${balance.year}`}>
@@ -160,10 +162,19 @@ function BalancePanel({ reading }: { reading: AnnualReviewReading }) {
 
       <p className="mt-3 text-sm text-stone-600">
         {monthsRecorded(balance.recordedMonths)} מתוך{" "}
-        <bdi className="tabular">{balance.denominator}</bdi> בשנה.{" "}
-        {balance.recordedMonths < balance.denominator
-          ? "שנה שנרשמה רק בחלקה נראית זולה יותר משהייתה, ולכן המכנה נאמר כאן ולא מוסתר."
-          : "השנה נרשמה במלואה."}
+        <bdi className="tabular">{balance.denominator}</bdi>
+        {span === null ? null : (
+          <>
+            {" "}
+            <bdi>({span})</bdi>
+          </>
+        )}
+        .{" "}
+        {balance.denominator === 0
+          ? "אין חודשים סגורים בשנה הזו שהמאזן מגיע אליהם, ולכן אין ממוצע — לא אפס."
+          : balance.recordedMonths < balance.denominator
+            ? "שנה שנרשמה רק בחלקה נראית זולה יותר משהייתה, ולכן המכנה והחודשים שבו נאמרים כאן ולא מוסתרים."
+            : "כל חודש סגור שהמאזן מגיע אליו נרשם."}
       </p>
 
       <p className="mt-3 text-xs text-stone-500">

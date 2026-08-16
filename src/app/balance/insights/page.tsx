@@ -52,9 +52,12 @@ export const dynamic = "force-dynamic";
  * the trend is the twelve months ending there, the year panels are that month's
  * year, and the deviations are that month against the six before it.
  *
- * Period averages divide by the months elapsed as of *today*, not as of the focus
- * month — a complete past year divides by twelve however far back it is read
- * from. Every average prints that denominator beside itself.
+ * Period averages divide by the year's *closed* months as of today — the months
+ * before the current one, as far as the ledger's own history reaches — not by the
+ * months elapsed as of the focus month. So a past year the ledger covers end to
+ * end divides by twelve however far back it is read from, and a year it reaches
+ * into only partway divides by the part it reaches. Every average prints both the
+ * denominator and the months it counted.
  */
 
 /** The ledger is kept in shekels. Explicit, never assumed from context. */
@@ -255,7 +258,7 @@ function Insights({
         note={
           period === "month"
             ? "חודש אחד. הממוצע החודשי זהה לסכום, והמכנה הוא חודש אחד."
-            : `שנת ${focus.year}. הממוצע החודשי מחלק בחודשים שחלפו, וכל שורה אומרת במה חילקה.`
+            : `שנת ${focus.year}. הממוצע החודשי מחלק בחודשים הסגורים של השנה — אלה שקדמו לחודש הנוכחי, עד כמה שההיסטוריה מגיעה — והחודש שבתהליך אינו נספר בסכום ולא במכנה. כל שורה אומרת באילו חודשים חילקה.`
         }
       />
 

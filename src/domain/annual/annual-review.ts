@@ -278,8 +278,15 @@ export interface BalanceLine {
   readonly income: Stated<Money>;
   readonly expenses: Stated<Money>;
   readonly saving: Stated<Money>;
-  /** What an average over this year would divide by — twelve for a year that is over. */
+  /**
+   * What an average over this year would divide by: the year's closed months, as
+   * far as the ledger's history reaches. Twelve for a year the ledger covers end
+   * to end, fewer for one it only reaches into — which is why the months
+   * themselves travel beside the count.
+   */
   readonly denominator: number;
+  /** Which months that was. A count without them cannot be argued with. */
+  readonly months: readonly CalendarMonth[];
   /** How many of those months hold anything. A year recorded in part says so. */
   readonly recordedMonths: number;
 }
@@ -306,6 +313,7 @@ function readBalance(input: {
     expenses: live(breakdown.totals.expenses.total),
     saving: live(breakdown.totals.saving.total),
     denominator: breakdown.totals.income.denominator,
+    months: breakdown.totals.income.months,
     recordedMonths: breakdown.totals.income.recordedMonths,
   };
 }

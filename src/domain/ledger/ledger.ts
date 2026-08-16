@@ -156,6 +156,28 @@ export function recordedMonths(ledger: Ledger): CalendarMonth[] {
   return [...keys].map(parseMonthKey).sort(compareMonths);
 }
 
+/**
+ * The stretch of calendar the ledger actually covers, first recorded month to
+ * last. `null` for a ledger with nothing in it, which has no span rather than a
+ * span of nothing.
+ *
+ * What it is for: an average must not divide by months that predate the history.
+ * The household's ledger begins in יולי 2024, so a 2024 average divides by six —
+ * and the six is read from here rather than written into the code, so it stays
+ * right as history grows in either direction.
+ */
+export interface RecordedSpan {
+  readonly first: CalendarMonth;
+  readonly last: CalendarMonth;
+}
+
+export function recordedSpan(ledger: Ledger): RecordedSpan | null {
+  const months = recordedMonths(ledger);
+  const first = months[0];
+  const last = months[months.length - 1];
+  return first === undefined || last === undefined ? null : { first, last };
+}
+
 export interface CategoryLine {
   readonly category: PersonalCategory;
   /** `null` when this category has no figure for the month. */

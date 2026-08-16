@@ -15,7 +15,14 @@ import {
 import { type Money, format, isNegative, negate } from "@/domain/money/money";
 import { requireHouseholdEmail } from "@/session";
 
-import { BasisBadge, Field, UnavailablePanel, formatRate, monthsRecorded } from "../panels";
+import {
+  BasisBadge,
+  Field,
+  UnavailablePanel,
+  formatRate,
+  monthsCounted,
+  monthsRecorded,
+} from "../panels";
 import { readReviewOf } from "../reading";
 
 export const dynamic = "force-dynamic";
@@ -316,16 +323,20 @@ function RatePanel({ comparison }: { comparison: AnnualReviewComparison }) {
 function CoveragePanel({ comparison }: { comparison: AnnualReviewComparison }) {
   const { earlier, later } = comparison;
   const same = earlier.balance.recordedMonths === later.balance.recordedMonths;
+  const earlierSpan = monthsCounted(earlier.balance.months);
+  const laterSpan = monthsCounted(later.balance.months);
 
   return (
     <p className={`mt-4 text-sm ${same ? "text-stone-600" : "text-amber-900"}`}>
       <bdi className="tabular">{earlier.review.year}</bdi>:{" "}
       {monthsRecorded(earlier.balance.recordedMonths)} מתוך{" "}
       <bdi className="tabular">{earlier.balance.denominator}</bdi>
+      {earlierSpan === null ? null : <bdi> ({earlierSpan})</bdi>}
       <span className="mx-2 text-stone-400">·</span>
       <bdi className="tabular">{later.review.year}</bdi>:{" "}
       {monthsRecorded(later.balance.recordedMonths)} מתוך{" "}
       <bdi className="tabular">{later.balance.denominator}</bdi>
+      {laterSpan === null ? null : <bdi> ({laterSpan})</bdi>}
       {same ? null : (
         <>
           {" "}

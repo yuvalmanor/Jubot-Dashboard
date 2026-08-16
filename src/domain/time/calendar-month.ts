@@ -110,3 +110,37 @@ export function formatMonth(month: CalendarMonth, locale = "he-IL"): string {
     new Date(month.year, month.month - 1, 1),
   );
 }
+
+/** The month's name alone, e.g. `יולי`. For a range whose year is stated once. */
+export function formatMonthName(month: CalendarMonth, locale = "he-IL"): string {
+  return new Intl.DateTimeFormat(locale, { month: "long" }).format(
+    new Date(month.year, month.month - 1, 1),
+  );
+}
+
+/**
+ * An inclusive range of months, e.g. `יולי–דצמבר 2024`. A range inside one year
+ * names the year once; a range that crosses one names it on both sides, because
+ * `דצמבר–ינואר` alone does not say which December.
+ */
+export function formatMonthRange(from: CalendarMonth, to: CalendarMonth, locale = "he-IL"): string {
+  if (monthsEqual(from, to)) return formatMonth(from, locale);
+  if (from.year === to.year) {
+    return `${formatMonthName(from, locale)}–${formatMonthName(to, locale)} ${String(from.year)}`;
+  }
+  return `${formatMonth(from, locale)}–${formatMonth(to, locale)}`;
+}
+
+/**
+ * Whether an ascending list of months runs without a gap.
+ *
+ * A count and a range are the same statement only when this holds. Two months
+ * drawn out of a six-month window are not "פברואר–מאי", and a screen that printed
+ * them as one would be claiming four months' worth of evidence for two.
+ */
+export function monthsAreContiguous(months: readonly CalendarMonth[]): boolean {
+  const first = months[0];
+  const last = months[months.length - 1];
+  if (first === undefined || last === undefined) return true;
+  return monthsBetween(first, last) + 1 === months.length;
+}

@@ -16,6 +16,7 @@ import {
   HOUSEHOLD_SCOPE,
   availableToMove,
   categoryBreakdown,
+  denominatorMonths,
   monthPeriod,
   monthlyTrend,
   periodDenominator,
@@ -85,25 +86,68 @@ function monthsOf(year: number, amounts: readonly number[]): Record<string, numb
 }
 
 describe("periodDenominator — what an average divides by", () => {
-  const today = m(2026, 6);
+  const today = m(2026, 8);
 
-  it("divides a complete year by twelve", () => {
-    expect(periodDenominator(yearPeriod(2025), today)).toBe(12);
-    expect(periodDenominator(yearPeriod(2024), today)).toBe(12);
+  /** The household's own history: it begins mid-2024 and reaches last month. */
+  const history = { first: m(2024, 7), last: m(2026, 7) };
+
+  it("divides a year the history covers end to end by twelve", () => {
+    expect(periodDenominator(yearPeriod(2025), today, history)).toBe(12);
   });
 
-  it("divides the current year by the months that have elapsed", () => {
-    expect(periodDenominator(yearPeriod(2026), today)).toBe(6);
-    expect(periodDenominator(yearPeriod(2026), m(2026, 1))).toBe(1);
-    expect(periodDenominator(yearPeriod(2026), m(2026, 12))).toBe(12);
+  it("does not divide a year by months that predate the history", () => {
+    // 2024 starts in יולי here. Dividing by the six months before it — months that
+    // never existed in this ledger — would halve every 2024 figure.
+    expect(periodDenominator(yearPeriod(2024), today, history)).toBe(6);
+    expect(denominatorMonths(yearPeriod(2024), today, history).map(monthKey)).toEqual([
+      "2024-07",
+      "2024-08",
+      "2024-09",
+      "2024-10",
+      "2024-11",
+      "2024-12",
+    ]);
   });
 
-  it("has no months to divide a year that has not started by", () => {
-    expect(periodDenominator(yearPeriod(2027), today)).toBe(0);
+  it("counts the closed months of the current year, not the elapsed ones", () => {
+    // August is being lived. A month half lived would drag the average down for no
+    // reason other than the date, so it is in neither the total nor the divisor.
+    expect(periodDenominator(yearPeriod(2026), today, history)).toBe(7);
+    expect(denominatorMonths(yearPeriod(2026), today, history).map(monthKey)).toEqual([
+      "2026-01",
+      "2026-02",
+      "2026-03",
+      "2026-04",
+      "2026-05",
+      "2026-06",
+      "2026-07",
+    ]);
   });
 
-  it("divides a month by one", () => {
-    expect(periodDenominator(monthPeriod(m(2026, 6)), today)).toBe(1);
+  it("has closed no months of a year that has only just begun", () => {
+    expect(periodDenominator(yearPeriod(2026), m(2026, 1), history)).toBe(0);
+  });
+
+  it("has no months for a year that has not started, nor for one the history never reached", () => {
+    expect(periodDenominator(yearPeriod(2027), today, history)).toBe(0);
+    expect(periodDenominator(yearPeriod(2023), today, history)).toBe(0);
+  });
+
+  it("has nothing to divide by when the ledger holds nothing at all", () => {
+    expect(periodDenominator(yearPeriod(2025), today, null)).toBe(0);
+  });
+
+  it("divides a month by itself, whether or not that month is over", () => {
+    expect(periodDenominator(monthPeriod(m(2026, 6)), today, history)).toBe(1);
+    expect(periodDenominator(monthPeriod(today), today, history)).toBe(1);
+  });
+
+  it("divides by exactly the months it counted, never by a number arrived at separately", () => {
+    for (const period of [yearPeriod(2024), yearPeriod(2026), yearPeriod(2027), monthPeriod(today)]) {
+      expect(periodDenominator(period, today, history)).toBe(
+        denominatorMonths(period, today, history).length,
+      );
+    }
   });
 });
 
@@ -367,7 +411,8 @@ describe("where the money went", () => {
     }),
   });
 
-  const today = m(2025, 6);
+  /** יולי: every one of the six recorded months is closed, and none is in progress. */
+  const today = m(2025, 7);
 
   it("breaks a month down at household level, largest first", () => {
     const breakdown = categoryBreakdown(
@@ -385,7 +430,7 @@ describe("where the money went", () => {
     expect(breakdown.totals.expenses.total).toEqual({ minorUnits: 80_000, currency: ILS });
   });
 
-  it("divides a partial year by its elapsed months, and says so on every line", () => {
+  it("divides a partial year by its closed months, and says so on every line", () => {
     const breakdown = categoryBreakdown(ledger, categories(), HOUSEHOLD_SCOPE, yearPeriod(2025), ILS, today);
 
     expect(breakdown.denominator).toBe(6);
@@ -395,6 +440,52 @@ describe("where the money went", () => {
     }
     expect(breakdown.totals.income.amount).toEqual({ minorUnits: 3_000_000, currency: ILS });
     expect(breakdown.totals.income.denominator).toBe(6);
+  });
+
+  it("leaves the month in progress out of the total and out of the divisor", () => {
+    // Read in יוני, יוני is half lived. Counting it would make the year look cheap
+    // for no reason other than the date it happens to be read on.
+    const breakdown = categoryBreakdown(
+      ledger,
+      categories(),
+      HOUSEHOLD_SCOPE,
+      yearPeriod(2025),
+      ILS,
+      m(2025, 6),
+    );
+
+    expect(breakdown.denominator).toBe(5);
+    expect(breakdown.months.map(monthKey)).toEqual([
+      "2025-01",
+      "2025-02",
+      "2025-03",
+      "2025-04",
+      "2025-05",
+    ]);
+    // Five months of 30,000₪, not six.
+    expect(breakdown.totals.income.total).toEqual({ minorUnits: 15_000_000, currency: ILS });
+  });
+
+  it("does not divide a year by months that predate the ledger's history", () => {
+    // A ledger that starts in יולי 2024 has no January 2024 to average over.
+    const midYear = buildLedger({
+      entered: entries({
+        "p-power": { "2024-07": 500, "2024-08": 500, "2024-09": 500, "2024-10": 500, "2024-11": 500, "2024-12": 500 },
+      }),
+    });
+    const breakdown = categoryBreakdown(midYear, categories(), YUVAL, yearPeriod(2024), ILS, m(2025, 3));
+
+    expect(breakdown.denominator).toBe(6);
+    expect(breakdown.months.map(monthKey)[0]).toBe("2024-07");
+    expect(breakdown.expenses[0]?.average.amount).toEqual({ minorUnits: 50_000, currency: ILS });
+  });
+
+  it("has no average for a year the history never reached, rather than an average of nought", () => {
+    const breakdown = categoryBreakdown(ledger, categories(), HOUSEHOLD_SCOPE, yearPeriod(2024), ILS, today);
+
+    expect(breakdown.denominator).toBe(0);
+    expect(breakdown.totals.income.total).toEqual({ minorUnits: 0, currency: ILS });
+    expect(breakdown.totals.income.amount).toBeNull();
   });
 
   it("states how many of the period's months actually hold a figure", () => {
@@ -494,7 +585,7 @@ describe("the same period last year", () => {
     }),
   });
 
-  const today = m(2025, 6);
+  const today = m(2025, 7);
   const compared = () => yearOverYear(ledger, categories(), YUVAL, 2025, ILS, today, { type: "expense" });
 
   it("compares the same span of months on both sides", () => {
@@ -503,6 +594,23 @@ describe("the same period last year", () => {
     expect(result.year).toBe(2025);
     expect(result.comparisonYear).toBe(2024);
     expect(result.months).toBe(6);
+    expect(result.currentMonths.map(monthKey)).toEqual([
+      "2025-01",
+      "2025-02",
+      "2025-03",
+      "2025-04",
+      "2025-05",
+      "2025-06",
+    ]);
+    // The very same months a year earlier — matched one for one, never clamped.
+    expect(result.previousMonths.map(monthKey)).toEqual([
+      "2024-01",
+      "2024-02",
+      "2024-03",
+      "2024-04",
+      "2024-05",
+      "2024-06",
+    ]);
 
     const power = result.lines.find((line) => line.key === "p-power");
     expect(power?.current.total).toEqual({ minorUnits: 300_000, currency: ILS });
@@ -529,11 +637,33 @@ describe("the same period last year", () => {
   });
 
   it("compares a complete year against the whole of the one before it", () => {
-    const result = yearOverYear(ledger, categories(), YUVAL, 2025, ILS, m(2026, 3), { type: "expense" });
+    const twoFullYears = buildLedger({
+      entered: entries({
+        "p-power": {
+          ...monthsOf(2024, [400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400]),
+          ...monthsOf(2025, [500, 500, 500, 500, 500, 500, 500, 500, 500, 500, 500, 500]),
+        },
+      }),
+    });
+    const result = yearOverYear(twoFullYears, categories(), YUVAL, 2025, ILS, m(2026, 3), {
+      type: "expense",
+    });
 
     expect(result.months).toBe(12);
     expect(result.lines.find((line) => line.key === "p-power")?.previous?.total).toEqual({
       minorUnits: 480_000,
+      currency: ILS,
+    });
+  });
+
+  it("does not compare months the ledger's history never reached", () => {
+    // This ledger stops in יוני 2025. Read from 2026 the year still divides by six,
+    // not by twelve, and the comparison side is trimmed with it.
+    const result = yearOverYear(ledger, categories(), YUVAL, 2025, ILS, m(2026, 3), { type: "expense" });
+
+    expect(result.months).toBe(6);
+    expect(result.lines.find((line) => line.key === "p-power")?.previous?.total).toEqual({
+      minorUnits: 240_000,
       currency: ILS,
     });
   });
@@ -577,7 +707,7 @@ describe("every average carries its denominator", () => {
   }
 
   it("states the months it divided by, and is null when there were none", () => {
-    for (const average of everyAverage(m(2025, 3))) {
+    for (const average of everyAverage(m(2025, 4))) {
       expect(Number.isInteger(average.denominator)).toBe(true);
       if (average.denominator === 0) {
         expect(average.amount).toBeNull();
@@ -588,29 +718,49 @@ describe("every average carries its denominator", () => {
     }
   });
 
+  it("carries the very months it counted, so no caller can total one span and divide by another", () => {
+    for (const average of everyAverage(m(2025, 4))) {
+      expect(average.months.length).toBe(average.denominator);
+    }
+  });
+
   it("never divides by more months than the period has", () => {
-    for (const average of everyAverage(m(2025, 3))) {
-      expect(average.recordedMonths).toBeLessThanOrEqual(Math.max(average.denominator, 0) || 12);
+    for (const average of everyAverage(m(2025, 4))) {
+      expect(average.recordedMonths).toBeLessThanOrEqual(average.denominator);
     }
   });
 
   it("holds amount = total ÷ denominator, rounded at the agora", () => {
-    const breakdown = categoryBreakdown(ledger, categories(), YUVAL, yearPeriod(2025), ILS, m(2025, 3));
+    const breakdown = categoryBreakdown(ledger, categories(), YUVAL, yearPeriod(2025), ILS, m(2025, 4));
     const power = breakdown.expenses.find((line) => line.key === "p-power");
 
-    // 1,200₪ over three elapsed months.
+    // 1,200₪ over three closed months.
     expect(power?.average.total).toEqual({ minorUnits: 120_000, currency: ILS });
     expect(power?.average.denominator).toBe(3);
+    expect(power?.average.months.map(monthKey)).toEqual(["2025-01", "2025-02", "2025-03"]);
     expect(power?.average.amount).toEqual({ minorUnits: 40_000, currency: ILS });
   });
 
   it("rounds an average that does not divide evenly at the minor unit", () => {
     const uneven = buildLedger({ entered: entries({ "p-power": monthsOf(2025, [100, 100, 100.01]) }) });
-    const breakdown = categoryBreakdown(uneven, categories(), YUVAL, yearPeriod(2025), ILS, m(2025, 3));
+    const breakdown = categoryBreakdown(uneven, categories(), YUVAL, yearPeriod(2025), ILS, m(2025, 4));
     const power = breakdown.expenses.find((line) => line.key === "p-power");
 
     expect(power?.average.total).toEqual({ minorUnits: 30_001, currency: ILS });
     expect(power?.average.amount).toEqual({ minorUnits: 10_000, currency: ILS });
+  });
+
+  it("carries a trailing average's own months, and not the window they were drawn from", () => {
+    // חשמל holds two of the six trailing months. The average is over those two.
+    const sparse = buildLedger({
+      entered: entries({ "p-power": { "2024-11": 300, "2024-12": 500, "2025-01": 400 } }),
+    });
+    const power = rankCategoryDeviations(sparse, categories(), YUVAL, m(2025, 1), ILS).find(
+      (line) => line.key === "p-power",
+    );
+
+    expect(power?.trailing.months.map(monthKey)).toEqual(["2024-11", "2024-12"]);
+    expect(power?.trailing.denominator).toBe(2);
   });
 });
 
