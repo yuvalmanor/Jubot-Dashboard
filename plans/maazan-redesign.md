@@ -37,8 +37,14 @@ re-litigated per phase.
 
 ### The two aggregate columns
 
-Both stop at the same boundary, so `ממוצע חודשי × n = סכום שנתי` holds exactly and the
-columns can be checked against each other by eye.
+Both stop at the same boundary, so `ממוצע חודשי` and `סכום שנתי` always cover the same
+months and the columns can be checked against each other by eye.
+
+`ממוצע חודשי` is printed **to the shekel**. `divide` rounds at the agora, so an average
+carrying its agorot could be multiplied by the divisor printed in its own header and fail
+to return the total in the column beside it — `94,677.00 ÷ 7 × 7` reads `94,677.03`. The
+shekel is the precision the figure actually holds. *(Amended 2026-08-16, resolving the
+Phase 19 criterion that had asked for the multiplication to hold exactly.)*
 
 - **The divisor** is the count of *closed calendar months* of the year — months strictly
   before the current one — **intersected with the ledger's recorded span**. It is derived
@@ -158,12 +164,16 @@ recording ability is lost while the grid is being built.
            nothing, marked (ריקה): a control that cannot show its own state would be a
            worse lie than an option that turns out to be empty. -->
 - [x] All twelve months are columns; months that have not arrived are visibly inert
-- [ ] סכום שנתי and ממוצע חודשי are the two leftmost columns, and `ממוצע × n = סכום` exactly
-      <!-- The placement holds, and both columns are one `Average` over one list of months,
-           so they cannot cover different spans. The equality does not hold to the agora:
-           `divide` rounds at the minor unit, so 94,677.00 ÷ 7 × 7 reads 94,677.03. Left
-           unchecked rather than reinterpreted — whether the ממוצע column should print
-           rounded, or the criterion should say "to the shekel", is a planning decision. -->
+- [x] סכום שנתי and ממוצע חודשי are the two leftmost columns, covering one and the same
+      list of months, with the average stated to the shekel
+      <!-- Both columns are one `Average` over one `denominatorMonths`, so they cannot
+           cover different spans. The original wording asked for `ממוצע × n = סכום`
+           exactly, which rounding cannot give — `divide` rounds at the agora, so
+           94,677.00 ÷ 7 × 7 reads 94,677.03. Resolved 2026-08-16 by printing the ממוצע
+           column in whole shekels rather than an agora figure that invites an arithmetic
+           it cannot honour; the header decision above now says the same. Verified on
+           2026 יובל: 79,024.00 ÷7 shows as 11,289, and the summary strip above the table
+           prints the identical figure. -->
 - [x] The ממוצע column header states its divisor and its span
       <!-- `ממוצע חודשי ÷7 (ינואר–יולי 2026)`, and `÷6 (יולי–דצמבר 2024)` for the year the
            history only reaches into. -->
@@ -215,18 +225,58 @@ and is left as the screen that answers whether a figure is *normal*.
 
 ### Acceptance criteria
 
-- [ ] The category column and both aggregate columns stay pinned while months scroll
-- [ ] The grid is usable on a phone without a separate mobile layout
-- [ ] Rows sort by largest annual sum by default, with a toggle to Hebrew alphabetical
-- [ ] Both orders are total and deterministic — the same data always renders the same order
-- [ ] An expand-all toggle shows each משותף row's personal contributions across all months
-- [ ] Each expanded group's contributions sum exactly to the household row above them
-- [ ] A cell is marked only when it deviates materially from its own row's average, measured
+- [x] The category column and both aggregate columns stay pinned while months scroll
+      <!-- Scrolled to the end of 2025: ינואר's right edge moved 1064 → 1337 while קטגוריה
+           held at the container's right edge and both aggregates at its left. The widths
+           and the pinned offsets are one set of custom properties, so סכום שנתי parks
+           exactly one aggregate column in and cannot overlap ממוצע. `border-separate`,
+           because a collapsed border belongs to the table and does not travel with a
+           pinned cell; every pinned cell is opaque, so nothing shows through. -->
+- [x] The grid is usable on a phone without a separate mobile layout
+      <!-- One table. At 375px the columns narrow through the same custom properties —
+           at desktop widths the three pinned columns would fill the screen and leave no
+           month visible at all. The page itself never scrolls sideways; only the table
+           does, and no cell overflows its column. -->
+- [x] Rows sort by largest annual sum by default, with a toggle to Hebrew alphabetical
+      <!-- `?sort=size|name`, ordered in the domain rather than the markup, so the order
+           is testable without a browser. Alphabetical comes from `Intl.Collator("he")`. -->
+- [x] Both orders are total and deterministic — the same data always renders the same order
+      <!-- Both fall through to the category key, so two rows totalling the same amount —
+           or named the same thing, which happens — cannot swap places between reads. -->
+- [x] An expand-all toggle shows each משותף row's personal contributions across all months
+      <!-- `?expand=1`, one toggle for the whole table. Absent at person level, where a
+           row is already personal, rather than present and inert. Each contribution
+           carries the owner's name: both People may name a category ארנונה, and two
+           identical labels one above the other say nothing about whose money it is. -->
+- [x] Each expanded group's contributions sum exactly to the household row above them
+      <!-- Checked in the domain and again against the rendered DOM: 14 expanded groups
+           in 2025, zero mismatches across all twelve months and סכום שנתי. -->
+- [x] A cell is marked only when it deviates materially from its own row's average, measured
       against the row and never against the table
       <!-- Threshold is relative *and* absolute: a 12₪ jump on a 20₪ row is not a finding. -->
-- [ ] `/balance/insights` no longer carries a category breakdown and is trend, year-over-year
+      <!-- 50% and 1,000₪, calibrated against the real 2025 year. The money bar is the
+           load-bearing one: at 40%/200₪ the table came out marked nearly everywhere,
+           because ארנונה and גז are billed every second month and every bill reads as a
+           deviation. At these two, ארנונה, חשמל, בתי קפה and מכבי carry no mark at all,
+           while חו"ל's מאי and כושר's one 1,336₪ month do. משכורת, twenty times any
+           expense row and unchanging, is never marked — the test that the measurement is
+           against the row. -->
+- [x] `/balance/insights` no longer carries a category breakdown and is trend, year-over-year
       and deviations only
-- [ ] No figure appears on both `/balance` and `/balance/insights` computed two different ways
+      <!-- The `?period=` control went with it: it existed to switch the breakdown between
+           a month and a year. The screen now carries five panels and a line pointing at
+           the grid for the question it no longer answers. -->
+- [x] No figure appears on both `/balance` and `/balance/insights` computed two different ways
+      <!-- The year-over-year figures and the grid's aggregate columns are the same
+           `averageOverMonths` over the same `denominatorMonths`; a month's category figure
+           on both screens is the same `readGroupMonth`. The one figure reached by two
+           routes is a month's band total — `subtotalOf` sums the rows on screen, while the
+           trend reads `householdMonthSummary` — and there are now golden tests pinning
+           them together month by month *and* over the year, so the two cannot drift. -->
+- [x] The ממוצע חודשי column prints to the shekel, matching the amended header decision
+      <!-- Added when the Phase 19 criterion above was resolved. `format`'s new
+           `withMinorUnits` option; the summary strip prints the same figures the same
+           way, so one number never appears at two precisions on one screen. -->
 
 ---
 

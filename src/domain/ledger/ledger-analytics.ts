@@ -37,11 +37,11 @@
  * no caller can total one span and divide by another, and no screen can print a
  * divisor without being able to say which months it counted.
  *
- * A handful of the pieces below — `categoryGroups`, `readGroupMonth`,
- * `averageOf`, `averageOverMonths`, `identifyGroup` — are exported for
- * `year-grid.ts`, which reads the same ledger at the same two levels. They are
- * shared rather than reimplemented so the grid and this screen cannot arrive at
- * the same figure by two different routes.
+ * A handful of the pieces below — `categoryGroups`, `membersAsGroups`,
+ * `readGroupMonth`, `averageOf`, `averageOverMonths`, `identifyGroup` — are
+ * exported for `year-grid.ts`, which reads the same ledger at the same two levels.
+ * They are shared rather than reimplemented so the grid and this screen cannot
+ * arrive at the same figure by two different routes.
  */
 
 import {
@@ -135,7 +135,7 @@ export function categoryGroups(
 }
 
 /** Every group as its own group — the drill-down under a household line. */
-function membersAsGroups(group: CategoryGroup): readonly CategoryGroup[] {
+export function membersAsGroups(group: CategoryGroup): readonly CategoryGroup[] {
   return group.members.map((member) => ({
     key: member.id,
     name: member.name,

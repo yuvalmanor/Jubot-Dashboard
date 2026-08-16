@@ -1,8 +1,6 @@
 import {
   type Average,
   type AvailableToMove,
-  type Breakdown,
-  type BreakdownLine,
   type CategoryDeviation,
   type DeviationBasis,
   type SavingRate,
@@ -15,13 +13,19 @@ import { formatMonth } from "@/domain/time/calendar-month";
 import { Denominator, monthsPhrase } from "../denominator";
 
 /**
- * The reading half of the מאזן, on screen.
+ * Whether a figure is normal — the trend, the deviations, and the same period a
+ * year ago.
  *
- * One rule runs through every panel here: **a figure never appears without what
- * it would take to argue with it.** An average is printed with the months it
- * divided by, a percentage with the amount it is a percentage of, a deviation
- * with the trailing average it deviated from, and a category with no history says
- * so instead of being drawn against a zero it never had.
+ * Where the money went is not asked here. That is the grid's question, and the
+ * grid answers it across twelve columns rather than one summed line, so a
+ * breakdown panel alongside it would only be a second place for the same figure
+ * to be stated.
+ *
+ * One rule runs through every panel that remains: **a figure never appears
+ * without what it would take to argue with it.** An average is printed with the
+ * months it divided by, a percentage with the amount it is a percentage of, a
+ * deviation with the trailing average it deviated from, and a category with no
+ * history says so instead of being drawn against a zero it never had.
  *
  * Nothing on these screens is writable. Every number is derived from the entries
  * at read time.
@@ -276,153 +280,6 @@ export function TrendTable({ points }: { points: readonly TrendPoint[] }) {
         </tbody>
       </table>
     </div>
-  );
-}
-
-// --- where the money went ------------------------------------------------------
-
-export function BreakdownPanel({
-  breakdown,
-  title,
-  note,
-  peopleNames,
-}: {
-  breakdown: Breakdown;
-  title: string;
-  note: string;
-  peopleNames: ReadonlyMap<string, string>;
-}) {
-  return (
-    <Panel title={title} note={note}>
-      <div className="grid gap-4 border-b border-stone-200 px-5 py-4 sm:grid-cols-3">
-        <TotalFigure label="הכנסות" average={breakdown.totals.income} />
-        <TotalFigure label="הוצאות" average={breakdown.totals.expenses} />
-        <TotalFigure label="חיסכון" average={breakdown.totals.saving} emphasis />
-      </div>
-
-      {breakdown.income.length + breakdown.expenses.length === 0 ? (
-        <Empty>אין קטגוריות עם סכום בתקופה הזאת.</Empty>
-      ) : (
-        <>
-          <BreakdownList title="הכנסות" lines={breakdown.income} peopleNames={peopleNames} />
-          <BreakdownList title="הוצאות" lines={breakdown.expenses} peopleNames={peopleNames} />
-        </>
-      )}
-    </Panel>
-  );
-}
-
-function TotalFigure({
-  label,
-  average,
-  emphasis = false,
-}: {
-  label: string;
-  average: Average;
-  emphasis?: boolean;
-}) {
-  return (
-    <div>
-      <p className="text-sm font-semibold tracking-wide text-stone-500">{label}</p>
-      <bdi className={`tabular block ${emphasis ? "text-2xl font-semibold" : "text-xl"}`}>
-        {format(average.total)}
-      </bdi>
-      <p className="text-sm text-stone-600">
-        ממוצע חודשי <bdi className="tabular">{average.amount === null ? "—" : format(average.amount)}</bdi>
-      </p>
-      <Denominator average={average} />
-    </div>
-  );
-}
-
-function BreakdownList({
-  title,
-  lines,
-  peopleNames,
-}: {
-  title: string;
-  lines: readonly BreakdownLine[];
-  peopleNames: ReadonlyMap<string, string>;
-}) {
-  if (lines.length === 0) return null;
-
-  return (
-    <section>
-      <h3 className="border-b border-stone-200 bg-stone-50/60 px-5 py-2 text-xs font-semibold tracking-wide text-stone-500">
-        {title}
-      </h3>
-      <ul className="divide-y divide-stone-100">
-        {lines.map((line) => (
-          <li key={line.key}>
-            {line.contributions.length === 0 ? (
-              <div className="px-5 py-3">
-                <BreakdownRow line={line} peopleNames={peopleNames} />
-              </div>
-            ) : (
-              <details className="group">
-                <summary className="cursor-pointer px-5 py-3">
-                  <BreakdownRow line={line} peopleNames={peopleNames} expandable />
-                </summary>
-                <ul className="divide-y divide-stone-100 border-t border-stone-100 bg-stone-50/60">
-                  {line.contributions.map((contribution) => (
-                    <li key={contribution.key} className="px-5 py-2 ps-9">
-                      {/* Only here does the owner's name earn its place: a household
-                          line opens onto two People's own names for one spend. */}
-                      <BreakdownRow line={contribution} peopleNames={peopleNames} showOwner />
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )}
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-function BreakdownRow({
-  line,
-  peopleNames,
-  expandable = false,
-  showOwner = false,
-}: {
-  line: BreakdownLine;
-  peopleNames: ReadonlyMap<string, string>;
-  expandable?: boolean;
-  showOwner?: boolean;
-}) {
-  const share = formatPercent(line.share);
-  const owner =
-    !showOwner || line.personId === null ? null : (peopleNames.get(line.personId) ?? line.personId);
-
-  return (
-    <span className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-      <span className="min-w-0 flex-1 font-medium">
-        {expandable ? (
-          <>
-            <span aria-hidden="true" className="text-stone-400 group-open:hidden">
-              ▸{" "}
-            </span>
-            <span aria-hidden="true" className="hidden text-stone-400 group-open:inline">
-              ▾{" "}
-            </span>
-          </>
-        ) : null}
-        <bdi>{line.name}</bdi>
-        {owner === null ? null : <span className="text-sm font-normal text-stone-500"> · {owner}</span>}
-      </span>
-
-      <span className="w-28 text-end">
-        <bdi className="tabular">{format(line.average.total)}</bdi>
-      </span>
-      <span className="w-16 text-end text-sm text-stone-600">
-        <bdi className="tabular">{share ?? "—"}</bdi>
-      </span>
-      <span className="w-40 text-end text-sm">
-        <AverageFigure average={line.average} />
-      </span>
-    </span>
   );
 }
 

@@ -324,12 +324,23 @@ export interface FormatOptions {
   readonly locale?: string;
   /** Drop the currency symbol, e.g. inside a column that names its currency once. */
   readonly withSymbol?: boolean;
+  /**
+   * Drop the minor units, rounding to the major one for display only — the amount
+   * itself is untouched.
+   *
+   * This is for a figure whose agorot are not evidence of anything. A monthly
+   * average is one: `divide` rounds at the minor unit, so 94,677.00 ÷ 7 prints as
+   * 13,525.29 and multiplying that back by 7 returns 94,677.03 rather than the
+   * total it came from. Showing the agorot invites an arithmetic that cannot come
+   * out; showing shekels states the average at the precision it actually holds.
+   */
+  readonly withMinorUnits?: boolean;
 }
 
 /** Format for reading. Hebrew locale by default: grouped thousands, symbol trailing. */
 export function format(amount: Money, options: FormatOptions = {}): string {
-  const { locale = "he-IL", withSymbol = true } = options;
-  const digits = minorUnitDigits(amount.currency);
+  const { locale = "he-IL", withSymbol = true, withMinorUnits = true } = options;
+  const digits = withMinorUnits ? minorUnitDigits(amount.currency) : 0;
   const formatter = new Intl.NumberFormat(locale, {
     ...(withSymbol ? { style: "currency" as const, currency: amount.currency } : {}),
     minimumFractionDigits: digits,

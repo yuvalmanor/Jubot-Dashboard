@@ -13,13 +13,10 @@ import {
   DEFAULT_TRAILING_WINDOW,
   HOUSEHOLD_SCOPE,
   availableToMove,
-  categoryBreakdown,
-  monthPeriod,
   monthlyTrend,
   personScope,
   rankCategoryDeviations,
   yearOverYear,
-  yearPeriod,
 } from "@/domain/ledger/ledger-analytics";
 import {
   type CalendarMonth,
@@ -33,14 +30,7 @@ import {
 import { requireHouseholdEmail } from "@/session";
 
 import { SavingRateChart, TrendChart } from "./charts";
-import {
-  AvailablePanel,
-  BreakdownPanel,
-  DeviationsPanel,
-  Panel,
-  TrendTable,
-  YearOverYearPanel,
-} from "./panels";
+import { AvailablePanel, DeviationsPanel, Panel, TrendTable, YearOverYearPanel } from "./panels";
 
 export const dynamic = "force-dynamic";
 
@@ -49,8 +39,14 @@ export const dynamic = "force-dynamic";
  *
  * The screen is driven by one control, a focus month, so there is never a
  * question of which month a figure belongs to. Everything else follows from it:
- * the trend is the twelve months ending there, the year panels are that month's
- * year, and the deviations are that month against the six before it.
+ * the trend is the twelve months ending there, the year-over-year is that
+ * month's year, and the deviations are that month against the six before it.
+ *
+ * It answers one question: **is this figure normal?** Where the money went is the
+ * grid's question, and the grid answers it a category at a time across a whole
+ * year, which is more than a breakdown panel ever did. So the breakdown is gone
+ * from here rather than kept alongside: two screens stating one figure is two
+ * screens that can come to disagree.
  *
  * Period averages divide by the year's *closed* months as of today — the months
  * before the current one, as far as the ledger's own history reaches — not by the
@@ -71,7 +67,6 @@ const TREND_MONTHS = 12;
 interface SearchParams {
   month?: string | string[];
   view?: string | string[];
-  period?: string | string[];
 }
 
 function first(value: string | string[] | undefined): string | undefined {
@@ -94,7 +89,7 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
         email={email}
         person={loaded.kind === "ok" ? loaded.person : null}
         title="מגמות וממוצעים"
-        subtitle="מה חריג, לאן הלך הכסף, ומול מה זה נמדד"
+        subtitle="מה חריג, מה מגמה, ומול מה זה נמדד"
         back={{ href: "/balance", label: "חזרה למאזן" }}
       />
 
@@ -108,7 +103,6 @@ export default async function InsightsPage({ searchParams }: { searchParams: Pro
             focus={focus}
             today={today}
             view={first(params.view)}
-            period={first(params.period) === "month" ? "month" : "year"}
             usingDefaultMonth={requestedMonth === null}
           />
         ) : (
@@ -166,7 +160,6 @@ function Insights({
   focus,
   today,
   view,
-  period,
   usingDefaultMonth,
 }: {
   people: readonly Person[];
@@ -176,7 +169,6 @@ function Insights({
   focus: CalendarMonth;
   today: CalendarMonth;
   view: string | undefined;
-  period: "year" | "month";
   usingDefaultMonth: boolean;
 }) {
   const scope = resolveScope(view, people);
@@ -195,19 +187,11 @@ function Insights({
     LEDGER_CURRENCY,
   );
   const deviations = rankCategoryDeviations(ledger, categories, scope, focus, LEDGER_CURRENCY);
-  const breakdown = categoryBreakdown(
-    ledger,
-    categories,
-    scope,
-    period === "month" ? monthPeriod(focus) : yearPeriod(focus.year),
-    LEDGER_CURRENCY,
-    today,
-  );
   const comparison = yearOverYear(ledger, categories, scope, focus.year, LEDGER_CURRENCY, today);
 
   return (
     <>
-      <Controls focus={focus} scopeKey={scopeKey} people={people} period={period} />
+      <Controls focus={focus} scopeKey={scopeKey} people={people} />
 
       {usingDefaultMonth ? (
         <p className="text-sm text-stone-500">
@@ -249,20 +233,15 @@ function Insights({
         </div>
       </Panel>
 
-      <BreakdownPanel
-        breakdown={breakdown}
-        peopleNames={peopleNames}
-        title={
-          period === "month" ? `פילוח קטגוריות — ${formatMonth(focus)}` : `פילוח קטגוריות — ${focus.year}`
-        }
-        note={
-          period === "month"
-            ? "חודש אחד. הממוצע החודשי זהה לסכום, והמכנה הוא חודש אחד."
-            : `שנת ${focus.year}. הממוצע החודשי מחלק בחודשים הסגורים של השנה — אלה שקדמו לחודש הנוכחי, עד כמה שההיסטוריה מגיעה — והחודש שבתהליך אינו נספר בסכום ולא במכנה. כל שורה אומרת באילו חודשים חילקה.`
-        }
-      />
-
       <YearOverYearPanel comparison={comparison} title={`מול אותה תקופה ב־${comparison.comparisonYear}`} />
+
+      <p className="text-sm text-stone-500">
+        פילוח הקטגוריות עבר ל
+        <Link href={`/balance?year=${focus.year}&view=${scopeKey}` as Route} className="underline underline-offset-4">
+          מאזן {focus.year}
+        </Link>
+        , שם כל קטגוריה נקראת על פני שנים־עשר חודשים ולא כשורה אחת מסוכמת.
+      </p>
     </>
   );
 }
@@ -274,9 +253,8 @@ function resolveScope(requested: string | undefined, people: readonly Person[]):
 
 // --- controls --------------------------------------------------------------------
 
-function insightsHref(month: CalendarMonth, scopeKey: string, period: "year" | "month"): Route {
+function insightsHref(month: CalendarMonth, scopeKey: string): Route {
   const params = new URLSearchParams({ month: monthKey(month), view: scopeKey });
-  if (period === "month") params.set("period", "month");
   return `/balance/insights?${params.toString()}` as Route;
 }
 
@@ -284,12 +262,10 @@ function Controls({
   focus,
   scopeKey,
   people,
-  period,
 }: {
   focus: CalendarMonth;
   scopeKey: string;
   people: readonly Person[];
-  period: "year" | "month";
 }) {
   const tabs = [
     ...people.map((person) => ({ key: person.id, label: person.displayName })),
@@ -305,7 +281,7 @@ function Controls({
             return (
               <Link
                 key={tab.key}
-                href={insightsHref(focus, tab.key, period)}
+                href={insightsHref(focus, tab.key)}
                 aria-current={active ? "page" : undefined}
                 className={`rounded-md border px-3 py-1.5 text-sm font-medium ${
                   active
@@ -321,7 +297,6 @@ function Controls({
 
         <form className="flex items-center gap-2" action="/balance/insights" method="get">
           <input type="hidden" name="view" value={scopeKey} />
-          {period === "month" ? <input type="hidden" name="period" value="month" /> : null}
           <label htmlFor="focus-month" className="text-sm text-stone-600">
             חודש מוקד
           </label>
@@ -341,30 +316,6 @@ function Controls({
             הצגה
           </button>
         </form>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2 border-t border-stone-200 pt-3">
-        <span className="text-sm text-stone-600">פילוח לפי</span>
-        {(
-          [
-            { key: "year", label: `שנת ${focus.year}` },
-            { key: "month", label: formatMonth(focus) },
-          ] as const
-        ).map((option) => {
-          const active = option.key === period;
-          return (
-            <Link
-              key={option.key}
-              href={insightsHref(focus, scopeKey, option.key)}
-              aria-current={active ? "true" : undefined}
-              className={`rounded-md border px-3 py-1 text-sm ${
-                active ? "border-stone-900 bg-stone-900 text-white" : "border-stone-300 bg-white hover:bg-stone-50"
-              }`}
-            >
-              {option.label}
-            </Link>
-          );
-        })}
       </div>
     </section>
   );

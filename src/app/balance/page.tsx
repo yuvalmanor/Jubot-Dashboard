@@ -9,7 +9,7 @@ import { type Person, findPersonByEmail, listPeople } from "@/db/people";
 import { type Categories } from "@/domain/categories/categories";
 import { type Ledger, recordedYears } from "@/domain/ledger/ledger";
 import { type AnalyticsScope, HOUSEHOLD_SCOPE, personScope } from "@/domain/ledger/ledger-analytics";
-import { yearGrid } from "@/domain/ledger/year-grid";
+import { type GridSort, DEFAULT_GRID_SORT, isGridSort, yearGrid } from "@/domain/ledger/year-grid";
 import { type CalendarMonth, monthKey, monthOf } from "@/domain/time/calendar-month";
 import { requireHouseholdEmail } from "@/session";
 
@@ -28,6 +28,11 @@ export const dynamic = "force-dynamic";
  *
  * It is read-only. The one place a month is written is `/balance/month`, which
  * every cell here is a step away from.
+ *
+ * Everything the reader can change about the table — the year, whose money, the
+ * row order, whether the household rows are opened — is a query parameter and
+ * nothing else. So a view of the grid is a URL that can be sent to the other
+ * person, and the screen holds no state that a reload could lose.
  */
 
 /** The ledger is kept in shekels. Explicit, never assumed from context. */
@@ -38,6 +43,8 @@ const HOUSEHOLD_VIEW = "household";
 interface SearchParams {
   year?: string | string[];
   view?: string | string[];
+  sort?: string | string[];
+  expand?: string | string[];
 }
 
 function first(value: string | string[] | undefined): string | undefined {
@@ -48,6 +55,11 @@ function parseYear(value: string | undefined): number | null {
   if (value === undefined || !/^\d{4}$/.test(value)) return null;
   const year = Number(value);
   return year >= 2000 && year <= 2100 ? year : null;
+}
+
+/** An unrecognised order falls back to the default rather than to no order at all. */
+function parseSort(value: string | undefined): GridSort {
+  return isGridSort(value) ? value : DEFAULT_GRID_SORT;
 }
 
 export default async function BalancePage({ searchParams }: { searchParams: Promise<SearchParams> }) {
@@ -79,6 +91,8 @@ export default async function BalancePage({ searchParams }: { searchParams: Prom
             categories={loaded.categories}
             ledger={loaded.ledger}
             view={first(params.view)}
+            sort={parseSort(first(params.sort))}
+            expanded={first(params.expand) === "1"}
           />
         ) : (
           <UnavailablePanel reason={loaded.reason} />
@@ -127,6 +141,8 @@ function BalanceYear({
   categories,
   ledger,
   view,
+  sort,
+  expanded,
 }: {
   year: number;
   today: CalendarMonth;
@@ -134,16 +150,27 @@ function BalanceYear({
   categories: Categories;
   ledger: Ledger;
   view: string | undefined;
+  sort: GridSort;
+  expanded: boolean;
 }) {
-  const grid = yearGrid(ledger, categories, resolveScope(view, people), year, LEDGER_CURRENCY, today);
+  const scope = resolveScope(view, people);
+  const grid = yearGrid(ledger, categories, scope, year, LEDGER_CURRENCY, today, { sort });
   const years = recordedYears(ledger);
+  const state: GridState = { year, view, sort, expanded };
 
   return (
     <>
-      <YearNavigator year={year} years={years} view={view} today={today} />
-      <ViewTabs year={year} people={people} selected={view} />
+      <YearNavigator state={state} years={years} today={today} />
+      <ViewTabs state={state} people={people} />
       <YearSummaryStrip grid={grid} />
-      <YearGridTable grid={grid} />
+      {/* At person level a row is already personal — there is nothing underneath
+          it to open, so the toggle is absent rather than present and inert. */}
+      <TableControls state={state} expandable={scope.kind === "household"} />
+      <YearGridTable
+        grid={grid}
+        expanded={expanded}
+        peopleNames={new Map(people.map((person) => [person.id, person.displayName]))}
+      />
     </>
   );
 }
@@ -157,22 +184,30 @@ function resolveScope(requested: string | undefined, people: readonly Person[]):
   return person === undefined ? HOUSEHOLD_SCOPE : personScope(person.id);
 }
 
-function gridHref(year: number, view: string | undefined): Route {
-  const params = new URLSearchParams({ year: String(year) });
-  if (view !== undefined) params.set("view", view);
+/** Everything the reader has chosen about the table, carried onto every link. */
+interface GridState {
+  readonly year: number;
+  readonly view: string | undefined;
+  readonly sort: GridSort;
+  readonly expanded: boolean;
+}
+
+/**
+ * The current view as a URL, with one part replaced. Every control changes one
+ * thing and keeps the rest, so choosing an order never resets the year and
+ * opening the household rows never sends the reader back to משותף.
+ */
+function gridHref(state: GridState, change: Partial<GridState> = {}): Route {
+  const next = { ...state, ...change };
+  const params = new URLSearchParams({ year: String(next.year) });
+  if (next.view !== undefined) params.set("view", next.view);
+  if (next.sort !== DEFAULT_GRID_SORT) params.set("sort", next.sort);
+  if (next.expanded) params.set("expand", "1");
   return `/balance?${params.toString()}` as Route;
 }
 
-function ViewTabs({
-  year,
-  people,
-  selected,
-}: {
-  year: number;
-  people: readonly Person[];
-  selected: string | undefined;
-}) {
-  const current = people.some((person) => person.id === selected) ? selected : HOUSEHOLD_VIEW;
+function ViewTabs({ state, people }: { state: GridState; people: readonly Person[] }) {
+  const current = people.some((person) => person.id === state.view) ? state.view : HOUSEHOLD_VIEW;
 
   const tabs = [
     ...people.map((person) => ({ key: person.id, label: person.displayName })),
@@ -186,7 +221,7 @@ function ViewTabs({
         return (
           <Link
             key={tab.key}
-            href={gridHref(year, tab.key)}
+            href={gridHref(state, { view: tab.key })}
             aria-current={active ? "page" : undefined}
             className={`rounded-md border px-3 py-1.5 text-sm font-medium ${
               active
@@ -202,17 +237,64 @@ function ViewTabs({
   );
 }
 
+/** How the rows are ordered, and whether the household lines are opened. */
+function TableControls({ state, expandable }: { state: GridState; expandable: boolean }) {
+  const orders = [
+    { key: "size" as const, label: "לפי גודל" },
+    { key: "name" as const, label: "לפי א״ב" },
+  ];
+
+  return (
+    <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-300 bg-white px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm text-stone-600">סדר השורות</span>
+        {orders.map((order) => {
+          const active = order.key === state.sort;
+          return (
+            <Link
+              key={order.key}
+              href={gridHref(state, { sort: order.key })}
+              aria-current={active ? "true" : undefined}
+              className={`rounded-md border px-3 py-1 text-sm ${
+                active
+                  ? "border-stone-900 bg-stone-900 text-white"
+                  : "border-stone-300 bg-white hover:bg-stone-50"
+              }`}
+            >
+              {order.label}
+            </Link>
+          );
+        })}
+        <span className="text-xs text-stone-500">
+          {state.sort === "size"
+            ? "הסכום השנתי הגדול ביותר למעלה"
+            : "אותה שורה באותו מקום בכל קריאה"}
+        </span>
+      </div>
+
+      {expandable ? (
+        <Link
+          href={gridHref(state, { expanded: !state.expanded })}
+          className="rounded-md border border-stone-300 bg-white px-3 py-1 text-sm font-medium hover:bg-stone-50"
+        >
+          {state.expanded ? "סגירת הפירוט האישי" : "פתיחת הפירוט האישי"}
+        </Link>
+      ) : null}
+    </section>
+  );
+}
+
 function YearNavigator({
-  year,
+  state,
   years,
-  view,
   today,
 }: {
-  year: number;
+  state: GridState;
   years: readonly number[];
-  view: string | undefined;
   today: CalendarMonth;
 }) {
+  const { year, view } = state;
+
   // The selected year is always among the options, even when the ledger holds
   // nothing for it — a control that could not show its own state would be worse
   // than one offering a year that turns out to be empty.
@@ -221,7 +303,13 @@ function YearNavigator({
   return (
     <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-300 bg-white p-4">
       <form className="flex items-center gap-2" action="/balance" method="get">
+        {/* A GET form submits only its own fields, so the rest of the view has to
+            travel with it or changing the year would quietly reset the order. */}
         {view === undefined ? null : <input type="hidden" name="view" value={view} />}
+        {state.sort === DEFAULT_GRID_SORT ? null : (
+          <input type="hidden" name="sort" value={state.sort} />
+        )}
+        {state.expanded ? <input type="hidden" name="expand" value="1" /> : null}
         <label htmlFor="year-picker" className="text-sm text-stone-600">
           שנה
         </label>

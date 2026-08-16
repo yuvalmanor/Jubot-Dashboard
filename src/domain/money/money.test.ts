@@ -268,6 +268,20 @@ describe("Hebrew formatting", () => {
   it("can drop the symbol for a column that names its currency once", () => {
     expect(withoutBidiMarks(format(money(100_50, "ILS"), { withSymbol: false }))).toBe("100.50");
   });
+
+  it("can drop the minor units for a figure whose agorot are not evidence", () => {
+    expect(withoutBidiMarks(format(money(100_50, "ILS"), { withMinorUnits: false }))).toBe("101 ₪");
+    expect(withoutBidiMarks(format(money(100_49, "ILS"), { withMinorUnits: false }))).toBe("100 ₪");
+    expect(
+      withoutBidiMarks(format(money(13_525_29, "ILS"), { withSymbol: false, withMinorUnits: false })),
+    ).toBe("13,525");
+  });
+
+  it("rounds only the display — the amount itself is untouched", () => {
+    const average = money(13_525_29, "ILS");
+    format(average, { withMinorUnits: false });
+    expect(average.minorUnits).toBe(13_525_29);
+  });
 });
 
 describe("parseMoneyInput", () => {

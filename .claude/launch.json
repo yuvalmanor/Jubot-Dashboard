@@ -20,6 +20,12 @@
       "port": 3003
     },
     {
+      "name": "jubot-dev-3004",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "--port", "3004"],
+      "port": 3004
+    },
+    {
       "name": "jubot-prod-3002",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "start", "--", "--port", "3002"],

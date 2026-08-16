@@ -25,7 +25,7 @@ import {
 import { type Money, divide, money, subtract, sum } from "@/domain/money/money";
 import { type CalendarMonth, calendarMonth, monthKey } from "@/domain/time/calendar-month";
 
-import { type GridRow, type YearGrid, yearGrid } from "./year-grid";
+import { type GridRow, type GridSort, type YearGrid, yearGrid } from "./year-grid";
 
 /**
  * The grid reading, tested against nothing but plain data. No database is
@@ -134,8 +134,8 @@ const CATEGORIES = applyLifespan(
   planLifespanChange(categories(), "p-power", { activeUntil: m(2025, 3) }),
 );
 
-function grid(year: number, scope = HOUSEHOLD_SCOPE, today = TODAY): YearGrid {
-  return yearGrid(LEDGER, CATEGORIES, scope, year, ILS, today);
+function grid(year: number, scope = HOUSEHOLD_SCOPE, today = TODAY, sort?: GridSort): YearGrid {
+  return yearGrid(LEDGER, CATEGORIES, scope, year, ILS, today, { sort });
 }
 
 function row(bandRows: readonly GridRow[], key: string): GridRow {
@@ -345,6 +345,151 @@ describe("yearGrid — the bands agree with the month they are read from", () =>
       subtract(yearly.income.total.aggregate.total, yearly.expenses.total.aggregate.total),
     );
     expect(yearly.saving.aggregate.months.map(monthKey)).toEqual(yearly.denominatorMonths.map(monthKey));
+  });
+});
+
+describe("yearGrid — the order rows come out in", () => {
+  it("puts the largest annual sum first by default", () => {
+    const totals = grid(2025).expenses.rows.map((line) => line.aggregate.total.minorUnits);
+    expect(totals).toEqual([...totals].sort((left, right) => right - left));
+    expect(grid(2025).sort).toBe("size");
+  });
+
+  it("orders by Hebrew alphabet when asked, and it is a different order", () => {
+    const alphabetical = grid(2025, HOUSEHOLD_SCOPE, TODAY, "name");
+    const names = alphabetical.expenses.rows.map((line) => line.name);
+    expect(names).toEqual([...names].sort((left, right) => new Intl.Collator("he").compare(left, right)));
+    expect(names).not.toEqual(grid(2025).expenses.rows.map((line) => line.name));
+  });
+
+  it("renders the same order every time, in both orders", () => {
+    for (const sort of ["size", "name"] as const) {
+      const keys = () => grid(2025, HOUSEHOLD_SCOPE, TODAY, sort).expenses.rows.map((line) => line.key);
+      expect(keys()).toEqual(keys());
+    }
+  });
+
+  it("breaks a tie on the category key, so equal rows cannot swap places", () => {
+    // Two categories with nothing recorded in 2027 both total nought.
+    const tied = grid(2027, YUVAL, m(2027, 6), "size").expenses.rows.map((line) => line.key);
+    expect(tied).toEqual([...tied].sort());
+  });
+
+  it("orders the contributions under a row the same way as the rows themselves", () => {
+    const health = row(grid(2025).expenses.rows, "h-health");
+    const totals = health.contributions.map((line) => line.aggregate.total.minorUnits);
+    expect(totals).toEqual([...totals].sort((left, right) => right - left));
+
+    const byName = row(grid(2025, HOUSEHOLD_SCOPE, TODAY, "name").expenses.rows, "h-health");
+    expect(byName.contributions.map((line) => line.name)).toEqual(["בריאות", "רפואה"]);
+  });
+});
+
+describe("yearGrid — a household row opens onto the people under it", () => {
+  it("carries each משותף row's personal contributions across all twelve months", () => {
+    const health = row(grid(2025).expenses.rows, "h-health");
+    expect(health.contributions.map((line) => line.key).sort()).toEqual(["p-eden-health", "p-health"]);
+    for (const contribution of health.contributions) {
+      expect(contribution.cells).toHaveLength(12);
+      expect(contribution.personId).not.toBeNull();
+    }
+  });
+
+  it("adds the contributions up to the household row above them, in every column", () => {
+    for (const line of [...grid(2025).income.rows, ...grid(2025).expenses.rows]) {
+      if (line.contributions.length === 0) continue;
+
+      expect(line.aggregate.total).toEqual(
+        sum(line.contributions.map((contribution) => contribution.aggregate.total), ILS),
+      );
+
+      line.cells.forEach((cell, index) => {
+        const parts = line.contributions.flatMap((contribution) => {
+          const amount = contribution.cells[index]?.amount;
+          return amount === undefined || amount === null ? [] : [amount];
+        });
+        expect(cell.amount).toEqual(parts.length === 0 ? null : sum(parts, ILS));
+      });
+    }
+  });
+
+  it("has nothing to open at person level, where the row is already personal", () => {
+    for (const line of [...grid(2025, YUVAL).income.rows, ...grid(2025, YUVAL).expenses.rows]) {
+      expect(line.contributions).toEqual([]);
+    }
+  });
+
+  it("does not repeat a single-member household row underneath itself", () => {
+    // חו"ל is Yuval's alone, so its household line has one member.
+    expect(row(grid(2025).expenses.rows, "h-travel").contributions).toEqual([]);
+  });
+});
+
+describe("yearGrid — which cells are worth a reader's attention", () => {
+  it("marks a month that departs from its own row's average", () => {
+    // חו"ל 2025: 9,905 in מאי against a ÷12 average of 825.42.
+    const travel = row(grid(2025, YUVAL).expenses.rows, "p-travel");
+    expect(travel.cells[4]?.deviation).toBe("above");
+    expect(travel.cells.filter((cell) => cell.deviation !== null)).toHaveLength(1);
+  });
+
+  it("measures against the row and never against the table", () => {
+    // משכורת is twenty times the size of every expense row and never moves.
+    // Against the table it would dominate; against itself it is unremarkable.
+    const salary = row(grid(2025, YUVAL).income.rows, "p-salary");
+    expect(salary.cells.every((cell) => cell.deviation === null)).toBe(true);
+  });
+
+  it("marks a fall below the row's own average as well as a rise above it", () => {
+    // 3,000 every month bar פברואר, which is a recorded nought — a real month of
+    // no spending, 2,750 below the ÷12 average, and the one month of the row
+    // worth looking at. The other eleven are 250 off it and are left alone.
+    const steady = buildLedger({
+      entered: entries({ "p-health": monthsOf(2025, 1, [3000, 0, 3000, 3000, 3000, 3000, 3000, 3000, 3000, 3000, 3000, 3000]) }),
+    });
+    const line = yearGrid(steady, CATEGORIES, YUVAL, 2025, ILS, TODAY).expenses.rows.find(
+      (candidate) => candidate.key === "p-health",
+    );
+    expect(line?.cells[1]?.amount).toEqual(ils(0));
+    expect(line?.cells[1]?.deviation).toBe("below");
+    expect(line?.cells.filter((cell) => cell.deviation !== null)).toHaveLength(1);
+  });
+
+  it("leaves a row alone when the swing is large as a share but small as money", () => {
+    // חשמל holds 700 in four months of 2025 and nothing after, so each of them is
+    // three times its own ÷12 average of 233.33 — and 466.67₪, which is not news.
+    // This is the case a relative test on its own would mark four times.
+    const power = row(grid(2025, YUVAL).expenses.rows, "p-power");
+    expect(power.cells[0]?.amount).toEqual(ils(700));
+    expect(power.cells.every((cell) => cell.deviation === null)).toBe(true);
+  });
+
+  it("marks nothing at all when the row has no average to have departed from", () => {
+    const future = grid(2027);
+    expect(future.income.total.aggregate.amount).toBeNull();
+    expect(future.saving.cells.every((cell) => cell.deviation === null)).toBe(true);
+  });
+
+  it("never marks a month that was never recorded", () => {
+    for (const line of [...grid(2025).income.rows, ...grid(2025).expenses.rows]) {
+      for (const cell of line.cells) {
+        if (cell.amount === null) expect(cell.deviation).toBeNull();
+      }
+    }
+  });
+});
+
+describe("yearGrid — the year totals agree with the month they are read from", () => {
+  it("totals each band to the same figure the monthly reading gives over the same months", () => {
+    // The grid and /balance/insights must never state one figure two ways: the
+    // year's totals here are the sum of exactly the months the trend screen reads.
+    const yearly = grid(2025);
+    const summaries = yearly.denominatorMonths.map((month) =>
+      householdMonthSummary(LEDGER, CATEGORIES, month, ILS),
+    );
+    expect(yearly.income.total.aggregate.total).toEqual(sum(summaries.map((s) => s.income), ILS));
+    expect(yearly.expenses.total.aggregate.total).toEqual(sum(summaries.map((s) => s.expenses), ILS));
+    expect(yearly.saving.aggregate.total).toEqual(sum(summaries.map((s) => s.saving), ILS));
   });
 });
 
