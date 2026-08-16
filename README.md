@@ -165,9 +165,30 @@ a category-month carrying both is refused. A month that was never recorded reads
 which is not the same fact as a month recorded as zero. חיסכון is `הכנסות − הוצאות`,
 computed on read, with nowhere to write it.
 
-### Reading a month at three levels
+### Reading a year
 
-`/balance` reads one month as either Person or as the Household. Only the signed-in
+`/balance` is the year: categories down, months across, at Household or Person level,
+defaulting to משותף because that is the question the household opens the screen to ask.
+`yearGrid` in `src/domain/ledger/year-grid.ts` is the whole reading — pure, handed a ledger
+and a clock — and the table renders it without adding anything up itself.
+
+All twelve months are always columns, so the table's shape does not change as the year
+passes: a month that has not arrived is greyed and says so, and the month being lived shows
+its figures in its own column tinted *בתהליך* while feeding neither aggregate. סכום שנתי and
+ממוצע חודשי sit past דצמבר, and they are one `Average` over one list of months — the year's
+closed months as far as the ledger's history reaches — so the two columns cannot cover
+different spans, and the ממוצע header prints both the divisor and the span it counted.
+
+A row is on the grid when its lifespan overlaps the year *or* it holds a figure in it. The
+first half is what makes the holes visible; the second is why retiring a category can never
+hide money. A cell that was never recorded is a muted `—` and a cell recorded as nought is
+`0.00`, and no path in the grid turns the first into the second.
+
+Nothing on the screen is writable. It reads the same entries the month form writes.
+
+### Reading and writing a month at three levels
+
+`/balance/month` records one month as either Person or as the Household. Only the signed-in
 Person's own view has inputs: the other's is readable and not writable, and the household
 view has nothing to write to at all — `householdMonthSummary` and `householdCategoryLines`
 derive every household figure from the personal ones on each read, and each household line

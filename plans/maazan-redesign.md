@@ -148,23 +148,41 @@ recording ability is lost while the grid is being built.
 
 ### Acceptance criteria
 
-- [ ] `/balance` renders a category × month grid for one year at household or person level
-- [ ] The משותף grid's figures are the sum of the two personal grids, derived at read time
-- [ ] Tabs are עדן / יובל / משותף and default to משותף; the year defaults to the current one
-- [ ] The year selector offers exactly the years the ledger holds data for
-- [ ] All twelve months are columns; months that have not arrived are visibly inert
+- [x] `/balance` renders a category × month grid for one year at household or person level
+- [x] The משותף grid's figures are the sum of the two personal grids, derived at read time
+      <!-- ינואר 2025 הוצאות: 12,410 (יובל) + 16,335 (עדן) = 28,745 משותף, and the year
+           365,175 = 135,811 + 229,364. -->
+- [x] Tabs are עדן / יובל / משותף and default to משותף; the year defaults to the current one
+- [x] The year selector offers exactly the years the ledger holds data for
+      <!-- `recordedYears`. The one addition is the selected year itself when it holds
+           nothing, marked (ריקה): a control that cannot show its own state would be a
+           worse lie than an option that turns out to be empty. -->
+- [x] All twelve months are columns; months that have not arrived are visibly inert
 - [ ] סכום שנתי and ממוצע חודשי are the two leftmost columns, and `ממוצע × n = סכום` exactly
-- [ ] The ממוצע column header states its divisor and its span
-- [ ] The current month is tinted בתהליך and feeds neither aggregate
-- [ ] A month recorded as zero renders as `0`; a month never recorded renders as a muted `—`,
+      <!-- The placement holds, and both columns are one `Average` over one list of months,
+           so they cannot cover different spans. The equality does not hold to the agora:
+           `divide` rounds at the minor unit, so 94,677.00 ÷ 7 × 7 reads 94,677.03. Left
+           unchecked rather than reinterpreted — whether the ממוצע column should print
+           rounded, or the criterion should say "to the shekel", is a planning decision. -->
+- [x] The ממוצע column header states its divisor and its span
+      <!-- `ממוצע חודשי ÷7 (ינואר–יולי 2026)`, and `÷6 (יולי–דצמבר 2024)` for the year the
+           history only reaches into. -->
+- [x] The current month is tinted בתהליך and feeds neither aggregate
+      <!-- Verified by writing 312.50 into אוגוסט 2026 and back out: the cell showed it,
+           the year's total and average did not move. -->
+- [x] A month recorded as zero renders as `0`; a month never recorded renders as a muted `—`,
       and the two are never the same glyph
-- [ ] A category appears in a year if it holds a recording that year **or** its lifespan
+      <!-- `0.00` against a greyed `—`, which also carries לא נרשם / טרם הגיע for a reader
+           who cannot see the grey. -->
+- [x] A category appears in a year if it holds a recording that year **or** its lifespan
       overlaps it; a retired category carries a badge and keeps every month it was recorded in
       <!-- Retiring a category can never hide money that was written down. -->
-- [ ] Income, expenses and חיסכון read as three bands of one table with aligned columns
-- [ ] The חיסכון line is visibly derived and has no input anywhere
-- [ ] The month form is reachable at `/balance/month` and behaves exactly as it did
-- [ ] The grid reading is a pure domain function with no database in its tests
+- [x] Income, expenses and חיסכון read as three bands of one table with aligned columns
+- [x] The חיסכון line is visibly derived and has no input anywhere
+      <!-- The grid carries no control at all: the only input on the page is the sign-out
+           form's hidden field. -->
+- [x] The month form is reachable at `/balance/month` and behaves exactly as it did
+- [x] The grid reading is a pure domain function with no database in its tests
 
 ---
 

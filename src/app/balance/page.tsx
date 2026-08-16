@@ -2,33 +2,33 @@ import type { Route } from "next";
 import Link from "next/link";
 
 import { AppHeader } from "@/components/app-header";
-import { DatabaseNotConfiguredError } from "@/db/client";
 import { loadCategories } from "@/db/categories";
-import { loadLedgerForMonth } from "@/db/ledger";
+import { DatabaseNotConfiguredError } from "@/db/client";
+import { loadLedger } from "@/db/ledger";
 import { type Person, findPersonByEmail, listPeople } from "@/db/people";
 import { type Categories } from "@/domain/categories/categories";
-import {
-  type Ledger,
-  householdCategoryLines,
-  householdMonthSummary,
-  personMonthLines,
-  personMonthSummary,
-} from "@/domain/ledger/ledger";
-import {
-  type CalendarMonth,
-  addMonths,
-  formatMonth,
-  monthKey,
-  monthOf,
-  tryParseMonthKey,
-} from "@/domain/time/calendar-month";
+import { type Ledger, recordedYears } from "@/domain/ledger/ledger";
+import { type AnalyticsScope, HOUSEHOLD_SCOPE, personScope } from "@/domain/ledger/ledger-analytics";
+import { yearGrid } from "@/domain/ledger/year-grid";
+import { type CalendarMonth, monthKey, monthOf } from "@/domain/time/calendar-month";
 import { requireHouseholdEmail } from "@/session";
 
-import { type BalanceErrorCode } from "./actions";
-import { MonthEntry } from "./month-entry";
-import { HouseholdReadingTable, PersonReadingTable, SummaryPanel } from "./month-panels";
+import { YearGridTable, YearSummaryStrip } from "./grid-panels";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * מאזן הכנסות-הוצאות — a year at a time.
+ *
+ * The spreadsheet this replaced was read year-first: a grid of categories against
+ * months, down a column for a month and across a row for a category. This screen
+ * is that grid, with the two things the spreadsheet could not do — every
+ * household figure derived from the personal ones on each read, and a blank that
+ * means *not recorded* rather than *nought*.
+ *
+ * It is read-only. The one place a month is written is `/balance/month`, which
+ * every cell here is a step away from.
+ */
 
 /** The ledger is kept in shekels. Explicit, never assumed from context. */
 const LEDGER_CURRENCY = "ILS" as const;
@@ -36,62 +36,50 @@ const LEDGER_CURRENCY = "ILS" as const;
 const HOUSEHOLD_VIEW = "household";
 
 interface SearchParams {
-  month?: string | string[];
+  year?: string | string[];
   view?: string | string[];
-  saved?: string | string[];
-  created?: string | string[];
-  error?: string | string[];
-  detail?: string | string[];
 }
 
 function first(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
+function parseYear(value: string | undefined): number | null {
+  if (value === undefined || !/^\d{4}$/.test(value)) return null;
+  const year = Number(value);
+  return year >= 2000 && year <= 2100 ? year : null;
+}
+
 export default async function BalancePage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const email = await requireHouseholdEmail();
   const params = await searchParams;
-  const month = tryParseMonthKey(first(params.month)) ?? monthOf(new Date());
+  const today = monthOf(new Date());
 
-  const loaded = await loadBalance(month, email);
+  // The year defaults to the current one: the question this screen is opened to
+  // ask is almost always about the year being lived.
+  const year = parseYear(first(params.year)) ?? today.year;
+  const loaded = await loadBalance(email);
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
+    <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-10">
       <AppHeader
         email={email}
         person={loaded.kind === "ok" ? loaded.person : null}
         title="מאזן הכנסות-הוצאות"
-        subtitle="רישום חודשי לפי קטגוריות"
+        subtitle="שנה שלמה — קטגוריות מול חודשים"
         back={{ href: "/", label: "חזרה ללוח המחוונים" }}
       />
 
       <main className="mt-6 space-y-6 sm:mt-8">
-        <MonthNavigator month={month} view={first(params.view)} />
-
-        <Notices
-          saved={first(params.saved) === "1"}
-          created={first(params.created)}
-          error={first(params.error)}
-          detail={first(params.detail)}
-        />
-
         {loaded.kind === "ok" ? (
-          <>
-            <ViewTabs
-              month={month}
-              people={loaded.people}
-              signedInPersonId={loaded.person.id}
-              selected={first(params.view)}
-            />
-            <MonthView
-              month={month}
-              view={resolveView(first(params.view), loaded.person, loaded.people)}
-              signedInPersonId={loaded.person.id}
-              people={loaded.people}
-              categories={loaded.categories}
-              ledger={loaded.ledger}
-            />
-          </>
+          <BalanceYear
+            year={year}
+            today={today}
+            people={loaded.people}
+            categories={loaded.categories}
+            ledger={loaded.ledger}
+            view={first(params.view)}
+          />
         ) : (
           <UnavailablePanel reason={loaded.reason} />
         )}
@@ -106,7 +94,12 @@ type LoadedBalance =
   | { kind: "ok"; person: Person; people: readonly Person[]; categories: Categories; ledger: Ledger }
   | { kind: "unavailable"; reason: string };
 
-async function loadBalance(month: CalendarMonth, email: string): Promise<LoadedBalance> {
+/**
+ * The whole ledger, not one year of it. Both aggregate columns are clamped to the
+ * span the history actually covers, and the year selector offers the years that
+ * hold data — neither is answerable from a single year's entries.
+ */
+async function loadBalance(email: string): Promise<LoadedBalance> {
   try {
     const person = await findPersonByEmail(email);
     if (person === null) {
@@ -115,11 +108,7 @@ async function loadBalance(month: CalendarMonth, email: string): Promise<LoadedB
         reason: `הכתובת ${email} אינה משויכת לאף אדם בטבלת people. יש לעדכן את שתי הכתובות במסד (ראו README).`,
       };
     }
-    const [people, categories, ledger] = await Promise.all([
-      listPeople(),
-      loadCategories(),
-      loadLedgerForMonth(month),
-    ]);
+    const [people, categories, ledger] = await Promise.all([listPeople(), loadCategories(), loadLedger()]);
     return { kind: "ok", person, people, categories, ledger };
   } catch (error) {
     if (error instanceof DatabaseNotConfiguredError) {
@@ -129,44 +118,64 @@ async function loadBalance(month: CalendarMonth, email: string): Promise<LoadedB
   }
 }
 
-// --- which of the three readings ---------------------------------------------
+// --- the grid ----------------------------------------------------------------
 
-type View = { kind: "person"; person: Person } | { kind: "household" };
+function BalanceYear({
+  year,
+  today,
+  people,
+  categories,
+  ledger,
+  view,
+}: {
+  year: number;
+  today: CalendarMonth;
+  people: readonly Person[];
+  categories: Categories;
+  ledger: Ledger;
+  view: string | undefined;
+}) {
+  const grid = yearGrid(ledger, categories, resolveScope(view, people), year, LEDGER_CURRENCY, today);
+  const years = recordedYears(ledger);
 
-function resolveView(
-  requested: string | undefined,
-  signedIn: Person,
-  people: readonly Person[],
-): View {
-  if (requested === HOUSEHOLD_VIEW) return { kind: "household" };
-  const person = people.find((candidate) => candidate.id === requested);
-  return { kind: "person", person: person ?? signedIn };
+  return (
+    <>
+      <YearNavigator year={year} years={years} view={view} today={today} />
+      <ViewTabs year={year} people={people} selected={view} />
+      <YearSummaryStrip grid={grid} />
+      <YearGridTable grid={grid} />
+    </>
+  );
 }
 
-function balanceHref(month: CalendarMonth, view: string | undefined): Route {
-  const params = new URLSearchParams({ month: monthKey(month) });
+/**
+ * Which of the three readings. משותף is the default: the question the household
+ * opens this screen to ask is the household one.
+ */
+function resolveScope(requested: string | undefined, people: readonly Person[]): AnalyticsScope {
+  const person = people.find((candidate) => candidate.id === requested);
+  return person === undefined ? HOUSEHOLD_SCOPE : personScope(person.id);
+}
+
+function gridHref(year: number, view: string | undefined): Route {
+  const params = new URLSearchParams({ year: String(year) });
   if (view !== undefined) params.set("view", view);
   return `/balance?${params.toString()}` as Route;
 }
 
 function ViewTabs({
-  month,
+  year,
   people,
-  signedInPersonId,
   selected,
 }: {
-  month: CalendarMonth;
+  year: number;
   people: readonly Person[];
-  signedInPersonId: string;
   selected: string | undefined;
 }) {
-  const current = selected === HOUSEHOLD_VIEW ? HOUSEHOLD_VIEW : (selected ?? signedInPersonId);
+  const current = people.some((person) => person.id === selected) ? selected : HOUSEHOLD_VIEW;
 
   const tabs = [
-    ...people.map((person) => ({
-      key: person.id,
-      label: person.id === signedInPersonId ? `${person.displayName} (אני)` : person.displayName,
-    })),
+    ...people.map((person) => ({ key: person.id, label: person.displayName })),
     { key: HOUSEHOLD_VIEW, label: "משותף" },
   ];
 
@@ -177,7 +186,7 @@ function ViewTabs({
         return (
           <Link
             key={tab.key}
-            href={balanceHref(month, tab.key)}
+            href={gridHref(year, tab.key)}
             aria-current={active ? "page" : undefined}
             className={`rounded-md border px-3 py-1.5 text-sm font-medium ${
               active
@@ -193,159 +202,60 @@ function ViewTabs({
   );
 }
 
-function MonthView({
-  month,
+function YearNavigator({
+  year,
+  years,
   view,
-  signedInPersonId,
-  people,
-  categories,
-  ledger,
+  today,
 }: {
-  month: CalendarMonth;
-  view: View;
-  signedInPersonId: string;
-  people: readonly Person[];
-  categories: Categories;
-  ledger: Ledger;
+  year: number;
+  years: readonly number[];
+  view: string | undefined;
+  today: CalendarMonth;
 }) {
-  if (view.kind === "household") {
-    return <HouseholdMonth month={month} people={people} categories={categories} ledger={ledger} />;
-  }
-
-  if (view.person.id === signedInPersonId) {
-    return <MonthEntry month={month} personId={signedInPersonId} categories={categories} ledger={ledger} />;
-  }
-
-  return <OtherPersonMonth month={month} person={view.person} categories={categories} ledger={ledger} />;
-}
-
-/**
- * The other Person's month. Readable, never writable: a Person records their own
- * spending under their own names, and reading each other's is what the household
- * view is for.
- */
-function OtherPersonMonth({
-  month,
-  person,
-  categories,
-  ledger,
-}: {
-  month: CalendarMonth;
-  person: Person;
-  categories: Categories;
-  ledger: Ledger;
-}) {
-  const income = personMonthLines(ledger, categories, person.id, month, { type: "income" });
-  const expenses = personMonthLines(ledger, categories, person.id, month, { type: "expense" });
-  const summary = personMonthSummary(ledger, categories, person.id, month, LEDGER_CURRENCY);
-
-  return (
-    <div className="space-y-6">
-      <SummaryPanel summary={summary} note={`הקטגוריות של ${person.displayName}, לקריאה בלבד.`} />
-
-      {income.length + expenses.length === 0 ? (
-        <EmptyPanel>אין ל{person.displayName} קטגוריות בחודש הזה.</EmptyPanel>
-      ) : (
-        <>
-          <PersonReadingTable title="הכנסות" lines={income} />
-          <PersonReadingTable title="הוצאות" lines={expenses} />
-        </>
-      )}
-    </div>
-  );
-}
-
-/**
- * The household's month. Every figure here is derived from the personal ones at
- * read time — there is no household ledger to write to, and nothing on this
- * screen accepts input.
- */
-function HouseholdMonth({
-  month,
-  people,
-  categories,
-  ledger,
-}: {
-  month: CalendarMonth;
-  people: readonly Person[];
-  categories: Categories;
-  ledger: Ledger;
-}) {
-  const summary = householdMonthSummary(ledger, categories, month, LEDGER_CURRENCY);
-  const income = householdCategoryLines(ledger, categories, month, LEDGER_CURRENCY, { type: "income" });
-  const expenses = householdCategoryLines(ledger, categories, month, LEDGER_CURRENCY, { type: "expense" });
-
-  return (
-    <div className="space-y-6">
-      <SummaryPanel
-        summary={summary}
-        note="כל מספר כאן נגזר מהקטגוריות האישיות בזמן הקריאה. אין מאזן משותף שנכתב אליו."
-      />
-
-      {income.length + expenses.length === 0 ? (
-        <EmptyPanel>אין קטגוריות משותפות בחודש הזה.</EmptyPanel>
-      ) : (
-        <>
-          <HouseholdReadingTable title="הכנסות" lines={income} total={summary.income} people={people} />
-          <HouseholdReadingTable title="הוצאות" lines={expenses} total={summary.expenses} people={people} />
-          <p className="text-sm text-stone-500">
-            פתיחת שורה משותפת מציגה את הקטגוריות האישיות שמרכיבות אותה ואת הסכום של כל אחת.
-          </p>
-        </>
-      )}
-    </div>
-  );
-}
-
-function EmptyPanel({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="rounded-lg border border-dashed border-stone-300 bg-white/60 p-5 text-stone-600">
-      {children}
-    </p>
-  );
-}
-
-// --- month navigation --------------------------------------------------------
-
-function MonthNavigator({ month, view }: { month: CalendarMonth; view: string | undefined }) {
-  const previous = addMonths(month, -1);
-  const next = addMonths(month, 1);
+  // The selected year is always among the options, even when the ledger holds
+  // nothing for it — a control that could not show its own state would be worse
+  // than one offering a year that turns out to be empty.
+  const options = years.includes(year) ? years : [...years, year].sort((left, right) => left - right);
 
   return (
     <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-300 bg-white p-4">
-      <div className="flex items-center gap-2">
-        {/* In RTL the previous month sits to the right, so the arrows point outward. */}
-        <MonthStep href={balanceHref(next, view)} label={formatMonth(next)} glyph="‹" />
-        <h2 className="min-w-40 text-center text-lg font-semibold">{formatMonth(month)}</h2>
-        <MonthStep href={balanceHref(previous, view)} label={formatMonth(previous)} glyph="›" />
-      </div>
+      <form className="flex items-center gap-2" action="/balance" method="get">
+        {view === undefined ? null : <input type="hidden" name="view" value={view} />}
+        <label htmlFor="year-picker" className="text-sm text-stone-600">
+          שנה
+        </label>
+        <select
+          id="year-picker"
+          name="year"
+          defaultValue={String(year)}
+          className="tabular rounded-md border border-stone-300 px-2 py-1.5 text-sm"
+        >
+          {options.map((option) => (
+            <option key={option} value={String(option)}>
+              {option}
+              {years.includes(option) ? "" : " (ריקה)"}
+            </option>
+          ))}
+        </select>
+        <button
+          type="submit"
+          className="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-stone-50"
+        >
+          הצגה
+        </button>
+      </form>
 
       <div className="flex flex-wrap items-center gap-4">
-        {/* Any month in any year — a four-year-old typo is reachable in one step. */}
-        <form className="flex items-center gap-2" action="/balance" method="get">
-          {view === undefined ? null : <input type="hidden" name="view" value={view} />}
-          <label htmlFor="month-picker" className="text-sm text-stone-600">
-            מעבר לחודש
-          </label>
-          <input
-            id="month-picker"
-            type="month"
-            name="month"
-            defaultValue={monthKey(month)}
-            min="2000-01"
-            max="2100-12"
-            className="rounded-md border border-stone-300 px-2 py-1.5 text-sm"
-          />
-          <button
-            type="submit"
-            className="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-stone-50"
-          >
-            הצגה
-          </button>
-        </form>
+        <Link
+          href={`/balance/month?month=${monthKey(today)}` as Route}
+          className="rounded-md bg-stone-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-stone-800"
+        >
+          רישום חודשי
+        </Link>
 
         <Link
-          href={`/balance/insights?month=${monthKey(month)}` as Route}
+          href={`/balance/insights?month=${monthKey(today)}` as Route}
           className="text-sm text-stone-600 underline-offset-4 hover:underline"
         >
           מגמות וממוצעים
@@ -362,80 +272,6 @@ function MonthNavigator({ month, view }: { month: CalendarMonth; view: string | 
       </div>
     </section>
   );
-}
-
-function MonthStep({ href, label, glyph }: { href: Route; label: string; glyph: string }) {
-  return (
-    <Link
-      href={href}
-      aria-label={label}
-      className="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-lg leading-none hover:bg-stone-50"
-    >
-      <span aria-hidden="true">{glyph}</span>
-    </Link>
-  );
-}
-
-// --- notices -----------------------------------------------------------------
-
-const ERROR_MESSAGES: Record<BalanceErrorCode, string> = {
-  "no-person": "הכתובת שאיתה נכנסת אינה משויכת לאף אדם בטבלת people, ולכן אין ממה לקרוא או למה לכתוב.",
-  "bad-amount": "אחד הסכומים אינו מספר. שום דבר לא נשמר.",
-  "bad-name": "שם הקטגוריה ריק או ארוך מדי.",
-  "duplicate-name": "כבר קיימת קטגוריה בשם הזה.",
-  "type-mismatch": "לא ניתן לשייך קטגוריית הכנסה לקטגוריה משותפת של הוצאה, או להפך.",
-  "unknown-household": "הקטגוריה המשותפת שנבחרה אינה קיימת.",
-  failed: "הפעולה נכשלה.",
-};
-
-function isBalanceErrorCode(value: string | undefined): value is BalanceErrorCode {
-  return value !== undefined && value in ERROR_MESSAGES;
-}
-
-function Notices({
-  saved,
-  created,
-  error,
-  detail,
-}: {
-  saved: boolean;
-  created: string | undefined;
-  error: string | undefined;
-  detail: string | undefined;
-}) {
-  if (isBalanceErrorCode(error)) {
-    return (
-      <div className="rounded-md border border-red-300 bg-red-50 p-4" role="alert">
-        <p className="font-medium text-red-900">{ERROR_MESSAGES[error]}</p>
-        {detail === undefined ? null : (
-          <p className="mt-1 text-sm text-red-800">
-            <bdi>{detail}</bdi>
-          </p>
-        )}
-      </div>
-    );
-  }
-
-  if (created !== undefined) {
-    return (
-      <div className="rounded-md border border-emerald-300 bg-emerald-50 p-4" role="status">
-        <p className="font-medium text-emerald-900">
-          נוצרה קטגוריה חדשה: <bdi>{created}</bdi>
-        </p>
-        <p className="mt-1 text-sm text-emerald-800">הסכומים שכבר הוקלדו נשמרו.</p>
-      </div>
-    );
-  }
-
-  if (saved) {
-    return (
-      <div className="rounded-md border border-emerald-300 bg-emerald-50 p-4" role="status">
-        <p className="font-medium text-emerald-900">החודש נשמר.</p>
-      </div>
-    );
-  }
-
-  return null;
 }
 
 function UnavailablePanel({ reason }: { reason: string }) {

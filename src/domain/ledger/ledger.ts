@@ -157,6 +157,16 @@ export function recordedMonths(ledger: Ledger): CalendarMonth[] {
 }
 
 /**
+ * Every year holding at least one reading, ascending. What a year selector may
+ * offer: the years the ledger has something to say about, and no others.
+ */
+export function recordedYears(ledger: Ledger): number[] {
+  return [...new Set(recordedMonths(ledger).map((month) => month.year))].sort(
+    (left, right) => left - right,
+  );
+}
+
+/**
  * The stretch of calendar the ledger actually covers, first recorded month to
  * last. `null` for a ledger with nothing in it, which has no span rather than a
  * span of nothing.

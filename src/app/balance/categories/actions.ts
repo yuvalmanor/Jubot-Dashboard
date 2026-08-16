@@ -117,6 +117,7 @@ async function run(work: () => Promise<Outcome>): Promise<never> {
   }
   revalidatePath("/balance/categories");
   revalidatePath("/balance");
+  revalidatePath("/balance/month");
   backTo(outcome);
 }
 

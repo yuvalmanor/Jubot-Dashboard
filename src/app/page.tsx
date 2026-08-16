@@ -46,7 +46,7 @@ export const dynamic = "force-dynamic";
 
 /** Every area of the system, each one now built and reachable. */
 const AREAS = [
-  { title: "מאזן הכנסות-הוצאות", note: "רישום חודשי, קטגוריות, מגמות", href: "/balance" },
+  { title: "מאזן הכנסות-הוצאות", note: "שנה שלמה, רישום חודשי, מגמות", href: "/balance" },
   { title: "מיפוי", note: "צילום מלא של כל החשבונות", href: "/snapshots" },
   { title: "שווי נטו", note: "מסלול, חשיפה למט״ח, הקצאה", href: "/net-worth" },
   { title: "נכסים ופרוייקטים", note: "רגלי מימון, הוצאות, יתרה", href: "/projects" },

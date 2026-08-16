@@ -67,7 +67,7 @@ function backTo(month: CalendarMonth, outcome: Outcome): never {
   if (outcome.detail !== undefined) params.set("detail", outcome.detail);
   if (outcome.saved === true) params.set("saved", "1");
   if (outcome.created !== undefined) params.set("created", outcome.created);
-  redirect(`/balance?${params.toString()}`);
+  redirect(`/balance/month?${params.toString()}`);
 }
 
 function failureFor(error: unknown): Outcome {
@@ -135,6 +135,9 @@ export async function saveMonth(form: FormData): Promise<void> {
     outcome = failureFor(error);
   }
 
+  // Both screens read these entries: the month that was written, and the year
+  // grid that now shows it.
+  revalidatePath("/balance/month");
   revalidatePath("/balance");
   backTo(month, outcome);
 }
@@ -174,6 +177,9 @@ export async function createCategoryAndSaveMonth(form: FormData): Promise<void> 
     outcome = failureFor(error);
   }
 
+  // Both screens read these entries: the month that was written, and the year
+  // grid that now shows it.
+  revalidatePath("/balance/month");
   revalidatePath("/balance");
   backTo(month, outcome);
 }

@@ -36,6 +36,12 @@
  * Both kinds carry the months they divided by and not merely how many of them, so
  * no caller can total one span and divide by another, and no screen can print a
  * divisor without being able to say which months it counted.
+ *
+ * A handful of the pieces below — `categoryGroups`, `readGroupMonth`,
+ * `averageOf`, `averageOverMonths`, `identifyGroup` — are exported for
+ * `year-grid.ts`, which reads the same ledger at the same two levels. They are
+ * shared rather than reimplemented so the grid and this screen cannot arrive at
+ * the same figure by two different routes.
  */
 
 import {
@@ -89,7 +95,7 @@ export function personScope(personId: string): AnalyticsScope {
  * the arithmetic needs to know — so every function here is written once and works
  * at either level.
  */
-interface CategoryGroup {
+export interface CategoryGroup {
   readonly key: string;
   readonly name: string;
   readonly type: CategoryType;
@@ -98,7 +104,7 @@ interface CategoryGroup {
   readonly members: readonly PersonalCategory[];
 }
 
-function groupsFor(
+export function categoryGroups(
   categories: Categories,
   scope: AnalyticsScope,
   options: { readonly type?: CategoryType } = {},
@@ -150,7 +156,7 @@ interface GroupMonthReading {
   readonly recorded: boolean;
 }
 
-function readGroupMonth(
+export function readGroupMonth(
   ledger: Ledger,
   group: CategoryGroup,
   month: CalendarMonth,
@@ -262,7 +268,7 @@ export interface Average {
   readonly recordedMonths: number;
 }
 
-function averageOf(
+export function averageOf(
   total: Money,
   months: readonly CalendarMonth[],
   recordedMonths: number,
@@ -276,7 +282,7 @@ function averageOf(
   };
 }
 
-function averageOverMonths(
+export function averageOverMonths(
   ledger: Ledger,
   group: CategoryGroup,
   months: readonly CalendarMonth[],
@@ -440,7 +446,7 @@ export function rankCategoryDeviations(
   const window = options.window ?? DEFAULT_TRAILING_WINDOW;
   const trailingMonths = window <= 0 ? [] : monthRange(addMonths(month, -window), addMonths(month, -1));
 
-  const deviations = groupsFor(categories, scope, { type: options.type }).flatMap<CategoryDeviation>(
+  const deviations = categoryGroups(categories, scope, { type: options.type }).flatMap<CategoryDeviation>(
     (group) => {
       const reading = readGroupMonth(ledger, group, month, currency);
       const current = reading.recorded ? reading.amount : null;
@@ -463,16 +469,16 @@ export function rankCategoryDeviations(
       if (current === null && trailing.amount === null) return [];
 
       if (current === null) {
-        return [{ ...identify(group), current, trailing, deviation: null, deviationRatio: null, basis: "not-recorded" }];
+        return [{ ...identifyGroup(group), current, trailing, deviation: null, deviationRatio: null, basis: "not-recorded" }];
       }
       if (trailing.amount === null) {
-        return [{ ...identify(group), current, trailing, deviation: null, deviationRatio: null, basis: "no-history" }];
+        return [{ ...identifyGroup(group), current, trailing, deviation: null, deviationRatio: null, basis: "no-history" }];
       }
 
       const deviation = subtract(current, trailing.amount);
       return [
         {
-          ...identify(group),
+          ...identifyGroup(group),
           current,
           trailing,
           deviation,
@@ -486,7 +492,10 @@ export function rankCategoryDeviations(
   return [...deviations].sort(compareDeviations);
 }
 
-function identify(group: CategoryGroup): Pick<CategoryDeviation, "key" | "name" | "type" | "personId"> {
+/** A group's identity, carried onto every row read out of it. */
+export function identifyGroup(
+  group: CategoryGroup,
+): Pick<CategoryDeviation, "key" | "name" | "type" | "personId"> {
   return { key: group.key, name: group.name, type: group.type, personId: group.personId };
 }
 
@@ -564,11 +573,11 @@ export function categoryBreakdown(
   };
 
   const linesFor = (type: CategoryType, typeTotal: Money): readonly BreakdownLine[] =>
-    groupsFor(categories, scope, { type })
+    categoryGroups(categories, scope, { type })
       .map((group) => {
         const average = averageOverMonths(ledger, group, months, currency);
         return {
-          ...identify(group),
+          ...identifyGroup(group),
           average,
           share: ratio(average.total, typeTotal),
           contributions: contributionsOf(ledger, group, months, currency, average.total),
@@ -611,7 +620,7 @@ function contributionsOf(
     .map((member) => {
       const average = averageOverMonths(ledger, member, months, currency);
       return {
-        ...identify(member),
+        ...identifyGroup(member),
         average,
         share: ratio(average.total, groupTotal),
         contributions: [] as readonly BreakdownLine[],
@@ -689,7 +698,7 @@ export function yearOverYear(
   const previousMonths = currentMonths.map((month) => addMonths(month, -12));
   const months = currentMonths.length;
 
-  const lines = groupsFor(categories, scope, { type: options.type }).flatMap<YearOverYearLine>((group) => {
+  const lines = categoryGroups(categories, scope, { type: options.type }).flatMap<YearOverYearLine>((group) => {
     const current = averageOverMonths(ledger, group, currentMonths, currency);
     const existedBefore = previousMonths.some((month) =>
       group.members.some((member) => isActiveIn(member, month) || isRecorded(ledger, member.id, month)),
@@ -703,7 +712,7 @@ export function yearOverYear(
     const change = previous === null ? null : subtract(current.total, previous.total);
     return [
       {
-        ...identify(group),
+        ...identifyGroup(group),
         current,
         previous,
         change,
