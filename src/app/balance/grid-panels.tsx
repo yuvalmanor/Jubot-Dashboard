@@ -13,7 +13,7 @@ import { formatMonth, formatMonthName, monthKey } from "@/domain/time/calendar-m
 
 import { closeMonthFromGrid, saveCell } from "./actions";
 import { Denominator, monthsPhrase } from "./denominator";
-import { type GridLinks, cellKey } from "./grid-links";
+import { type GridLinks, OPEN_CELL_ID, cellKey } from "./grid-links";
 
 /**
  * The year on screen: categories down, months across, at household or person
@@ -25,12 +25,18 @@ import { type GridLinks, cellKey } from "./grid-links";
  * disagree with the reading it renders, and חיסכון cannot be anything but
  * הכנסות − הוצאות.
  *
- * Fifteen columns is a lot of table, so three things make it navigable:
+ * Fifteen columns and a year of categories is a lot of table, so four things make
+ * it navigable:
  *
- * - **קטגוריה pins to the start edge and both aggregates to the end**, so
- *   swiping through months on a phone never loses the row you are on or the
- *   totals you are comparing against. One table on every device; there is no
- *   second mobile layout to keep in sync with this one.
+ * - **It is read through a window half a screen tall rather than printed at full
+ *   height.** The table scrolls inside itself, on both axes, which keeps the rest
+ *   of the screen — the year, the tabs, the category panel — a scroll of the page
+ *   away instead of a screenful of rows away.
+ * - **קטגוריה pins to the start edge, both aggregates to the end, the month
+ *   headings to the top and חיסכון to the foot**, so moving about inside the window
+ *   never loses the row you are on, the month you are in, or the totals you are
+ *   comparing against. One table on every device; there is no second mobile layout
+ *   to keep in sync with this one.
  * - **A cell is marked only against its own row.** Not a heatmap: tinting three
  *   hundred cells by magnitude would mostly report that rent is larger than bus
  *   fare.
@@ -56,6 +62,25 @@ import { type GridLinks, cellKey } from "./grid-links";
 
 /** Twelve months, the category column, and the two aggregates. */
 const COLUMN_COUNT = 15;
+
+/**
+ * How tall the window over the table is.
+ *
+ * A year of categories is a screenful and a half of table, and it was printed at
+ * its full height: the reader scrolled the *page* to reach הוצאות, which took the
+ * month headings off the screen and pushed everything below the grid — the
+ * category panel, the notices — out past the end of a very long page. Half the
+ * screen instead, scrolled inside itself, with the headings and חיסכון pinned to
+ * its edges so what a figure means stays visible however far down the rows go.
+ *
+ * `svh` rather than `vh`: on a phone `vh` is the height the viewport has *without*
+ * the browser's toolbars, so a `vh` box is taller than what can be seen until the
+ * toolbars retract.
+ */
+const TABLE_VIEWPORT = "max-h-[55svh]";
+
+/** The legend, referred to by the table it no longer sits inside. */
+const TABLE_LEGEND_ID = "year-grid-legend";
 
 /**
  * The column widths, as custom properties on the table, because the pinned
@@ -84,10 +109,30 @@ const CATEGORY_PADDING = "px-1.5 sm:px-3";
 const CELL_PADDING = "px-1 sm:px-2";
 const AGGREGATE_PADDING = "px-1.5 sm:px-3";
 
-/** Pinned to the start edge — קטגוריה, and the band headings that sit in its column. */
+/**
+ * The four edges of the window, and the layering between them.
+ *
+ * The side-pinned columns sit at `z-20`, the row pinned to the top and the row
+ * pinned to the bottom above them at `z-30` — a body cell that stayed above the
+ * headings would paint over them on the way past — and the cells pinned in both
+ * directions at `z-40`, above both. The class lists are kept whole rather than
+ * composed at the call site: `sticky start-0 z-20` and `sticky top-0 z-30` written
+ * side by side would leave two z-indexes on one cell and let the stylesheet's
+ * order decide which won.
+ */
+
+/** The start edge — קטגוריה, and the band headings that sit in its column. */
 const PINNED_START = "sticky start-0 z-20";
-/** Pinned to the end edge — the two aggregates. Each carries its own offset. */
+/** The end edge — the two aggregates. Each carries its own offset. */
 const PINNED_END = "sticky z-20";
+/** The top — the month headings. */
+const PINNED_TOP = "sticky top-0 z-30";
+const PINNED_TOP_START = "sticky start-0 top-0 z-40";
+const PINNED_TOP_END = "sticky top-0 z-40";
+/** The foot — חיסכון. */
+const PINNED_BOTTOM = "sticky bottom-0 z-30";
+const PINNED_BOTTOM_START = "sticky start-0 bottom-0 z-40";
+const PINNED_BOTTOM_END = "sticky bottom-0 z-40";
 
 export function YearGridTable({
   grid,
@@ -114,93 +159,110 @@ export function YearGridTable({
   }
 
   return (
-    <section className="overflow-x-auto rounded-lg border border-stone-300 bg-white">
-      {/* border-separate, not collapse: a collapsed border belongs to the table
-          rather than to the cell, and does not travel with a pinned column. */}
-      <table
-        className={`w-full table-fixed border-separate border-spacing-0 text-xs sm:text-sm ${COLUMN_WIDTHS}`}
-        style={{ minWidth: TABLE_WIDTH }}
-      >
-        <caption className="px-4 py-3 text-start text-sm text-stone-500">
-          כל הסכומים בשקלים. <span className="text-stone-400">—</span> פירושו שהחודש לא נרשם; 0 פירושו
-          שנרשם אפס. סימון בתא פירושו חריגה מהממוצע של אותה שורה. לחיצה על תא פותחת אותו לרישום, או
-          מובילה לחודש עצמו כששורה משותפת מסכמת את שני בני הבית.
-        </caption>
+    <section className="overflow-hidden rounded-lg border border-stone-300 bg-white">
+      {/* The legend was a <caption>, which put it inside the window: as wide as the
+          table, so it scrolled sideways with the months, and gone as soon as the
+          rows moved — in a window this short it would also cost two of the rows it
+          explains. It stays above the window and the table points at it. */}
+      <p id={TABLE_LEGEND_ID} className="px-4 py-3 text-start text-sm text-stone-500">
+        כל הסכומים בשקלים. <span className="text-stone-400">—</span> פירושו שהחודש לא נרשם; 0 פירושו
+        שנרשם אפס. סימון בתא פירושו חריגה מהממוצע של אותה שורה. לחיצה על תא פותחת אותו לרישום, או
+        מובילה לחודש עצמו כששורה משותפת מסכמת את שני בני הבית.
+      </p>
 
-        <colgroup>
-          <col style={{ width: CATEGORY_WIDTH }} />
-          {grid.months.map((column) => (
-            <col key={column.month.month} style={{ width: MONTH_WIDTH }} />
-          ))}
-          <col style={{ width: AGGREGATE_WIDTH }} />
-          <col style={{ width: AGGREGATE_WIDTH }} />
-        </colgroup>
-
-        <thead>
-          <tr>
-            <th
-              scope="col"
-              className={`${PINNED_START} ${CATEGORY_PADDING} border-b border-stone-300 bg-white py-2 text-start font-semibold`}
-            >
-              קטגוריה
-            </th>
+      {/* The window: both axes scroll here, and it is the containing block every
+          pinned cell in the table resolves against. */}
+      <div className={`${TABLE_VIEWPORT} overflow-auto`}>
+        {/* border-separate, not collapse: a collapsed border belongs to the table
+            rather than to the cell, and does not travel with a pinned column. */}
+        <table
+          aria-describedby={TABLE_LEGEND_ID}
+          className={`w-full table-fixed border-separate border-spacing-0 text-xs sm:text-sm ${COLUMN_WIDTHS}`}
+          style={{ minWidth: TABLE_WIDTH }}
+        >
+          <colgroup>
+            <col style={{ width: CATEGORY_WIDTH }} />
             {grid.months.map((column) => (
-              <MonthHeader key={column.month.month} column={column} links={links} />
+              <col key={column.month.month} style={{ width: MONTH_WIDTH }} />
             ))}
-            <th
-              scope="col"
-              className={`${PINNED_END} ${AGGREGATE_PADDING} border-b border-s border-stone-300 bg-white py-2 text-end font-semibold`}
-              style={{ insetInlineEnd: AGGREGATE_WIDTH }}
-            >
-              סכום שנתי
-            </th>
-            <th
-              scope="col"
-              className={`${PINNED_END} ${AGGREGATE_PADDING} border-b border-stone-300 bg-white py-2 text-end font-semibold`}
-              style={{ insetInlineEnd: 0 }}
-            >
-              ממוצע חודשי
-              <span className="block text-xs font-normal text-stone-500">
-                <DivisorNote grid={grid} />
-              </span>
-            </th>
-          </tr>
-        </thead>
+            <col style={{ width: AGGREGATE_WIDTH }} />
+            <col style={{ width: AGGREGATE_WIDTH }} />
+          </colgroup>
 
-        <Band
-          band={grid.income}
-          title="הכנסות"
-          subtotal="סה״כ הכנסות"
-          expanded={expanded}
-          peopleNames={peopleNames}
-          openCell={openCell}
-          links={links}
-        />
-        <Band
-          band={grid.expenses}
-          title="הוצאות"
-          subtotal="סה״כ הוצאות"
-          expanded={expanded}
-          peopleNames={peopleNames}
-          openCell={openCell}
-          links={links}
-        />
+          <thead>
+            <tr>
+              <th
+                scope="col"
+                className={`${PINNED_TOP_START} ${CATEGORY_PADDING} border-b border-stone-300 bg-white py-2 text-start font-semibold`}
+              >
+                קטגוריה
+              </th>
+              {grid.months.map((column) => (
+                <MonthHeader key={column.month.month} column={column} links={links} />
+              ))}
+              <th
+                scope="col"
+                className={`${PINNED_TOP_END} ${AGGREGATE_PADDING} border-b border-s border-stone-300 bg-white py-2 text-end font-semibold`}
+                style={{ insetInlineEnd: AGGREGATE_WIDTH }}
+              >
+                סכום שנתי
+              </th>
+              <th
+                scope="col"
+                className={`${PINNED_TOP_END} ${AGGREGATE_PADDING} border-b border-stone-300 bg-white py-2 text-end font-semibold`}
+                style={{ insetInlineEnd: 0 }}
+              >
+                ממוצע חודשי
+                <span className="block text-xs font-normal text-stone-500">
+                  <DivisorNote grid={grid} />
+                </span>
+              </th>
+            </tr>
+          </thead>
 
-        <tfoot>
-          <tr>
-            <th
-              scope="row"
-              className={`${PINNED_START} ${CATEGORY_PADDING} border-t-2 border-stone-300 bg-stone-50 py-2 text-start font-semibold`}
-            >
-              חיסכון
-              <span className="block text-xs font-normal text-stone-500">
-                הכנסות − הוצאות, מחושב בקריאה
-              </span>
-            </th>
-            <SummaryCells summary={grid.saving} tone="bg-stone-50" top="border-t-2 border-stone-300" />
-          </tr>
-        </tfoot>
-      </table>
+          <Band
+            band={grid.income}
+            title="הכנסות"
+            subtotal="סה״כ הכנסות"
+            expanded={expanded}
+            peopleNames={peopleNames}
+            openCell={openCell}
+            links={links}
+          />
+          <Band
+            band={grid.expenses}
+            title="הוצאות"
+            subtotal="סה״כ הוצאות"
+            expanded={expanded}
+            peopleNames={peopleNames}
+            openCell={openCell}
+            links={links}
+          />
+
+          {/* Pinned to the foot of the window. הכנסות − הוצאות is the line the
+              year is read for, and in a window this short it would otherwise be
+              the one line only a scroll to the very bottom could show. */}
+          <tfoot>
+            <tr>
+              <th
+                scope="row"
+                className={`${PINNED_BOTTOM_START} ${CATEGORY_PADDING} border-t-2 border-stone-300 bg-stone-50 py-2 text-start font-semibold`}
+              >
+                חיסכון
+                <span className="block text-xs font-normal text-stone-500">
+                  הכנסות − הוצאות, מחושב בקריאה
+                </span>
+              </th>
+              <SummaryCells
+                summary={grid.saving}
+                tone="bg-stone-50"
+                top="border-t-2 border-stone-300"
+                pinned
+              />
+            </tr>
+          </tfoot>
+        </table>
+      </div>
     </section>
   );
 }
@@ -224,7 +286,7 @@ function MonthHeader({ column, links }: { column: GridMonth; links: GridLinks })
 
   if (column.standing === "future") {
     return (
-      <th scope="col" className={`${CELL_PADDING} border-b border-stone-300 bg-stone-50 py-2 text-end font-medium text-stone-300`}>
+      <th scope="col" className={`${PINNED_TOP} ${CELL_PADDING} border-b border-stone-300 bg-stone-50 py-2 text-end font-medium text-stone-300`}>
         {name}
         <span className="block text-xs font-normal">טרם הגיע</span>
       </th>
@@ -241,7 +303,7 @@ function MonthHeader({ column, links }: { column: GridMonth; links: GridLinks })
 
   if (column.standing === "current") {
     return (
-      <th scope="col" className={`${CELL_PADDING} border-b border-stone-300 bg-amber-50 py-2 text-end font-semibold text-amber-900`}>
+      <th scope="col" className={`${PINNED_TOP} ${CELL_PADDING} border-b border-stone-300 bg-amber-50 py-2 text-end font-semibold text-amber-900`}>
         {heading}
         <span className="block text-xs font-normal text-amber-800">בתהליך</span>
       </th>
@@ -249,7 +311,7 @@ function MonthHeader({ column, links }: { column: GridMonth; links: GridLinks })
   }
 
   return (
-    <th scope="col" className={`${CELL_PADDING} border-b border-stone-300 bg-white py-2 text-end font-medium`}>
+    <th scope="col" className={`${PINNED_TOP} ${CELL_PADDING} border-b border-stone-300 bg-white py-2 text-end font-medium`}>
       {heading}
       {column.counted ? (
         <ClosingNote column={column} links={links} />
@@ -460,22 +522,44 @@ function ContributionRow({
   );
 }
 
-/** The twelve cells and the two aggregates of a subtotal or of חיסכון. */
+/**
+ * The twelve cells and the two aggregates of a subtotal or of חיסכון.
+ *
+ * `pinned` is חיסכון, held at the foot of the window. A pinned row has the rest of
+ * the table sliding underneath it, so its cells have to carry the row's own
+ * background — a subtotal in the middle of the scroll can leave a past month
+ * transparent over the table's white, and this row cannot.
+ */
 function SummaryCells({
   summary,
   tone,
   top,
+  pinned = false,
 }: {
   summary: GridSummaryRow;
   tone: string;
   top: string;
+  pinned?: boolean;
 }) {
   return (
     <>
       {summary.cells.map((cell) => (
-        <Cell key={cell.month.month} cell={cell} top={top} emphasis />
+        <Cell
+          key={cell.month.month}
+          cell={cell}
+          top={top}
+          tone={pinned ? tone : ""}
+          pinBottom={pinned}
+          emphasis
+        />
       ))}
-      <AggregateCells aggregate={summary.aggregate} tone={tone} top={top} emphasis />
+      <AggregateCells
+        aggregate={summary.aggregate}
+        tone={tone}
+        top={top}
+        pinBottom={pinned}
+        emphasis
+      />
     </>
   );
 }
@@ -494,26 +578,30 @@ function AggregateCells({
   top,
   emphasis = false,
   muted = false,
+  pinBottom = false,
 }: {
   aggregate: GridRow["aggregate"];
   tone: string;
   top: string;
   emphasis?: boolean;
   muted?: boolean;
+  /** On חיסכון, where these two are pinned to the end edge *and* to the foot. */
+  pinBottom?: boolean;
 }) {
   const weight = emphasis ? "font-semibold" : "";
   const size = muted ? "py-1.5 text-xs text-stone-600" : "py-2";
+  const pin = pinBottom ? PINNED_BOTTOM_END : PINNED_END;
 
   return (
     <>
       <td
-        className={`${PINNED_END} ${AGGREGATE_PADDING} ${top} ${tone} ${weight} ${size} border-s border-stone-200 text-end`}
+        className={`${pin} ${AGGREGATE_PADDING} ${top} ${tone} ${weight} ${size} border-s border-stone-200 text-end`}
         style={{ insetInlineEnd: AGGREGATE_WIDTH }}
       >
         <bdi className="tabular">{format(aggregate.total, { withSymbol: false })}</bdi>
       </td>
       <td
-        className={`${PINNED_END} ${AGGREGATE_PADDING} ${top} ${tone} ${weight} ${size} text-end`}
+        className={`${pin} ${AGGREGATE_PADDING} ${top} ${tone} ${weight} ${size} text-end`}
         style={{ insetInlineEnd: 0 }}
       >
         <bdi className="tabular">
@@ -563,14 +651,19 @@ function entryFor(
 function Cell({
   cell,
   top,
+  tone = "",
   emphasis = false,
   muted = false,
+  pinBottom = false,
   entry,
 }: {
   cell: GridCell;
   top: string;
+  /** The row's background, for a row that has to have one. See `SummaryCells`. */
+  tone?: string;
   emphasis?: boolean;
   muted?: boolean;
+  pinBottom?: boolean;
   entry?: CellEntry;
 }) {
   // Opaque throughout: these cells sit beside pinned columns, and a translucent
@@ -580,14 +673,17 @@ function Cell({
       ? "bg-amber-50"
       : cell.standing === "future" || muted
         ? "bg-stone-50"
-        : "";
+        : tone;
   const size = muted ? "py-1.5 text-xs text-stone-600" : "py-2";
-  const className = `${CELL_PADDING} ${top} ${tint} ${size} text-end ${emphasis ? "font-semibold" : ""}`;
+  const pin = pinBottom ? PINNED_BOTTOM : "";
+  const className = `${pin} ${CELL_PADDING} ${top} ${tint} ${size} text-end ${emphasis ? "font-semibold" : ""}`;
   const mark = cell.deviation === null ? null : DEVIATION_MARK[cell.deviation];
 
   if (entry !== undefined && entry.open && cell.writesTo !== null) {
+    // The id the link that opened it pointed at, so the window over the table is
+    // scrolled to the field rather than to the top of the year.
     return (
-      <td className={className}>
+      <td id={OPEN_CELL_ID} className={className}>
         <CellEntryForm cell={cell} entry={entry} categoryId={cell.writesTo} />
       </td>
     );

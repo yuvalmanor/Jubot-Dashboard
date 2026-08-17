@@ -22,7 +22,7 @@ import { requireHouseholdEmail } from "@/session";
 import { type GridErrorCode } from "./actions";
 import { type CategoryErrorCode } from "./category-actions";
 import { CATEGORY_PANEL_ID, CategoryAdminPanel } from "./category-panels";
-import { type GridLinks, cellKey } from "./grid-links";
+import { type GridLinks, OPEN_CELL_ID, cellKey } from "./grid-links";
 import { ClosingPanel, YearGridTable, YearSummaryStrip } from "./grid-panels";
 
 export const dynamic = "force-dynamic";
@@ -319,7 +319,10 @@ function linksFor(state: GridState): GridLinks {
     // the tab the grid is already being read at.
     month: (month, personId) =>
       `/balance/month?month=${monthKey(month)}&view=${personId ?? state.view ?? HOUSEHOLD_VIEW}` as Route,
-    openCell: (categoryId, month) => withParam("cell", cellKey(categoryId, month)),
+    // The fragment scrolls the window over the table to the cell that was clicked,
+    // which a fresh URL would otherwise have left above the fold.
+    openCell: (categoryId, month) =>
+      `${withParam("cell", cellKey(categoryId, month))}#${OPEN_CELL_ID}` as Route,
     closing: (month) => withParam("close", monthKey(month)),
     cancel: base,
     openAdmin: adminHref(state),
