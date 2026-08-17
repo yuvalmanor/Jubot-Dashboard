@@ -482,17 +482,77 @@ in the repository is not evidence that the import was ever run against it.
 
 ### Acceptance criteria
 
-- [ ] What the live database currently holds for 2024–2026 is established and recorded before
+- [x] What the live database currently holds for 2024–2026 is established and recorded before
       any write
-- [ ] The מאזן tab is read from the sheet through the Drive connector
-- [ ] A committed script converts what Drive returns into the format `sheet-export.ts` parses
-- [ ] The conversion is verified block by block against the sheet, with a person confirming
+      <!-- `npm run db:census`, every statement a select, committed at
+           `docs/source/ledger-census.md`: 796 entries across 49 personal
+           categories, 2024-07 – 2026-07, month by month at both People. Taken
+           against Neon before this phase read the sheet at all. -->
+- [x] The מאזן tab is read from the sheet through the Drive connector
+      <!-- `read_file_content` on the Mapping spreadsheet. All eleven tabs come
+           back in one reading; the four מאזן ones are selected out of it. -->
+- [x] A committed script converts what Drive returns into the format `sheet-export.ts` parses
+      <!-- `scripts/sheet-refresh.ts` around `src/domain/import/drive-read.ts`.
+           The conversion turned out to be a *selection* and not a translation —
+           see "what came out differently" below — so what is pinned by tests is
+           that it keeps every tab carrying the banner, drops the other seven,
+           reproduces the export from its own tables, and refuses a reading with
+           no banner rather than writing one tab short. -->
+- [x] The conversion is verified block by block against the sheet, with a person confirming
       each
-- [ ] The refreshed export parses into the same proposals for months that have not changed
+      <!-- `--blocks` prints every cell of all nine blocks against their months.
+           Confirmed by Yuval on 2026-08-17, including that אוגוסט 2026 is blank
+           because it has not been filled in yet — which is the one thing no
+           check here could have distinguished from a stale reading. -->
+- [x] The refreshed export parses into the same proposals for months that have not changed
       <!-- A refresh that silently re-reads settled history differently is the failure mode
            this criterion exists to catch. -->
-- [ ] Re-running the import over existing data changes nothing that was already correct
-- [ ] Each month's recomputed expense total is checked against the sheet's own figure, and
+      <!-- All 25 recorded months read identically; the grid came back byte for
+           byte identical to the committed export, so the diff is not "no month
+           moved" but "no character did". The header is static for exactly this
+           reason: a stamp that moved every run would make an unchanged sheet
+           produce a changed file, and this answer would be unreadable. -->
+- [x] Re-running the import over existing data changes nothing that was already correct
+      <!-- `--against-db`, which is read-only: it compares the plan against what
+           is stored rather than finding out by writing. 796 of 796 planned
+           entries already identical, 0 to insert, 0 to change, 0 categories to
+           create, and 0 rows held that the plan does not name. -->
+- [x] Each month's recomputed expense total is checked against the sheet's own figure, and
       disagreements are reported per month rather than as one verdict
-- [ ] 2026 through the latest month the sheet holds is readable in the grid
-- [ ] The refresh is repeatable by running one command and reviewing the result
+      <!-- 61 of 62 agree to the agora. The 62nd is יוני 2025, עדן: the sheet
+           states 14,814.00 against 15,291.00 in its own rows. Reported as one
+           row naming the month and the person, not folded into a verdict. -->
+- [x] 2026 through the latest month the sheet holds is readable in the grid
+      <!-- The sheet holds through יולי 2026 and the grid reads through יולי 2026.
+           Checked live at household level (יולי: 38,147.00 in, 34,045.00 out)
+           and at יובל's, whose סה"כ הוצאות row matches the sheet's own month for
+           month: 10,605 / 7,988 / 6,679 / 9,371 / 14,915 / 14,477 / 14,989.
+           אוגוסט is tinted בתהליך and empty, which is what the sheet says too. -->
+- [x] The refresh is repeatable by running one command and reviewing the result
+      <!-- `npm run sheet:refresh -- <drive-read> --blocks --against-db` reports
+           and writes nothing; `--write` is the separate act. Run twice here: the
+           second run reported the file unchanged, which is the property being
+           claimed rather than a description of it. -->
+
+---
+
+## Phase 23 — what came out differently
+
+**The export was not stale.** The phase was written to refresh a hand-taken file that
+"stops mid-year", and it does stop mid-year — because the *sheet* does. אוגוסט 2026 has not
+been filled in. So the refresh moved no figure, and the import that was to follow it had
+nothing to write: the live database already held all 796 entries at the planned amounts.
+The machinery is still the deliverable, and it is now the thing that can say so cheaply.
+
+**The converter is a selector.** The phase expected a translation — "what Drive returns is
+not the format the parser expects". It is that format. `read_file_content` hands back
+Markdown tables with merged cells already written as `[merged] label`, the same shape
+`sheet-export.ts` has always read, which is presumably how the file was first made. So
+`drive-read.ts` reads no figure and moves no column; it decides which tabs are the מאזן and
+composes the file. That is a smaller thing than planned and a better one: the only step
+that could silently mis-read a block is the one that no longer exists.
+
+**The check against the database is read-only.** "Re-running changes nothing" was going to
+be verified by re-running. It is verified instead by comparing the plan against what is
+stored and reporting what a write *would* move — which answers the same question without
+the answer depending on having already done it, and needs no production write at all.

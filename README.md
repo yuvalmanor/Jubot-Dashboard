@@ -352,6 +352,44 @@ household figure is derived at read time.
 Running it twice is safe. Every statement is an upsert, and a re-run never undoes a merge
 or a retirement made afterwards.
 
+### Refreshing the sheet export
+
+The export was first taken by hand, which made "is this still what the sheet says?" a
+question nobody could answer cheaply. It is now a command.
+
+The sheet is [Mapping](https://docs.google.com/spreadsheets/d/1tOw032pAwJSVOVv66wnILR1X5rxVVCI2paNAzDdJGLg/edit),
+read through the Drive connector — ask Claude to read that file and save what comes back.
+What the connector returns is *already* Markdown tables with merged cells written as
+`[merged] label`, which is the shape `sheet-export.ts` parses, so the conversion is a
+selection rather than a translation: `src/domain/import/drive-read.ts` keeps the tabs
+carrying the `הוצאות חודשיות` banner, composes the file, and edits no cell on the way
+through. A reading with no such banner is refused rather than written short.
+
+```bash
+npm run sheet:refresh -- <drive-read> --blocks --against-db
+```
+
+That writes nothing. It reports which tabs it found and every cell of each block, for
+confirming against the sheet one block at a time; which months read differently from the
+committed export, so a refresh that quietly re-reads settled history is caught rather than
+merged; each month's `סה"כ הוצאות` against the same month recomputed, per month and never
+as one verdict; and — over `DATABASE_URL`, still reading only — exactly what an import
+would insert or change. `--write` rewrites the export once the blocks are confirmed.
+
+The file's header is static, so an unchanged sheet produces a byte-identical export and
+"nothing moved" is a thing the refresh can actually say. Confirmed on **2026-08-17**: the
+sheet's four מאזן tabs came back identical to the committed export, all 25 recorded months
+unchanged, 61 of 62 stated totals agreeing to the agora (the 62nd is the sheet
+contradicting itself, above), and all 796 planned entries already identical to what the
+database holds.
+
+`npm run db:census` is the other half of that: a read-only statement of what the ledger
+holds, month by month, taken *before* anything is written. Its output is committed at
+[docs/source/ledger-census.md](docs/source/ledger-census.md), because a refresh that wrote
+before anybody looked could not say afterwards what it had changed. Both scripts read
+`.env.production.local`, so they describe the deployed database unless `DATABASE_URL` says
+otherwise.
+
 ## מיפוי
 
 `src/domain/snapshot` holds Accounts and Snapshots. An Account is *where* value is held —

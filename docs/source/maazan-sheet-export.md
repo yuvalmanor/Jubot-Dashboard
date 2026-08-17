@@ -1,8 +1,10 @@
 <!--
-  The מאזן portion of the household Google Sheet ("Mapping"), exported to Markdown.
-  Verbatim: no cell has been edited, including the #DIV/0! in the 2026 משותף אוכל APPLE
-  row. src/domain/import/sheet-importer.ts parses this file; its tests read it directly,
-  which is what makes them tests against the real export rather than against a mock of it.
+  The מאזן portion of the household Google Sheet ("Mapping"), as the Drive
+  connector reads it. Written by scripts/sheet-refresh.ts, which selects the tabs
+  and edits no cell: the #DIV/0! in the 2026 משותף אוכל APPLE row is the sheet's
+  own. src/domain/import/sheet-importer.ts parses this file; its tests read it
+  directly, which is what makes them tests against the real export rather than
+  against a mock of it.
 
   Four blocks are present, in sheet order:
     1. the 2023 tab      — a different layout, out of scope (docs/prd/jubot.md, Out of Scope)
@@ -11,7 +13,7 @@
     4. the 2026 tab      — Jan – Dec 2026, per person, plus the derived משותף block
 
   The non-מאזן tabs (מיפוי, allocation, projects, RSU) are not here; they belong to
-  later phases.
+  later phases. Refreshing this file is README.md, "Refreshing the sheet export".
 -->
 
 # מאזן — Google Sheet export

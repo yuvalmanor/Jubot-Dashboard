@@ -13,7 +13,9 @@
     "typecheck": "tsc --noEmit",
     "db:local": "node --env-file-if-exists=.env.local scripts/local-postgres.ts",
     "db:demo": "node --experimental-transform-types --no-warnings --env-file-if-exists=.env.local --import ./scripts/register-alias.mjs scripts/demo-data.ts",
-    "db:apply": "node --env-file-if-exists=.env.production.local scripts/apply-sql.ts"
+    "db:apply": "node --env-file-if-exists=.env.production.local scripts/apply-sql.ts",
+    "db:census": "node --experimental-transform-types --no-warnings --env-file-if-exists=.env.production.local scripts/ledger-census.ts",
+    "sheet:refresh": "node --experimental-transform-types --no-warnings --env-file-if-exists=.env.production.local --import ./scripts/register-alias.mjs scripts/sheet-refresh.ts"
   },
   "dependencies": {
     "next": "^15.5.4",
