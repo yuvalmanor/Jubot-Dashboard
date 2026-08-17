@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import {
   type GridBand,
   type GridCell,
@@ -6,10 +8,12 @@ import {
   type GridSummaryRow,
   type YearGrid,
 } from "@/domain/ledger/year-grid";
-import { format } from "@/domain/money/money";
-import { formatMonthName } from "@/domain/time/calendar-month";
+import { format, toDecimalString } from "@/domain/money/money";
+import { formatMonth, formatMonthName, monthKey } from "@/domain/time/calendar-month";
 
+import { closeMonthFromGrid, saveCell } from "./actions";
 import { Denominator, monthsPhrase } from "./denominator";
+import { type GridLinks, cellKey } from "./grid-links";
 
 /**
  * The year on screen: categories down, months across, at household or person
@@ -40,6 +44,14 @@ import { Denominator, monthsPhrase } from "./denominator";
  *   screen reader too.
  * - **A month that has not arrived is not an empty month.** It is greyed and
  *   labelled, so its blanks read as *not yet* rather than as *not recorded*.
+ *
+ * And the grid is where the holes get filled, so a cell leads to wherever its
+ * figure can be written. One affordance per cell, because at 5.25rem a phone
+ * column holds a figure and nothing beside it: a cell that is one category-month
+ * **opens in place**, and a משותף cell summing two People — which is what the
+ * screen opens on — **links to `/balance/month`**, the one screen that can say
+ * whose money it was. A subtotal and חיסכון lead nowhere at all: the reading gives
+ * them nothing to write to.
  */
 
 /** Twelve months, the category column, and the two aggregates. */
@@ -81,10 +93,15 @@ export function YearGridTable({
   grid,
   expanded,
   peopleNames,
+  openCell,
+  links,
 }: {
   grid: YearGrid;
   expanded: boolean;
   peopleNames: ReadonlyMap<string, string>;
+  /** Which cell is open for entry, as `${personalCategoryId}@${YYYY-MM}`. */
+  openCell: string | null;
+  links: GridLinks;
 }) {
   const empty = grid.income.rows.length + grid.expenses.rows.length === 0;
 
@@ -106,7 +123,8 @@ export function YearGridTable({
       >
         <caption className="px-4 py-3 text-start text-sm text-stone-500">
           כל הסכומים בשקלים. <span className="text-stone-400">—</span> פירושו שהחודש לא נרשם; 0 פירושו
-          שנרשם אפס. סימון בתא פירושו חריגה מהממוצע של אותה שורה.
+          שנרשם אפס. סימון בתא פירושו חריגה מהממוצע של אותה שורה. לחיצה על תא פותחת אותו לרישום, או
+          מובילה לחודש עצמו כששורה משותפת מסכמת את שני בני הבית.
         </caption>
 
         <colgroup>
@@ -127,7 +145,7 @@ export function YearGridTable({
               קטגוריה
             </th>
             {grid.months.map((column) => (
-              <MonthHeader key={column.month.month} column={column} />
+              <MonthHeader key={column.month.month} column={column} links={links} />
             ))}
             <th
               scope="col"
@@ -155,6 +173,8 @@ export function YearGridTable({
           subtotal="סה״כ הכנסות"
           expanded={expanded}
           peopleNames={peopleNames}
+          openCell={openCell}
+          links={links}
         />
         <Band
           band={grid.expenses}
@@ -162,6 +182,8 @@ export function YearGridTable({
           subtotal="סה״כ הוצאות"
           expanded={expanded}
           peopleNames={peopleNames}
+          openCell={openCell}
+          links={links}
         />
 
         <tfoot>
@@ -197,7 +219,7 @@ function DivisorNote({ grid }: { grid: YearGrid }) {
   );
 }
 
-function MonthHeader({ column }: { column: GridMonth }) {
+function MonthHeader({ column, links }: { column: GridMonth; links: GridLinks }) {
   const name = formatMonthName(column.month);
 
   if (column.standing === "future") {
@@ -209,10 +231,18 @@ function MonthHeader({ column }: { column: GridMonth }) {
     );
   }
 
+  // The heading is the way to the month itself — the one screen that records a
+  // whole one.
+  const heading = (
+    <Link href={links.month(column.month, null)} prefetch={false} className="hover:underline">
+      {name}
+    </Link>
+  );
+
   if (column.standing === "current") {
     return (
       <th scope="col" className={`${CELL_PADDING} border-b border-stone-300 bg-amber-50 py-2 text-end font-semibold text-amber-900`}>
-        {name}
+        {heading}
         <span className="block text-xs font-normal text-amber-800">בתהליך</span>
       </th>
     );
@@ -220,9 +250,44 @@ function MonthHeader({ column }: { column: GridMonth }) {
 
   return (
     <th scope="col" className={`${CELL_PADDING} border-b border-stone-300 bg-white py-2 text-end font-medium`}>
-      {name}
-      {column.counted ? null : <span className="block text-xs font-normal text-stone-400">מחוץ להיסטוריה</span>}
+      {heading}
+      {column.counted ? (
+        <ClosingNote column={column} links={links} />
+      ) : (
+        <span className="block text-xs font-normal text-stone-400">מחוץ להיסטוריה</span>
+      )}
     </th>
+  );
+}
+
+/**
+ * Whether a closed calendar month is also a *closed* month — one where every
+ * category active in it holds a figure.
+ *
+ * Both answers are printed, not only the unhappy one. A mark that appears only
+ * when something is wrong teaches nobody that it is being checked, and a blank
+ * column heading would leave "nothing missing" and "nothing checked" looking
+ * identical. It is stated for the months the aggregates count and no others: a
+ * month the history does not reach has no blanks to fill, and the month being
+ * lived is not over.
+ */
+function ClosingNote({ column, links }: { column: GridMonth; links: GridLinks }) {
+  const { closure } = column;
+
+  if (closure.state === "empty") return null;
+
+  if (closure.state === "closed") {
+    return <span className="block text-xs font-normal text-stone-400">מלא</span>;
+  }
+
+  return (
+    <Link
+      href={links.closing(column.month)}
+      prefetch={false}
+      className="block text-xs font-normal text-amber-700 underline-offset-2 hover:underline"
+    >
+      חסרים <bdi className="tabular">{closure.blanks.length}</bdi>
+    </Link>
   );
 }
 
@@ -232,12 +297,16 @@ function Band({
   subtotal,
   expanded,
   peopleNames,
+  openCell,
+  links,
 }: {
   band: GridBand;
   title: string;
   subtotal: string;
   expanded: boolean;
   peopleNames: ReadonlyMap<string, string>;
+  openCell: string | null;
+  links: GridLinks;
 }) {
   return (
     <tbody>
@@ -254,7 +323,14 @@ function Band({
       </tr>
 
       {band.rows.map((line) => (
-        <CategoryRow key={line.key} line={line} expanded={expanded} peopleNames={peopleNames} />
+        <CategoryRow
+          key={line.key}
+          line={line}
+          expanded={expanded}
+          peopleNames={peopleNames}
+          openCell={openCell}
+          links={links}
+        />
       ))}
 
       <tr>
@@ -274,10 +350,14 @@ function CategoryRow({
   line,
   expanded,
   peopleNames,
+  openCell,
+  links,
 }: {
   line: GridRow;
   expanded: boolean;
   peopleNames: ReadonlyMap<string, string>;
+  openCell: string | null;
+  links: GridLinks;
 }) {
   const showContributions = expanded && line.contributions.length > 0;
 
@@ -299,7 +379,12 @@ function CategoryRow({
         </th>
 
         {line.cells.map((cell) => (
-          <Cell key={cell.month.month} cell={cell} top="border-t border-stone-100" />
+          <Cell
+            key={cell.month.month}
+            cell={cell}
+            top="border-t border-stone-100"
+            entry={entryFor(line, cell, openCell, links)}
+          />
         ))}
 
         <AggregateCells aggregate={line.aggregate} tone="bg-white" top="border-t border-stone-100" />
@@ -307,7 +392,13 @@ function CategoryRow({
 
       {showContributions
         ? line.contributions.map((contribution) => (
-            <ContributionRow key={contribution.key} line={contribution} peopleNames={peopleNames} />
+            <ContributionRow
+              key={contribution.key}
+              line={contribution}
+              peopleNames={peopleNames}
+              openCell={openCell}
+              links={links}
+            />
           ))
         : null}
     </>
@@ -325,9 +416,13 @@ function CategoryRow({
 function ContributionRow({
   line,
   peopleNames,
+  openCell,
+  links,
 }: {
   line: GridRow;
   peopleNames: ReadonlyMap<string, string>;
+  openCell: string | null;
+  links: GridLinks;
 }) {
   const owner = line.personId === null ? null : (peopleNames.get(line.personId) ?? line.personId);
 
@@ -351,6 +446,7 @@ function ContributionRow({
           cell={cell}
           top="border-t border-stone-100"
           muted
+          entry={entryFor(line, cell, openCell, links)}
         />
       ))}
 
@@ -436,16 +532,46 @@ const DEVIATION_MARK = {
   below: { glyph: "▼", tone: "text-emerald-700", label: "חריגה מתחת לממוצע של השורה" },
 } as const;
 
+/**
+ * What a cell of a category row leads to, and whether it is the one currently
+ * open. A subtotal and חיסכון are given none of this, so they cannot acquire an
+ * input by accident.
+ */
+interface CellEntry {
+  readonly links: GridLinks;
+  /** The row's own name, so an opened field says what it is a figure for. */
+  readonly label: string;
+  /** Whose tab the month link opens. `null` on a משותף row summing two People. */
+  readonly personId: string | null;
+  readonly open: boolean;
+}
+
+function entryFor(
+  line: GridRow,
+  cell: GridCell,
+  openCell: string | null,
+  links: GridLinks,
+): CellEntry {
+  return {
+    links,
+    label: line.name,
+    personId: line.personId,
+    open: cell.writesTo !== null && cellKey(cell.writesTo, cell.month) === openCell,
+  };
+}
+
 function Cell({
   cell,
   top,
   emphasis = false,
   muted = false,
+  entry,
 }: {
   cell: GridCell;
   top: string;
   emphasis?: boolean;
   muted?: boolean;
+  entry?: CellEntry;
 }) {
   // Opaque throughout: these cells sit beside pinned columns, and a translucent
   // background would let a scrolled month show through the one pinned over it.
@@ -456,27 +582,213 @@ function Cell({
         ? "bg-stone-50"
         : "";
   const size = muted ? "py-1.5 text-xs text-stone-600" : "py-2";
+  const className = `${CELL_PADDING} ${top} ${tint} ${size} text-end ${emphasis ? "font-semibold" : ""}`;
   const mark = cell.deviation === null ? null : DEVIATION_MARK[cell.deviation];
 
+  if (entry !== undefined && entry.open && cell.writesTo !== null) {
+    return (
+      <td className={className}>
+        <CellEntryForm cell={cell} entry={entry} categoryId={cell.writesTo} />
+      </td>
+    );
+  }
+
+  const figure =
+    cell.amount === null ? (
+      <span className="text-stone-300" aria-label={cell.standing === "future" ? "טרם הגיע" : "לא נרשם"}>
+        —
+      </span>
+    ) : (
+      <>
+        {mark === null ? null : (
+          <span className={`me-1 text-[0.6rem] ${mark.tone}`} role="img" aria-label={mark.label}>
+            {mark.glyph}
+          </span>
+        )}
+        <bdi className={`tabular ${mark === null ? "" : "font-medium"}`}>
+          {format(cell.amount, { withSymbol: false })}
+        </bdi>
+      </>
+    );
+
+  return <td className={className}>{withDestination(figure, cell, entry)}</td>;
+}
+
+/**
+ * The one affordance a cell gets. A cell that is a single category-month opens in
+ * place — "I forgot חו"ל in May" should not cost a form of twenty-two fields — and
+ * one that is not goes to the month, which is the only screen that can say whose
+ * money it was. A month that has not arrived leads nowhere; it is inert, blanks
+ * and all.
+ *
+ * `prefetch={false}` on all of them: three hundred cells prefetching a route each
+ * would fetch the whole ledger a hundred times over to save a click that has not
+ * happened.
+ */
+function withDestination(
+  figure: React.ReactNode,
+  cell: GridCell,
+  entry: CellEntry | undefined,
+): React.ReactNode {
+  if (entry === undefined || cell.standing === "future") return figure;
+
+  const href =
+    cell.writesTo === null
+      ? entry.links.month(cell.month, entry.personId)
+      : entry.links.openCell(cell.writesTo, cell.month);
+
   return (
-    <td className={`${CELL_PADDING} ${top} ${tint} ${size} text-end ${emphasis ? "font-semibold" : ""}`}>
-      {cell.amount === null ? (
-        <span className="text-stone-300" aria-label={cell.standing === "future" ? "טרם הגיע" : "לא נרשם"}>
-          —
-        </span>
-      ) : (
-        <>
-          {mark === null ? null : (
-            <span className={`me-1 text-[0.6rem] ${mark.tone}`} role="img" aria-label={mark.label}>
-              {mark.glyph}
+    <Link href={href} prefetch={false} className="block hover:underline">
+      {figure}
+    </Link>
+  );
+}
+
+/** One cell, opened. Saving writes one category-month and returns to this view. */
+function CellEntryForm({
+  cell,
+  entry,
+  categoryId,
+}: {
+  cell: GridCell;
+  entry: CellEntry;
+  categoryId: string;
+}) {
+  return (
+    <form action={saveCell} className="flex flex-col items-stretch gap-1">
+      <ReturnToFields links={entry.links} />
+      <input type="hidden" name="month" value={monthKey(cell.month)} />
+      <input type="hidden" name="cell" value={categoryId} />
+
+      <input
+        // A blank field clears the figure back to *not recorded*, which is not a
+        // zero — the same rule the month form's fields follow, because it is the
+        // same write.
+        name="amount"
+        type="text"
+        inputMode="decimal"
+        dir="ltr"
+        autoComplete="off"
+        autoFocus
+        aria-label={`${entry.label}, ${formatMonth(cell.month)}`}
+        placeholder="—"
+        defaultValue={cell.amount === null ? "" : toDecimalString(cell.amount)}
+        className="tabular w-full rounded-sm border border-stone-400 bg-white px-1 py-0.5 text-left text-xs"
+      />
+
+      <div className="flex items-center justify-between gap-1">
+        <button
+          type="submit"
+          className="rounded-sm bg-stone-900 px-1.5 py-0.5 text-[0.65rem] font-medium text-white hover:bg-stone-800"
+        >
+          שמירה
+        </button>
+        <Link href={entry.links.cancel} className="text-[0.65rem] text-stone-500 hover:underline">
+          ביטול
+        </Link>
+      </div>
+    </form>
+  );
+}
+
+/** What a write carries so that it comes back to the exact view it was made from. */
+function ReturnToFields({ links }: { links: GridLinks }) {
+  return (
+    <>
+      {Object.entries(links.returnTo).map(([name, value]) => (
+        <input key={name} type="hidden" name={name} value={value} />
+      ))}
+    </>
+  );
+}
+
+/**
+ * Closing one month, with its blanks listed before anything is written.
+ *
+ * The list is the point. Imported history is full of the same ambiguity a fresh
+ * month has — a blank might be an unfinished entry or a month in which the thing
+ * did not happen — and the only thing that can resolve it is a person looking at
+ * the names. So this is a month at a time and there is deliberately no bulk path:
+ * rewriting two years of history in one click is the sort of irreversible mass
+ * edit that should not have a button.
+ */
+export function ClosingPanel({
+  column,
+  links,
+  peopleNames,
+}: {
+  column: GridMonth;
+  links: GridLinks;
+  peopleNames: ReadonlyMap<string, string>;
+}) {
+  const { closure } = column;
+
+  if (closure.state !== "open") {
+    return (
+      <section className="rounded-lg border border-stone-300 bg-white p-5" role="status">
+        <p className="font-medium">{formatMonth(column.month)}</p>
+        <p className="mt-1 text-sm text-stone-600">
+          {closure.state === "closed"
+            ? "לכל קטגוריה שהייתה פעילה בחודש הזה יש רישום. החודש סגור."
+            : "אף קטגוריה לא הייתה פעילה בחודש הזה, ואין מה לסגור."}
+        </p>
+        <Link
+          href={links.cancel}
+          className="mt-3 inline-block rounded-md border border-stone-300 px-3 py-1.5 text-sm font-medium hover:bg-stone-50"
+        >
+          חזרה לטבלה
+        </Link>
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-lg border border-amber-300 bg-amber-50 p-5">
+      <h2 className="font-semibold text-amber-900">סגירת {formatMonth(column.month)}</h2>
+
+      <p className="mt-1 text-sm text-amber-900">
+        <bdi className="tabular">{closure.blanks.length}</bdi> קטגוריות פעילות ללא רישום. סגירת החודש
+        תרשום בהן אפס — ולא תיגע בשום סכום שכבר נרשם.
+      </p>
+
+      <ul className="mt-3 flex flex-wrap gap-x-2 gap-y-1 text-sm text-amber-900">
+        {closure.blanks.map((category) => (
+          <li key={category.id} className="rounded-sm bg-white/70 px-2 py-0.5">
+            <bdi>{category.name}</bdi>
+            <span className="text-amber-700">
+              {" · "}
+              <bdi>{peopleNames.get(category.personId) ?? category.personId}</bdi>
             </span>
-          )}
-          <bdi className={`tabular ${mark === null ? "" : "font-medium"}`}>
-            {format(cell.amount, { withSymbol: false })}
-          </bdi>
-        </>
-      )}
-    </td>
+          </li>
+        ))}
+      </ul>
+
+      <form action={closeMonthFromGrid} className="mt-4 flex flex-wrap items-center gap-3">
+        <ReturnToFields links={links} />
+        <input type="hidden" name="month" value={monthKey(column.month)} />
+        {closure.blanks.map((category) => (
+          <input key={category.id} type="hidden" name="blank" value={category.id} />
+        ))}
+
+        <button
+          type="submit"
+          className="rounded-md bg-stone-900 px-4 py-2 font-medium text-white hover:bg-stone-800"
+        >
+          רישום <bdi className="tabular">{closure.blanks.length}</bdi> הקטגוריות כאפס
+        </button>
+
+        <Link
+          href={links.cancel}
+          className="rounded-md border border-stone-300 bg-white px-4 py-2 font-medium hover:bg-stone-50"
+        >
+          ביטול
+        </Link>
+      </form>
+
+      <p className="mt-3 text-xs text-amber-800">
+        חודש אחד בכל פעם. אין בשום מקום פעולה שסוגרת יותר מחודש אחד.
+      </p>
+    </section>
   );
 }
 

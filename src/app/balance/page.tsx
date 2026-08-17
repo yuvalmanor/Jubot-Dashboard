@@ -10,10 +10,18 @@ import { type Categories } from "@/domain/categories/categories";
 import { type Ledger, recordedYears } from "@/domain/ledger/ledger";
 import { type AnalyticsScope, HOUSEHOLD_SCOPE, personScope } from "@/domain/ledger/ledger-analytics";
 import { type GridSort, DEFAULT_GRID_SORT, isGridSort, yearGrid } from "@/domain/ledger/year-grid";
-import { type CalendarMonth, monthKey, monthOf } from "@/domain/time/calendar-month";
+import {
+  type CalendarMonth,
+  formatMonth,
+  monthKey,
+  monthOf,
+  tryParseMonthKey,
+} from "@/domain/time/calendar-month";
 import { requireHouseholdEmail } from "@/session";
 
-import { YearGridTable, YearSummaryStrip } from "./grid-panels";
+import { type GridErrorCode } from "./actions";
+import { type GridLinks, cellKey } from "./grid-links";
+import { ClosingPanel, YearGridTable, YearSummaryStrip } from "./grid-panels";
 
 export const dynamic = "force-dynamic";
 
@@ -26,13 +34,17 @@ export const dynamic = "force-dynamic";
  * household figure derived from the personal ones on each read, and a blank that
  * means *not recorded* rather than *nought*.
  *
- * It is read-only. The one place a month is written is `/balance/month`, which
- * every cell here is a step away from.
+ * It is also where the holes get filled. A cell leads to wherever its figure can
+ * be written — opened in place when the cell is one category-month, and on
+ * `/balance/month` when it is a משותף line summing two People — and a past month
+ * that is missing figures says so on its own column heading, with the closing of
+ * it one click away.
  *
  * Everything the reader can change about the table — the year, whose money, the
- * row order, whether the household rows are opened — is a query parameter and
- * nothing else. So a view of the grid is a URL that can be sent to the other
- * person, and the screen holds no state that a reload could lose.
+ * row order, whether the household rows are opened, which cell is open, which
+ * month is being closed — is a query parameter and nothing else. So a view of the
+ * grid is a URL that can be sent to the other person, and the screen holds no
+ * state that a reload could lose.
  */
 
 /** The ledger is kept in shekels. Explicit, never assumed from context. */
@@ -45,6 +57,15 @@ interface SearchParams {
   view?: string | string[];
   sort?: string | string[];
   expand?: string | string[];
+  /** Which cell is open for entry, as `${personalCategoryId}@${YYYY-MM}`. */
+  cell?: string | string[];
+  /** Which month's closing is being confirmed, as `YYYY-MM`. */
+  close?: string | string[];
+  error?: string | string[];
+  detail?: string | string[];
+  /** The month a closing just wrote into, and how many zeros it wrote. */
+  closed?: string | string[];
+  zeros?: string | string[];
 }
 
 function first(value: string | string[] | undefined): string | undefined {
@@ -83,6 +104,13 @@ export default async function BalancePage({ searchParams }: { searchParams: Prom
       />
 
       <main className="mt-6 space-y-6 sm:mt-8">
+        <Notices
+          error={first(params.error)}
+          detail={first(params.detail)}
+          closed={first(params.closed)}
+          zeros={first(params.zeros)}
+        />
+
         {loaded.kind === "ok" ? (
           <BalanceYear
             year={year}
@@ -93,6 +121,8 @@ export default async function BalancePage({ searchParams }: { searchParams: Prom
             view={first(params.view)}
             sort={parseSort(first(params.sort))}
             expanded={first(params.expand) === "1"}
+            openCell={first(params.cell) ?? null}
+            closing={tryParseMonthKey(first(params.close))}
           />
         ) : (
           <UnavailablePanel reason={loaded.reason} />
@@ -143,6 +173,8 @@ function BalanceYear({
   view,
   sort,
   expanded,
+  openCell,
+  closing,
 }: {
   year: number;
   today: CalendarMonth;
@@ -152,11 +184,22 @@ function BalanceYear({
   view: string | undefined;
   sort: GridSort;
   expanded: boolean;
+  openCell: string | null;
+  closing: CalendarMonth | null;
 }) {
   const scope = resolveScope(view, people);
   const grid = yearGrid(ledger, categories, scope, year, LEDGER_CURRENCY, today, { sort });
   const years = recordedYears(ledger);
   const state: GridState = { year, view, sort, expanded };
+  const peopleNames = new Map(people.map((person) => [person.id, person.displayName]));
+
+  // The month whose closing is being confirmed, read off the grid itself rather
+  // than computed again: the panel below the table and the column heading above it
+  // must be describing the same blanks.
+  const closingMonth =
+    closing === null
+      ? undefined
+      : grid.months.find((column) => monthKey(column.month) === monthKey(closing));
 
   return (
     <>
@@ -166,10 +209,15 @@ function BalanceYear({
       {/* At person level a row is already personal — there is nothing underneath
           it to open, so the toggle is absent rather than present and inert. */}
       <TableControls state={state} expandable={scope.kind === "household"} />
+      {closingMonth === undefined ? null : (
+        <ClosingPanel column={closingMonth} links={linksFor(state)} peopleNames={peopleNames} />
+      )}
       <YearGridTable
         grid={grid}
         expanded={expanded}
-        peopleNames={new Map(people.map((person) => [person.id, person.displayName]))}
+        peopleNames={peopleNames}
+        openCell={openCell}
+        links={linksFor(state)}
       />
     </>
   );
@@ -198,13 +246,51 @@ interface GridState {
  * opening the household rows never sends the reader back to משותף.
  */
 function gridHref(state: GridState, change: Partial<GridState> = {}): Route {
-  const next = { ...state, ...change };
-  const params = new URLSearchParams({ year: String(next.year) });
-  if (next.view !== undefined) params.set("view", next.view);
-  if (next.sort !== DEFAULT_GRID_SORT) params.set("sort", next.sort);
-  if (next.expanded) params.set("expand", "1");
-  return `/balance?${params.toString()}` as Route;
+  return `/balance?${gridParams({ ...state, ...change }).toString()}` as Route;
 }
+
+function gridParams(state: GridState): URLSearchParams {
+  const params = new URLSearchParams({ year: String(state.year) });
+  if (state.view !== undefined) params.set("view", state.view);
+  if (state.sort !== DEFAULT_GRID_SORT) params.set("sort", state.sort);
+  if (state.expanded) params.set("expand", "1");
+  return params;
+}
+
+/**
+ * The same grid with one thing opened on top of it: a cell, or a month's closing.
+ *
+ * Both are transient rather than part of the view, so they are not carried by the
+ * ordinary controls — choosing an order or a year puts the table back to being a
+ * table. Everything else about the view *is* carried, through every link and
+ * through every write, so nothing a person chose is lost to a save.
+ */
+function linksFor(state: GridState): GridLinks {
+  const base = gridHref(state);
+
+  const withParam = (key: string, value: string): Route => {
+    const params = gridParams(state);
+    params.set(key, value);
+    return `/balance?${params.toString()}` as Route;
+  };
+
+  return {
+    // A row that belongs to a Person opens that Person's tab; anything else opens
+    // the tab the grid is already being read at.
+    month: (month, personId) =>
+      `/balance/month?month=${monthKey(month)}&view=${personId ?? state.view ?? HOUSEHOLD_VIEW}` as Route,
+    openCell: (categoryId, month) => withParam("cell", cellKey(categoryId, month)),
+    closing: (month) => withParam("close", monthKey(month)),
+    cancel: base,
+    returnTo: {
+      year: String(state.year),
+      view: state.view ?? "",
+      sort: state.sort,
+      expand: state.expanded ? "1" : "",
+    },
+  };
+}
+
 
 function ViewTabs({ state, people }: { state: GridState; people: readonly Person[] }) {
   const current = people.some((person) => person.id === state.view) ? state.view : HOUSEHOLD_VIEW;
@@ -359,6 +445,57 @@ function YearNavigator({
         </Link>
       </div>
     </section>
+  );
+}
+
+// --- notices -----------------------------------------------------------------
+
+const ERROR_MESSAGES: Record<GridErrorCode, string> = {
+  "no-person": "הכתובת שאיתה נכנסת אינה משויכת לאף אדם בטבלת people, ולכן אין למה לכתוב.",
+  "bad-amount": "הסכום שהוקלד אינו מספר. שום דבר לא נשמר.",
+  "unknown-category": "הקטגוריה שנבחרה אינה קיימת.",
+  failed: "הפעולה נכשלה.",
+};
+
+function isGridErrorCode(value: string | undefined): value is GridErrorCode {
+  return value !== undefined && value in ERROR_MESSAGES;
+}
+
+function Notices({
+  error,
+  detail,
+  closed,
+  zeros,
+}: {
+  error: string | undefined;
+  detail: string | undefined;
+  closed: string | undefined;
+  zeros: string | undefined;
+}) {
+  if (isGridErrorCode(error)) {
+    return (
+      <div className="rounded-md border border-red-300 bg-red-50 p-4" role="alert">
+        <p className="font-medium text-red-900">{ERROR_MESSAGES[error]}</p>
+        {detail === undefined ? null : (
+          <p className="mt-1 text-sm text-red-800">
+            <bdi>{detail}</bdi>
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  const month = tryParseMonthKey(closed);
+  if (month === null) return null;
+
+  return (
+    <div className="rounded-md border border-emerald-300 bg-emerald-50 p-4" role="status">
+      <p className="font-medium text-emerald-900">
+        {formatMonth(month)}: נרשמו <bdi className="tabular">{zeros ?? "0"}</bdi> קטגוריות כאפס, והחודש
+        סגור.
+      </p>
+      <p className="mt-1 text-sm text-emerald-800">כל סכום שכבר היה רשום נשאר כפי שהיה.</p>
+    </div>
   );
 }
 

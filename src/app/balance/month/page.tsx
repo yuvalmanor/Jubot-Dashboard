@@ -11,8 +11,6 @@ import {
   type Ledger,
   householdCategoryLines,
   householdMonthSummary,
-  personMonthLines,
-  personMonthSummary,
 } from "@/domain/ledger/ledger";
 import {
   type CalendarMonth,
@@ -25,15 +23,24 @@ import {
 import { requireHouseholdEmail } from "@/session";
 
 import { type BalanceErrorCode } from "./actions";
-import { MonthEntry } from "./month-entry";
-import { HouseholdReadingTable, PersonReadingTable, SummaryPanel } from "./month-panels";
+import { BlanksOffer, MonthEntry } from "./month-entry";
+import { HouseholdReadingTable, SummaryPanel } from "./month-panels";
 
 export const dynamic = "force-dynamic";
 
 /**
  * Recording a month — the only screen in the application that writes a whole
  * month of the מאזן. The year grid at `/balance` reads the same entries and links
- * back here; nothing about the move changed what this screen does.
+ * back here, one month or one cell at a time.
+ *
+ * Both personal tabs are writable: either Person records into either Person's
+ * categories, because the household needs a complete ledger more than it needs to
+ * know whose hand typed a figure. The משותף tab still has nothing to write to —
+ * every household figure is derived from the personal ones on each read.
+ *
+ * Saving is also where a month gets *closed*. A blank is ambiguous — an unfinished
+ * month, or a month in which the thing did not happen — and the screen resolves it
+ * by naming the blanks and offering them as zero rather than by guessing.
  */
 
 /** The ledger is kept in shekels. Explicit, never assumed from context. */
@@ -48,6 +55,10 @@ interface SearchParams {
   created?: string | string[];
   error?: string | string[];
   detail?: string | string[];
+  /** How many blanks the last closing wrote as zero. */
+  zeros?: string | string[];
+  /** The offer was declined: the blanks were left unrecorded, deliberately. */
+  left?: string | string[];
 }
 
 function first(value: string | string[] | undefined): string | undefined {
@@ -79,25 +90,17 @@ export default async function BalancePage({ searchParams }: { searchParams: Prom
           created={first(params.created)}
           error={first(params.error)}
           detail={first(params.detail)}
+          zeros={first(params.zeros)}
         />
 
         {loaded.kind === "ok" ? (
-          <>
-            <ViewTabs
-              month={month}
-              people={loaded.people}
-              signedInPersonId={loaded.person.id}
-              selected={first(params.view)}
-            />
-            <MonthView
-              month={month}
-              view={resolveView(first(params.view), loaded.person, loaded.people)}
-              signedInPersonId={loaded.person.id}
-              people={loaded.people}
-              categories={loaded.categories}
-              ledger={loaded.ledger}
-            />
-          </>
+          <MonthBody
+            month={month}
+            loaded={loaded}
+            requested={first(params.view)}
+            saved={first(params.saved) === "1"}
+            declined={first(params.left) === "1"}
+          />
         ) : (
           <UnavailablePanel reason={loaded.reason} />
         )}
@@ -147,6 +150,58 @@ function resolveView(
   if (requested === HOUSEHOLD_VIEW) return { kind: "household" };
   const person = people.find((candidate) => candidate.id === requested);
   return { kind: "person", person: person ?? signedIn };
+}
+
+/**
+ * The tabs, what a save left unfinished, and the month itself. The view is
+ * resolved once here so the offer and the form can never be about two different
+ * people's columns.
+ */
+function MonthBody({
+  month,
+  loaded,
+  requested,
+  saved,
+  declined,
+}: {
+  month: CalendarMonth;
+  loaded: Extract<LoadedBalance, { kind: "ok" }>;
+  requested: string | undefined;
+  saved: boolean;
+  declined: boolean;
+}) {
+  const view = resolveView(requested, loaded.person, loaded.people);
+
+  return (
+    <>
+      <ViewTabs
+        month={month}
+        people={loaded.people}
+        signedInPersonId={loaded.person.id}
+        selected={requested}
+      />
+
+      {view.kind === "person" ? (
+        <BlanksOffer
+          month={month}
+          person={view.person}
+          categories={loaded.categories}
+          ledger={loaded.ledger}
+          saved={saved}
+          declined={declined}
+        />
+      ) : null}
+
+      <MonthView
+        month={month}
+        view={view}
+        signedInPersonId={loaded.person.id}
+        people={loaded.people}
+        categories={loaded.categories}
+        ledger={loaded.ledger}
+      />
+    </>
+  );
 }
 
 function balanceHref(month: CalendarMonth, view: string | undefined): Route {
@@ -218,46 +273,16 @@ function MonthView({
     return <HouseholdMonth month={month} people={people} categories={categories} ledger={ledger} />;
   }
 
-  if (view.person.id === signedInPersonId) {
-    return <MonthEntry month={month} personId={signedInPersonId} categories={categories} ledger={ledger} />;
-  }
-
-  return <OtherPersonMonth month={month} person={view.person} categories={categories} ledger={ledger} />;
-}
-
-/**
- * The other Person's month. Readable, never writable: a Person records their own
- * spending under their own names, and reading each other's is what the household
- * view is for.
- */
-function OtherPersonMonth({
-  month,
-  person,
-  categories,
-  ledger,
-}: {
-  month: CalendarMonth;
-  person: Person;
-  categories: Categories;
-  ledger: Ledger;
-}) {
-  const income = personMonthLines(ledger, categories, person.id, month, { type: "income" });
-  const expenses = personMonthLines(ledger, categories, person.id, month, { type: "expense" });
-  const summary = personMonthSummary(ledger, categories, person.id, month, LEDGER_CURRENCY);
-
+  // Both personal tabs write. Whose column it is still shows on the screen — the
+  // names are the owner's own — but neither of them is read-only any more.
   return (
-    <div className="space-y-6">
-      <SummaryPanel summary={summary} note={`הקטגוריות של ${person.displayName}, לקריאה בלבד.`} />
-
-      {income.length + expenses.length === 0 ? (
-        <EmptyPanel>אין ל{person.displayName} קטגוריות בחודש הזה.</EmptyPanel>
-      ) : (
-        <>
-          <PersonReadingTable title="הכנסות" lines={income} />
-          <PersonReadingTable title="הוצאות" lines={expenses} />
-        </>
-      )}
-    </div>
+    <MonthEntry
+      month={month}
+      person={view.person}
+      isSelf={view.person.id === signedInPersonId}
+      categories={categories}
+      ledger={ledger}
+    />
   );
 }
 
@@ -403,11 +428,13 @@ function Notices({
   created,
   error,
   detail,
+  zeros,
 }: {
   saved: boolean;
   created: string | undefined;
   error: string | undefined;
   detail: string | undefined;
+  zeros: string | undefined;
 }) {
   if (isBalanceErrorCode(error)) {
     return (
@@ -429,6 +456,19 @@ function Notices({
           נוצרה קטגוריה חדשה: <bdi>{created}</bdi>
         </p>
         <p className="mt-1 text-sm text-emerald-800">הסכומים שכבר הוקלדו נשמרו.</p>
+      </div>
+    );
+  }
+
+  if (zeros !== undefined) {
+    return (
+      <div className="rounded-md border border-emerald-300 bg-emerald-50 p-4" role="status">
+        <p className="font-medium text-emerald-900">
+          נרשמו <bdi className="tabular">{zeros}</bdi> קטגוריות כאפס. החודש סגור.
+        </p>
+        <p className="mt-1 text-sm text-emerald-800">
+          כל סכום שכבר היה רשום נשאר כפי שהיה.
+        </p>
       </div>
     );
   }

@@ -38,6 +38,12 @@
  *   because the top of the table is where the money went; Hebrew alphabetical is
  *   for when the same row should be in the same place every time. Either way ties
  *   break on the category key, so the same data always renders the same order.
+ *
+ * And one more, because the grid is also where the holes get filled: **the reading
+ * says what each cell writes to and where each month stands on being closed.**
+ * Both are decided here rather than in the markup, so the one row with no input
+ * anywhere is the one row the reading gives nothing to write to, and the columns
+ * marked as unfinished are marked from the ledger rather than from a stored flag.
  */
 
 import { type CategoryType, type Categories, isActiveIn, isRetired } from "@/domain/categories/categories";
@@ -55,6 +61,7 @@ import {
   yearPeriod,
 } from "@/domain/ledger/ledger-analytics";
 import { type Ledger, isRecorded, recordedSpan } from "@/domain/ledger/ledger";
+import { type MonthClosure, monthClosure } from "@/domain/ledger/month-closure";
 import { type Currency, type Money, subtract, sum, zero } from "@/domain/money/money";
 import {
   type CalendarMonth,
@@ -80,6 +87,12 @@ export interface GridMonth {
    * would be dividing by a month that never existed.
    */
   readonly counted: boolean;
+  /**
+   * Whether the month has a figure for every category active in it, and which ones
+   * it does not. This is what makes the holes findable: a closed calendar month
+   * that is not yet a *closed* month is a column the reader can still finish.
+   */
+  readonly closure: MonthClosure;
 }
 
 /**
@@ -96,6 +109,16 @@ export interface GridCell {
   readonly amount: Money | null;
   /** Marked only against this row's own ממוצע חודשי — never against the table. */
   readonly deviation: CellDeviation;
+  /**
+   * The Personal Category a figure typed into this cell would be written to, and
+   * `null` wherever there is nothing single to write it to: a משותף row summing two
+   * People, a band subtotal, חיסכון, a month the category's lifespan does not
+   * cover, or a month that has not arrived.
+   *
+   * It is decided here rather than in the markup, so the one line with no input
+   * anywhere on the screen is the one line the reading says has nothing to write.
+   */
+  readonly writesTo: string | null;
 }
 
 export interface GridRow {
@@ -214,8 +237,37 @@ function cellsOf(
 ): readonly GridCell[] {
   return months.map(({ month, standing }) => {
     const reading = readGroupMonth(ledger, group, month, currency);
-    return { month, standing, amount: reading.recorded ? reading.amount : null, deviation: null };
+    return {
+      month,
+      standing,
+      amount: reading.recorded ? reading.amount : null,
+      deviation: null,
+      writesTo: writeTargetOf(ledger, group, month, standing),
+    };
   });
+}
+
+/**
+ * Which Personal Category a cell writes to, if any.
+ *
+ * A row that is one Personal Category is writable in a month its lifespan covers,
+ * and in any month that already holds a figure for it, so a mistake made outside
+ * the lifespan can still be corrected where it was made. A row that is two — a
+ * משותף line summing both People — is not: there is no household ledger, and
+ * picking one of the two to receive the figure would be inventing whose money it
+ * was. Its contributions carry the write instead.
+ */
+function writeTargetOf(
+  ledger: Ledger,
+  group: CategoryGroup,
+  month: CalendarMonth,
+  standing: MonthStanding,
+): string | null {
+  const [member, ...rest] = group.members;
+  if (member === undefined || rest.length > 0) return null;
+  // A month nobody has lived through yet is inert on this screen, blanks and all.
+  if (standing === "future") return null;
+  return isActiveIn(member, month) || isRecorded(ledger, member.id, month) ? member.id : null;
 }
 
 /**
@@ -330,6 +382,8 @@ function subtotalOf(
       standing,
       amount: amounts.length === 0 ? null : sum(amounts, currency),
       deviation: null,
+      // A subtotal is the rows above it added up. There is nothing to write to.
+      writesTo: null,
     };
   });
 
@@ -354,16 +408,13 @@ function savingOf(
   counted: readonly CalendarMonth[],
   currency: Currency,
 ): GridSummaryRow {
+  // חיסכון is הכנסות − הוצאות and nothing else, so no cell of it writes anywhere.
   const cells = months.map(({ month, standing }, index): GridCell => {
     const earned = income.cells[index]?.amount ?? null;
     const spent = expenses.cells[index]?.amount ?? null;
-    if (earned === null && spent === null) return { month, standing, amount: null, deviation: null };
-    return {
-      month,
-      standing,
-      amount: subtract(earned ?? zero(currency), spent ?? zero(currency)),
-      deviation: null,
-    };
+    const base = { month, standing, deviation: null, writesTo: null } as const;
+    if (earned === null && spent === null) return { ...base, amount: null };
+    return { ...base, amount: subtract(earned ?? zero(currency), spent ?? zero(currency)) };
   });
 
   const total = subtract(income.aggregate.total, expenses.aggregate.total);
@@ -396,6 +447,7 @@ export function yearGrid(
     month,
     standing: standingOf(month, today),
     counted: countedKeys.has(monthKey(month)),
+    closure: monthClosure(ledger, categories, scope, month),
   }));
 
   const bandOf = (type: CategoryType): GridBand => {

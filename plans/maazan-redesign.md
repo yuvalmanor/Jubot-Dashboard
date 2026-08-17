@@ -309,19 +309,64 @@ irreversible mass edit that should not have a button.
 
 ### Acceptance criteria
 
-- [ ] A grid cell links to `/balance/month` for that month
-- [ ] A single cell can be opened and saved inline without leaving the grid
-- [ ] Either person can record amounts in either person's categories
-- [ ] Saving a month with blank categories names them and offers to record them as zero
-- [ ] Declining leaves them unrecorded — the offer is never pre-accepted and never implicit
-- [ ] Accepting writes real zeros that are indistinguishable from a hand-typed zero, because
+- [x] A grid cell links to `/balance/month` for that month
+      <!-- Every משותף cell summing two People does, which is the view the screen
+           opens in, and so does every month heading. One affordance per cell: at
+           5.25rem a phone column holds `37,000.00` and nothing beside it, so a
+           second control in the same cell would break Phase 20's no-overflow
+           check. `writesTo` decides which of the two a cell gets. -->
+- [x] A single cell can be opened and saved inline without leaving the grid
+      <!-- `?cell=<categoryId>@<YYYY-MM>`, so an opened cell is a URL like every
+           other state on this screen. Verified: מים מאי 2025 blank → 123.45 saved
+           in place, row total 1,985.00 → 2,108.45 and average 165 → 176, then
+           cleared back to a muted `—` (aria-label לא נרשם, not `0.00`) and the
+           total returned to 1,985.00 exactly. -->
+- [x] Either person can record amounts in either person's categories
+      <!-- `collectWrites` matches fields against the categories that exist rather
+           than against who is signed in. Verified live: signed in as יובל, עדן's
+           tab now carries 22 inputs where it had none, and 77.50 written into her
+           ביגוד והנעלה landed. The tab travels with the write, so a save returns
+           to the column it was made in. The משותף tab still has no input at all. -->
+- [x] Saving a month with blank categories names them and offers to record them as zero
+      <!-- The blanks are recomputed on the page, never carried in the URL, so the
+           list cannot be stale. Verified: 7 named, all 7 listed by name. -->
+- [x] Declining leaves them unrecorded — the offer is never pre-accepted and never implicit
+      <!-- השארה ריקה is a button of its own, and doing nothing writes nothing
+           either. After declining, all 7 fields were still empty and the panel
+           said so rather than falling silent. -->
+- [x] Accepting writes real zeros that are indistinguishable from a hand-typed zero, because
       that is what they are
-- [ ] A month is closed when every category active in it has a reading, computed from the
+      <!-- `{ source: "entered", amount: 0 }` — the same shape any typed figure
+           has, pinned by a domain test. Verified live: 7 blanks became `0.00`. -->
+- [x] A month is closed when every category active in it has a reading, computed from the
       ledger with no stored flag
-- [ ] A past month can be closed from the grid via an action that lists its blanks first
-- [ ] There is no action anywhere that closes more than one month
-- [ ] The grid marks which closed months are not yet complete
-- [ ] Closing a month changes no figure that was already recorded
+      <!-- `monthClosure`, off `personMonthLines` / `householdMonthLines`, so a
+           recorded figure is never a blank whatever the lifespan since became. A
+           closed month is exactly a `complete` one in `completenessOf`'s terms and
+           a test pins the two together month by month, so the application holds
+           one answer and not two. `empty` is its own state: a month no category
+           was active in has nothing to close, which is not everything to close. -->
+- [x] A past month can be closed from the grid via an action that lists its blanks first
+      <!-- `?close=YYYY-MM` opens a panel above the table naming each blank with
+           its owner — both People may name a category ארנונה. It reads the closure
+           off the grid itself, so the panel and the column heading above it cannot
+           describe different blanks. -->
+- [x] There is no action anywhere that closes more than one month
+      <!-- Every path goes through `closeOneMonth`, which takes one
+           `CalendarMonth`; both callers read one `month` key off one form. There
+           is no shape in `planMonthClosure` that reaches two. -->
+- [x] The grid marks which closed months are not yet complete
+      <!-- On the column heading, for the months the aggregates count and no
+           others: `חסרים 12`, which is the link that closes it. A closed one reads
+           a quiet `מלא` rather than nothing — a check visible only when it fails
+           teaches nobody it is running, and a blank heading would leave "nothing
+           missing" and "nothing checked" looking identical. -->
+- [x] Closing a month changes no figure that was already recorded
+      <!-- The blanks are recomputed at write time and intersected with the ones
+           named on screen, so the write can only ever narrow. Verified twice: 12
+           zeros into יוני 2025 at household level left all 21 recorded figures and
+           both band subtotals untouched (23,256.00 before and after), and 7 zeros
+           into עדן's יולי changed none of her 15. -->
 
 ---
 

@@ -1,7 +1,5 @@
 import type { Person } from "@/db/people";
-import { isRetired } from "@/domain/categories/categories";
 import {
-  type CategoryLine,
   type HouseholdCategoryLine,
   type MonthSummary,
   completenessOf,
@@ -9,13 +7,14 @@ import {
 import { type Money, format } from "@/domain/money/money";
 
 /**
- * Reading a month. The same figures at three levels — mine, the other person's,
- * the household's — and none of them writable.
+ * Reading a month: the summary that heads every view, and the משותף reading, which
+ * is the one view of the three with nothing writable in it.
  *
- * The household panels take `HouseholdCategoryLine`s straight from the domain,
+ * The household panel takes `HouseholdCategoryLine`s straight from the domain,
  * where each line already carries the personal categories that produced it. The
  * screen never adds anything up itself, so a household figure and its drill-down
- * cannot disagree.
+ * cannot disagree — and there is no input anywhere on it, because there is no
+ * household ledger to write to.
  */
 
 export function SummaryPanel({ summary, note }: { summary: MonthSummary; note: string }) {
@@ -76,24 +75,6 @@ export function CompletenessNotice({ summary }: { summary: MonthSummary }) {
       <span>· {counts}</span>
       <span className="text-amber-800">— הסכומים למטה אינם התמונה המלאה</span>
     </p>
-  );
-}
-
-/** One person's month, read-only. This is how each of the two reads the other's. */
-export function PersonReadingTable({ title, lines }: { title: string; lines: readonly CategoryLine[] }) {
-  if (lines.length === 0) return null;
-
-  return (
-    <Panel title={title}>
-      {lines.map((line) => (
-        <Row
-          key={line.category.id}
-          name={line.category.name}
-          note={isRetired(line.category) ? "קטגוריה שהוצאה משימוש" : undefined}
-          reading={line.reading === null ? null : format(line.reading.amount)}
-        />
-      ))}
-    </Panel>
   );
 }
 
@@ -177,29 +158,3 @@ export function HouseholdReadingTable({
   );
 }
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="rounded-lg border border-stone-300 bg-white">
-      <h3 className="border-b border-stone-200 px-5 py-3 text-sm font-semibold tracking-wide text-stone-500">
-        {title}
-      </h3>
-      <ul className="divide-y divide-stone-200">{children}</ul>
-    </section>
-  );
-}
-
-function Row({ name, note, reading }: { name: string; note?: string; reading: string | null }) {
-  return (
-    <li className="flex flex-wrap items-center gap-x-4 gap-y-1 px-5 py-3">
-      <div className="min-w-0 flex-1">
-        <p className="font-medium">
-          <bdi>{name}</bdi>
-        </p>
-        {note === undefined ? null : <p className="text-xs text-stone-500">{note}</p>}
-      </div>
-      <bdi className="tabular">
-        {reading === null ? <span className="text-stone-400">לא נרשם</span> : reading}
-      </bdi>
-    </li>
-  );
-}

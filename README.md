@@ -184,19 +184,59 @@ first half is what makes the holes visible; the second is why retiring a categor
 hide money. A cell that was never recorded is a muted `—` and a cell recorded as nought is
 `0.00`, and no path in the grid turns the first into the second.
 
-Nothing on the screen is writable. It reads the same entries the month form writes.
+### Filling the holes from the grid
+
+Every cell leads to wherever its figure can be written, and gets exactly one affordance,
+because at 5.25rem a phone column holds a figure and nothing beside it. A cell that is a
+single category-month **opens in place** — "I forgot חו"ל in May" should not cost a form of
+twenty-two fields — and a משותף cell summing two People **links to `/balance/month`**, which
+is the one screen that can say whose money it was. `writesTo` on the reading is what decides
+which, so the one line with no input anywhere is the one line the domain gives nothing to
+write to: חיסכון has no target on any cell, and neither does a band subtotal.
+
+Either Person records into either Person's categories, on the grid and on the month form
+both. The names stay the owner's own — that is what a Personal Category is — but recording
+an amount against one is administration, and the household needs a complete ledger more than
+it needs to know whose hand typed a figure. The משותף tab still has no inputs at all.
 
 ### Reading and writing a month at three levels
 
-`/balance/month` records one month as either Person or as the Household. Only the signed-in
-Person's own view has inputs: the other's is readable and not writable, and the household
-view has nothing to write to at all — `householdMonthSummary` and `householdCategoryLines`
-derive every household figure from the personal ones on each read, and each household line
-opens onto the personal categories that produced it, so a figure and its drill-down cannot
-disagree.
+`/balance/month` records one month as either Person or as the Household. Both personal views
+have inputs and either Person may use either; the household view has nothing to write to at
+all — `householdMonthSummary` and `householdCategoryLines` derive every household figure from
+the personal ones on each read, and each household line opens onto the personal categories
+that produced it, so a figure and its drill-down cannot disagree.
 
 Every view states how much of the month has been recorded. A month with some categories
 filled and some empty reads as *חודש חלקי*, never as a cheap month.
+
+### Closing a month
+
+A blank cell is ambiguous, and no arithmetic can resolve it: it might be an unfinished month,
+or a month in which חו"ל simply did not happen. Treating every blank as unfinished would flag
+most of the year forever; treating every blank as nought would invent facts nobody stated.
+
+So it is resolved by a person, at the point of entry. `src/domain/ledger/month-closure.ts`
+says a month is **closed** when every category active in it holds a reading — derived off the
+ledger on every read, with no column, no flag and no sweep that could go stale. Saving a month
+that still has blanks names them on screen and offers them as zero; the grid marks every
+closed *calendar* month that is not a closed month (`חסרים 12`, against a quiet `מלא` where
+nothing is outstanding — a check that is only visible when it fails teaches nobody that it is
+running) and the same offer is one click from the column heading.
+
+Three rules hold it together:
+
+- **Accepting writes real zeros**, indistinguishable from hand-typed ones, because that is
+  what they are. This is the deliberate act the null/zero distinction exists to permit, as
+  against the silent collapse it exists to forbid.
+- **Declining writes nothing**, and says so. The offer is never pre-accepted and never
+  implicit: doing nothing leaves the month exactly as the save left it.
+- **Closing writes into blanks and nowhere else.** `planMonthClosure` intersects the blanks
+  as they stand *now* with the blanks the person was actually shown, so a category given a
+  figure since the screen was drawn cannot be overwritten and a category nobody saw cannot be
+  written. Every path goes through `closeOneMonth`, which takes one `CalendarMonth` — which is
+  why there is no action anywhere that closes more than one. Rewriting two years of imported
+  history in a single click is the irreversible mass edit this deliberately has no button for.
 
 ### Category lifecycle
 

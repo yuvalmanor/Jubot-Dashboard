@@ -22,6 +22,7 @@ import {
   personScope,
   yearPeriod,
 } from "@/domain/ledger/ledger-analytics";
+import { monthClosure } from "@/domain/ledger/month-closure";
 import { type Money, divide, money, subtract, sum } from "@/domain/money/money";
 import { type CalendarMonth, calendarMonth, monthKey } from "@/domain/time/calendar-month";
 
@@ -490,6 +491,93 @@ describe("yearGrid — the year totals agree with the month they are read from",
     expect(yearly.income.total.aggregate.total).toEqual(sum(summaries.map((s) => s.income), ILS));
     expect(yearly.expenses.total.aggregate.total).toEqual(sum(summaries.map((s) => s.expenses), ILS));
     expect(yearly.saving.aggregate.total).toEqual(sum(summaries.map((s) => s.saving), ILS));
+  });
+});
+
+describe("yearGrid — which cell a figure typed into it would be written to", () => {
+  it("writes a person's row to that person's own category", () => {
+    const cells = row(grid(2025, YUVAL).expenses.rows, "p-health").cells;
+    expect(cells.map((cell) => cell.writesTo)).toEqual(Array.from({ length: 12 }, () => "p-health"));
+  });
+
+  it("gives a משותף row summing two People nothing to write to, and its contributions the write", () => {
+    const household = row(grid(2025).expenses.rows, "h-health");
+    expect(household.cells.every((cell) => cell.writesTo === null)).toBe(true);
+    expect(household.contributions.map((line) => line.cells[0]?.writesTo).sort()).toEqual([
+      "p-eden-health",
+      "p-health",
+    ]);
+  });
+
+  it("writes a משותף row that is one Personal Category straight to it", () => {
+    // חו"ל is Yuval's alone, so the household line and the personal one are the
+    // same money and the same place to write it.
+    expect(row(grid(2025).expenses.rows, "h-travel").cells[4]?.writesTo).toBe("p-travel");
+  });
+
+  it("has nothing to write in a month that has not arrived", () => {
+    const cells = row(grid(2026, YUVAL).expenses.rows, "p-health").cells;
+    expect(cells.map((cell) => cell.writesTo)).toEqual([
+      ...Array.from({ length: 8 }, () => "p-health"),
+      null, null, null, null,
+    ]);
+  });
+
+  it("writes only inside a lifespan, and into any month that already holds a figure", () => {
+    // חשמל is retired at מרץ 2025 and holds a figure in אפריל all the same.
+    const cells = row(grid(2025, YUVAL).expenses.rows, "p-power").cells;
+    expect(cells.map((cell) => cell.writesTo)).toEqual([
+      "p-power", "p-power", "p-power", "p-power",
+      null, null, null, null, null, null, null, null,
+    ]);
+
+    // חו"ל begins in 2025 and was recorded once in נובמבר 2024 regardless.
+    const travel = row(grid(2024, YUVAL).expenses.rows, "p-travel").cells;
+    expect(travel.map((cell) => cell.writesTo)).toEqual([
+      null, null, null, null, null, null, null, null, null, null, "p-travel", null,
+    ]);
+  });
+
+  it("gives a subtotal and חיסכון nothing to write to anywhere", () => {
+    const yearly = grid(2025);
+    for (const summary of [yearly.income.total, yearly.expenses.total, yearly.saving]) {
+      expect(summary.cells.every((cell) => cell.writesTo === null)).toBe(true);
+    }
+  });
+});
+
+describe("yearGrid — where each month stands on being closed", () => {
+  it("closes a month in which every category active in it holds a figure", () => {
+    // מאי 2025 for Yuval: משכורת, בריאות and חו"ל all recorded, and חשמל is past
+    // its retirement, so nothing is outstanding.
+    expect(grid(2025, YUVAL).months[4]?.closure.state).toBe("closed");
+  });
+
+  it("names what an open month is missing, month by month", () => {
+    const june = grid(2025, YUVAL).months[5]?.closure;
+    expect(june?.state).toBe("open");
+    expect(june?.blanks.map((category) => category.id)).toEqual(["p-travel"]);
+  });
+
+  it("answers at the level the grid is being read at", () => {
+    // The household's מאי 2025 is missing nothing Yuval owns and nothing Eden does.
+    expect(grid(2025).months[4]?.closure.state).toBe("closed");
+    // But its ינואר is missing חו"ל, which Yuval owns.
+    expect(grid(2025).months[0]?.closure.blanks.map((category) => category.id)).toEqual(["p-travel"]);
+  });
+
+  it("reports a month no category was active in as empty rather than as everything missing", () => {
+    // 2024 begins before חו"ל exists; every other category is active from ינואר.
+    expect(grid(2027).months.every((column) => column.closure.state !== "empty")).toBe(true);
+    expect(monthClosure(EMPTY_LEDGER, EMPTY_CATEGORIES, HOUSEHOLD_SCOPE, m(2025, 1)).state).toBe("empty");
+  });
+
+  it("carries a closure for all twelve months, whatever the year", () => {
+    for (const year of [2024, 2025, 2026, 2027]) {
+      expect(grid(year).months.map((column) => monthKey(column.closure.month))).toEqual(
+        grid(year).months.map((column) => monthKey(column.month)),
+      );
+    }
   });
 });
 
