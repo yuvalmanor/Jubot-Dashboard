@@ -37,8 +37,25 @@
  * The band is read at household level whatever tab the grid above is on: a
  * Watched Category is a household line, and a rate paid half by each Person is
  * one rate.
+ *
+ * Above it sits the **typed band** — the פריטים שנתיים the ledger cannot supply,
+ * out of `annual-items.ts`. It is a different kind of evidence read the same way:
+ * one comparison, one pair of bars and one mark, written once here and used by
+ * both. The two bands are deliberately **never summed**. One breaks down ledger
+ * rows and the other is a detail of ledger rows, so a total across them would be
+ * a figure with no meaning; each prints its own subtotal and the screen prints no
+ * third.
  */
 
+import {
+  type AnnualItem,
+  type AnnualItems,
+  type Renewal,
+  annualItemsByName,
+  coversYear,
+  latestRenewal,
+  renewalsOf,
+} from "@/domain/ledger/annual-items";
 import { type CategoryType, type Categories } from "@/domain/categories/categories";
 import { type Ledger, recordedSpan } from "@/domain/ledger/ledger";
 import {
@@ -52,7 +69,8 @@ import {
   readGroupMonth,
   yearPeriod,
 } from "@/domain/ledger/ledger-analytics";
-import { type Currency, type Money, equals, ratio, subtract, sum } from "@/domain/money/money";
+import { type Currency, type Money, divide, equals, ratio, subtract, sum } from "@/domain/money/money";
+import { type CalendarDate } from "@/domain/time/calendar-date";
 import { type CalendarMonth, addMonths, monthRange } from "@/domain/time/calendar-month";
 
 /**
@@ -131,13 +149,20 @@ export interface RateWatchYear {
  * and for the same reason: a row that cannot be compared is a fact worth printing,
  * and printing it as a number would be inventing one.
  *
- * - `compared` — both years rest on the same months, so the difference is real.
+ * **Both bands are compared by this one type and this one function.** What a year
+ * "rests on" differs — recorded months in the derived band, recorded renewals in
+ * the typed one — but the question does not, so there is one implementation of it
+ * and not two.
+ *
+ * - `compared` — both years rest on the same number of records, so the difference
+ *   is real.
  * - `not-recorded` — the selected year holds nothing for this line.
  * - `first-year` — the earlier year holds nothing. A line recorded for the first
  *   time shows its own figures and no change, rather than a rise from nothing.
- * - `uneven` — both years hold something, over different numbers of recorded
- *   months. 2025's twelve against 2024's six is a difference in how far the
- *   history reaches, and subtracting them would report that as a change in price.
+ * - `uneven` — both years hold something, over different numbers of records.
+ *   2025's twelve months against 2024's six is a difference in how far the history
+ *   reaches, and subtracting them would report that as a change in price; two
+ *   renewals in one year against one in the next is the same mistake a year up.
  */
 export type RateWatchChange =
   | {
@@ -163,19 +188,26 @@ export interface RateWatchRow {
   readonly change: RateWatchChange;
 }
 
-export interface RateWatchBand {
-  readonly rows: readonly RateWatchRow[];
+/**
+ * One band of the panel. Generic over its row because the two bands hold
+ * different evidence — a Watched Category's months, an Annual Item's renewals —
+ * and identical structure: rows, a subtotal of the rates in them, and how many
+ * rows that subtotal does and does not cover.
+ */
+export interface RateWatchBand<Row> {
+  readonly rows: readonly Row[];
   /**
-   * The rates added up, and nothing else. `משתנה` rows are left out because they
-   * have no rate to add, and the count of them is carried so the screen can say
+   * The monthly rates added up, and nothing else. Rows with no rate are left out
+   * because they have none to add — a `משתנה` category, an item nobody has
+   * recorded a price for — and the count of them is carried so the screen can say
    * how much of itself the subtotal is not covering.
    *
    * This is deliberately not a total of anything on the grid above, and per the
-   * plan's load-bearing decision no total is ever printed across two bands.
+   * plan's load-bearing decision **no total is ever printed across two bands**.
    */
   readonly subtotal: Money;
   readonly ratedRows: number;
-  readonly variableRows: number;
+  readonly unratedRows: number;
 }
 
 export interface RateWatch {
@@ -186,11 +218,71 @@ export interface RateWatch {
    * reading because every column here has to be able to say what it counted: in
    * August 2026 the `2026` column is ינואר–יולי, and a heading that said only
    * "2026" would be claiming a year of evidence for seven months of it.
+   *
+   * The derived band only. A typed year is a whole calendar year, because a
+   * renewal is one dated event inside one and there is no partial year of it.
    */
   readonly currentMonths: readonly CalendarMonth[];
   readonly previousMonths: readonly CalendarMonth[];
+  /** פריטים שנתיים — the Annual Items, typed by hand. */
+  readonly annual: RateWatchBand<RateWatchItemRow>;
   /** חיובים חודשיים — the Watched Categories, read straight off the ledger. */
-  readonly monthly: RateWatchBand;
+  readonly monthly: RateWatchBand<RateWatchRow>;
+  // There is deliberately no third total here. See `RateWatchBand.subtotal`.
+}
+
+// --- the typed band ------------------------------------------------------------
+
+/**
+ * An Annual Item's current rate: its newest policy total, and that total over
+ * twelve.
+ *
+ * `never` is an item with no price recorded at all — which is only reachable by
+ * removing every renewal, since an item is created with one. It has no rate to
+ * state and is not marked; stating nought would be inventing a price.
+ */
+export type ItemRate =
+  | {
+      readonly kind: "renewed";
+      /** The policy total, whatever number of תשלומים it was billed in. */
+      readonly total: Money;
+      /** `total ÷ 12` — a reading, computed here and stored nowhere. */
+      readonly monthly: Money;
+      readonly renewedOn: CalendarDate;
+    }
+  | { readonly kind: "never" };
+
+/**
+ * What one year holds for one Annual Item. Three states, and the distance between
+ * them is the point:
+ *
+ * - `renewed` — one or more renewals fell in that year, and the figure is their
+ *   sum. Two of them is a real state: a policy that slipped from December to
+ *   January leaves one year holding both, which is why the count travels with the
+ *   total and why the comparison refuses two against one.
+ * - `not-renewed` — the item was alive that year and no renewal was recorded in
+ *   it. `לא חודש`, never `0`: the ledger's blank-is-not-zero rule, one level up.
+ * - `outside` — the year is before the item's price history begins (or after it
+ *   ended). Nothing was missed, because there was nothing there yet.
+ */
+export type ItemYearReading =
+  | { readonly kind: "renewed"; readonly total: Money; readonly renewals: number }
+  | { readonly kind: "not-renewed" }
+  | { readonly kind: "outside" };
+
+export interface RateWatchItemYear {
+  readonly year: number;
+  readonly reading: ItemYearReading;
+}
+
+export interface RateWatchItemRow {
+  readonly key: string;
+  readonly name: string;
+  readonly rate: ItemRate;
+  readonly current: RateWatchItemYear;
+  readonly previous: RateWatchItemYear;
+  /** The very same comparison the derived band's rows carry. */
+  readonly change: RateWatchChange;
 }
 
 /**
@@ -203,6 +295,7 @@ export interface RateWatch {
 export function rateWatch(
   ledger: Ledger,
   categories: Categories,
+  items: AnnualItems,
   year: number,
   currency: Currency,
   today: CalendarMonth,
@@ -232,13 +325,94 @@ export function rateWatch(
     .map((group) => rowOf(ledger, group, year, currentMonths, previousMonths, history, currency))
     .sort(bySize);
 
+  const typed = annualItemsByName(items)
+    .map((item) => itemRowOf(items, item, year))
+    .sort(byPrice);
+
   return {
     year,
     previousYear: year - 1,
     currentMonths,
     previousMonths,
-    monthly: bandOf(rows, currency),
+    annual: bandOf(typed, (row) => (row.rate.kind === "renewed" ? row.rate.monthly : null), currency),
+    monthly: bandOf(rows, (row) => (row.rate.kind === "fixed" ? row.rate.amount : null), currency),
   };
+}
+
+// --- one Annual Item ------------------------------------------------------------
+
+/**
+ * One typed row: what the item costs now, the two years, and the change between
+ * them — through the same `changeOf` the derived band goes through.
+ *
+ * The rate is the *newest* renewal wherever the panel's year is set, for the same
+ * reason `עכשיו` means now in the band below: opening 2024 in 2026 must still say
+ * what the household is paying today.
+ */
+function itemRowOf(items: AnnualItems, item: AnnualItem, year: number): RateWatchItemRow {
+  const history = renewalsOf(items, item.id);
+  const newest = latestRenewal(items, item.id);
+  const rate: ItemRate =
+    newest === undefined
+      ? { kind: "never" }
+      : {
+          kind: "renewed",
+          total: newest.amount,
+          // The policy total over twelve. A reading on the way to the screen, and
+          // the only place this division happens.
+          monthly: divide(newest.amount, 12),
+          renewedOn: newest.renewedOn,
+        };
+
+  const current = itemYearOf(item, history, year);
+  const previous = itemYearOf(item, history, year - 1);
+
+  return {
+    key: item.id,
+    name: item.name,
+    rate,
+    current,
+    previous,
+    change: changeOf(comparableItemYear(current), comparableItemYear(previous), rate.kind === "renewed"),
+  };
+}
+
+/**
+ * One year of one item. The year is derived from each renewal's date and stored
+ * nowhere, so a September renewal cannot be filed under the wrong year by hand.
+ */
+function itemYearOf(
+  item: AnnualItem,
+  history: readonly Renewal[],
+  year: number,
+): RateWatchItemYear {
+  if (!coversYear(item, year)) return { year, reading: { kind: "outside" } };
+
+  const inYear = history.filter((renewal) => renewal.renewedOn.year === year);
+  const first = inYear[0];
+  if (first === undefined) return { year, reading: { kind: "not-renewed" } };
+
+  return {
+    year,
+    reading: {
+      kind: "renewed",
+      total: sum(inYear.map((renewal) => renewal.amount), first.amount.currency),
+      renewals: inYear.length,
+    },
+  };
+}
+
+/**
+ * A typed year as the comparison sees it. `לא חודש` and *outside its life* are
+ * both "nothing to compare" here — they differ on screen, where the distance
+ * between them is what a reader needs, and not in the arithmetic, which has
+ * nothing either way.
+ */
+function comparableItemYear(year: RateWatchItemYear): Comparable {
+  const { reading } = year;
+  return reading.kind === "renewed"
+    ? { total: reading.total, records: reading.renewals }
+    : { total: null, records: 0 };
 }
 
 function rowOf(
@@ -259,8 +433,16 @@ function rowOf(
     rate,
     current,
     previous,
-    change: changeOf(current, previous, rate),
+    change: changeOf(comparableYear(current), comparableYear(previous), rate.kind === "fixed"),
   };
+}
+
+/**
+ * A derived year as the comparison sees it: what it totalled, and how many
+ * *recorded* months that total rests on.
+ */
+function comparableYear(year: RateWatchYear): Comparable {
+  return { total: year.total, records: year.average.recordedMonths };
 }
 
 function yearOf(
@@ -314,53 +496,71 @@ function currentRateOf(
 }
 
 /**
- * One year against the one before it, or why it is not a comparison.
- *
- * The two sides must rest on the same number of *recorded* months. Both being
- * over the same twelve calendar months is not enough: 2024's history begins in
- * יולי, so 2025's twelve recorded months against 2024's six would report six
- * months of missing history as a doubling in price.
+ * A year reduced to what a comparison needs: what it totalled, and how many
+ * records that total rests on. Recorded months in one band, recorded renewals in
+ * the other — the arithmetic below cannot tell, and must not need to.
  */
-function changeOf(
-  current: RateWatchYear,
-  previous: RateWatchYear,
-  rate: CurrentRate,
-): RateWatchChange {
+interface Comparable {
+  readonly total: Money | null;
+  readonly records: number;
+}
+
+/**
+ * One year against the one before it, or why it is not a comparison. **One
+ * implementation, used by both bands.**
+ *
+ * The two sides must rest on the same number of records. Both covering the same
+ * twelve calendar months is not enough: 2024's history begins in יולי, so 2025's
+ * twelve recorded months against 2024's six would report six months of missing
+ * history as a doubling in price — and a year holding two renewals against one
+ * holding a single renewal is that same mistake told annually.
+ */
+function changeOf(current: Comparable, previous: Comparable, rated: boolean): RateWatchChange {
   if (current.total === null) return { kind: "not-recorded" };
   if (previous.total === null) return { kind: "first-year" };
 
-  if (current.average.recordedMonths !== previous.average.recordedMonths) {
-    return {
-      kind: "uneven",
-      current: current.average.recordedMonths,
-      previous: previous.average.recordedMonths,
-    };
+  if (current.records !== previous.records) {
+    return { kind: "uneven", current: current.records, previous: previous.records };
   }
 
   const amount = subtract(current.total, previous.total);
   const share = ratio(amount, previous.total);
-  return { kind: "compared", amount, ratio: share, mark: markOf(amount, share, rate) };
+  return { kind: "compared", amount, ratio: share, mark: markOf(amount, share, rated) };
 }
 
 /**
  * Both bars, and only on a row that has a rate. A `משתנה` row is never marked:
  * a category that moves every month has not *changed* by moving again, and
- * marking it would fill the panel with the rows it says the least about.
+ * marking it would fill the panel with the rows it says the least about. In the
+ * typed band the same rule reads as *an item with no recorded price is not
+ * marked*, which is the same statement about the same absence.
  */
-function markOf(amount: Money, share: number | null, rate: CurrentRate): RateMark {
-  if (rate.kind === "variable") return null;
+function markOf(amount: Money, share: number | null, rated: boolean): RateMark {
+  if (!rated) return null;
   if (share === null || Math.abs(share) < RATE_MOVE_RATIO) return null;
   if (Math.abs(amount.minorUnits) < RATE_MOVE_MINIMUM) return null;
   return amount.minorUnits > 0 ? "up" : "down";
 }
 
-function bandOf(rows: readonly RateWatchRow[], currency: Currency): RateWatchBand {
-  const rates = rows.flatMap((row) => (row.rate.kind === "fixed" ? [row.rate.amount] : []));
+/**
+ * A band from its rows. `rateOf` is what each kind of row calls a monthly rate —
+ * a category's agreed figure, an item's policy total over twelve — and `null`
+ * where the row has none to add.
+ */
+function bandOf<Row>(
+  rows: readonly Row[],
+  rateOf: (row: Row) => Money | null,
+  currency: Currency,
+): RateWatchBand<Row> {
+  const rates = rows.flatMap((row) => {
+    const rate = rateOf(row);
+    return rate === null ? [] : [rate];
+  });
   return {
     rows,
     subtotal: sum(rates, currency),
     ratedRows: rates.length,
-    variableRows: rows.length - rates.length,
+    unratedRows: rows.length - rates.length,
   };
 }
 
@@ -369,4 +569,17 @@ function bySize(left: RateWatchRow, right: RateWatchRow): number {
   const size = right.current.average.total.minorUnits - left.current.average.total.minorUnits;
   if (size !== 0) return size;
   return left.key < right.key ? -1 : left.key > right.key ? 1 : 0;
+}
+
+/**
+ * Most expensive policy first. The typed band is ordered by what each item costs
+ * *now* rather than by the selected year, because an annual bill is routinely not
+ * renewed yet in the year being read — ordering on that would shuffle the band
+ * every January and put the largest bill in the household at the bottom of it.
+ * Alphabetical underneath, so the order is total and stable.
+ */
+function byPrice(left: RateWatchItemRow, right: RateWatchItemRow): number {
+  const priceOf = (row: RateWatchItemRow) => (row.rate.kind === "renewed" ? row.rate.total.minorUnits : 0);
+  const size = priceOf(right) - priceOf(left);
+  return size === 0 ? left.name.localeCompare(right.name, "he") : size;
 }

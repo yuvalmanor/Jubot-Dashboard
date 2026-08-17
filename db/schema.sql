@@ -168,6 +168,52 @@ comment on table entries is
 create index if not exists entries_month_idx on entries (year, month);
 
 -- --------------------------------------------------------------------------
+-- מעקב תעריפים
+-- --------------------------------------------------------------------------
+
+-- פריט שנתי — a named thing billed about once a year and typed by hand: ביטוח רכב
+-- מקיף, רו"ח, רישוי. It belongs to the Household and to no Person, which is a
+-- deliberate exception to "every household-level number is derived from
+-- Person-level data" — these are not מאזן figures at all. Retirement is a
+-- lifespan (`ended_on`), never a delete: the price history that was the point of
+-- tracking the thing must survive the thing.
+--
+-- **Nothing here is money the מאזן does not already count.** When the car
+-- insurance is paid, that shekel is typed into a Personal Category and counted by
+-- the grid. These rows are the *breakdown* of it, so no reading of them is ever
+-- added to סה"כ הוצאות and no total is printed across this table and the ledger.
+create table if not exists rate_watch_items (
+  id         uuid primary key default gen_random_uuid(),
+  name       text not null unique,
+  started_on date not null,
+  ended_on   date,
+  check (ended_on is null or ended_on >= started_on)
+);
+
+comment on column rate_watch_items.started_on is
+  'Where the item''s price history begins — the earliest Renewal recorded against '
+  'it. A year before this is a year the item did not exist, which is a different '
+  'fact from a year it was not renewed in.';
+
+-- חידוש — one Annual Item's price on one date.
+--
+-- The amount is the **policy total**, whatever number of תשלומים it was actually
+-- billed in, because that is the figure being negotiated.
+--
+-- There is deliberately no `year` column: the year a figure belongs to is derived
+-- from `renewed_on`, so a September renewal cannot be filed under the wrong year
+-- by hand. The composite primary key is what permits two renewals inside one
+-- calendar year — a policy that slips from December to January must not overwrite
+-- anything — while making one item's price on one day unambiguous.
+create table if not exists rate_watch_renewals (
+  item_id      uuid   not null references rate_watch_items (id) on delete cascade,
+  renewed_on   date   not null,
+  amount_minor bigint not null check (amount_minor > 0),
+  currency     text   not null check (char_length(currency) = 3),
+  primary key (item_id, renewed_on)
+);
+
+-- --------------------------------------------------------------------------
 -- מיפוי
 -- --------------------------------------------------------------------------
 

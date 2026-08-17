@@ -79,8 +79,16 @@ const SCENARIO = {
   meteor7: "5ce70002-0000-4000-8000-000000000002",
 } as const;
 
+const RATE_ITEM = {
+  carInsurance: "4a7e0001-0000-4000-8000-000000000001",
+  accountant: "4a7e0002-0000-4000-8000-000000000002",
+  licence: "4a7e0003-0000-4000-8000-000000000003",
+} as const;
+
 /** Emptied before anything is written. `people`, `money_settings` and `fx_rates` are not. */
 const DOMAIN_TABLES = [
+  "rate_watch_renewals",
+  "rate_watch_items",
   "annual_review_valuations",
   "annual_reviews",
   "funding_plan_executions",
@@ -251,6 +259,7 @@ async function main(): Promise<void> {
     await loadRsu(client);
     await loadPlanning(client);
     await loadAnnualReview(client);
+    await loadRateWatch(client);
     await loadSettings(client);
 
     await client.query("commit");
@@ -268,8 +277,13 @@ async function main(): Promise<void> {
   console.log(`accounts       ${ACCOUNTS.length}`);
   console.log(`snapshots      ${SNAPSHOTS.length}`);
   console.log(`projects       ${Object.keys(PROJECT).length}`);
+  // The household lines the panel watches are created by the import above, so
+  // flagging them has to come after it.
+  const watched = await flagWatchedCategories(connectionString);
+
   console.log(`grants         ${Object.keys(GRANT).length}`);
   console.log(`scenarios      ${Object.keys(SCENARIO).length}`);
+  console.log(`מעקב תעריפים   ${Object.keys(RATE_ITEM).length} annual items, ${watched} watched lines`);
   console.log(
     `מאזן           ${outcome.entries} entries across ${outcome.categories} categories, ` +
       `${outcome.households} household lines`,
@@ -485,6 +499,61 @@ async function loadAnnualReview(client: pg.Client): Promise<void> {
        (2025, $2, 26500000, 'ILS')`,
     [PROJECT.cgm1, PROJECT.meteor6],
   );
+}
+
+/**
+ * מעקב תעריפים: the typed band, and the flags that fill the derived one.
+ *
+ * Invented like everything outside the מאזן — the household's real annual bills
+ * are one undated snapshot in the sheet and the plan retires them rather than
+ * backfilling them — but shaped like the figures the plan names, so the panel is
+ * exercised the way real data would exercise it. The car policy is the case the
+ * 10% / 300₪ bars were chosen for: 5,139 → 5,900 is +761₪ and +15%.
+ *
+ * Nothing here is written to `entries`, and nothing needs to be: this money is
+ * already in the imported מאזן, inside `רכב` and `קבועות`.
+ */
+async function loadRateWatch(client: pg.Client): Promise<void> {
+  await client.query(
+    `insert into rate_watch_items (id, name, started_on) values
+       ($1, 'ביטוח רכב מקיף', '2024-09-01'),
+       ($2, 'רו״ח',           '2025-03-15'),
+       ($3, 'רישוי רכב',      '2025-05-20')`,
+    [RATE_ITEM.carInsurance, RATE_ITEM.accountant, RATE_ITEM.licence],
+  );
+
+  // The amount is the policy total, in whatever number of תשלומים it was billed.
+  await client.query(
+    `insert into rate_watch_renewals (item_id, renewed_on, amount_minor, currency) values
+       ($1, '2024-09-01', 513900, 'ILS'),
+       ($1, '2025-09-01', 590000, 'ILS'),
+       ($2, '2025-03-15', 334600, 'ILS'),
+       ($2, '2026-03-15', 360000, 'ILS'),
+       ($3, '2025-05-20', 115400, 'ILS')`,
+    [RATE_ITEM.carInsurance, RATE_ITEM.accountant, RATE_ITEM.licence],
+  );
+}
+
+/**
+ * The derived band's half: the subscriptions the sheet has recorded every month
+ * since 2024-07, flagged as Watched Categories.
+ *
+ * After the import rather than inside the transaction above, because the
+ * household lines it flags are created by the importer. One boolean per row and
+ * no amount anywhere — the panel reads the very entries the grid does.
+ */
+async function flagWatchedCategories(connectionString: string): Promise<number> {
+  const client = new pg.Client({ connectionString, ssl: false });
+  await client.connect();
+  try {
+    const result = await client.query(
+      `update household_categories set watched = true
+        where name in ('רייזאפ', 'מכבי', 'אינטרנט', 'אפל מיוזיק', 'לובי99')`,
+    );
+    return result.rowCount ?? 0;
+  } finally {
+    await client.end();
+  }
 }
 
 async function loadSettings(client: pg.Client): Promise<void> {

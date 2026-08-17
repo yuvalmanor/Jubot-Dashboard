@@ -18,16 +18,36 @@ export interface ReturnTo {
   readonly expand: string;
   /** `"1"` while the category panel below the grid is open. */
   readonly admin: string;
+  /** `"1"` while מעקב תעריפים's own forms are open. */
+  readonly rateEdit: string;
+  /** Which Annual Item's price history is open for correction, if any. */
+  readonly rateItem: string;
 }
 
-const FIELDS: readonly (keyof ReturnTo)[] = ["year", "view", "sort", "expand", "admin"];
+const FIELDS: readonly (keyof ReturnTo)[] = [
+  "year",
+  "view",
+  "sort",
+  "expand",
+  "admin",
+  "rateEdit",
+  "rateItem",
+];
 
 export function returnToFrom(form: FormData): ReturnTo {
   const read = (field: string) => {
     const value = form.get(field);
     return typeof value === "string" ? value : "";
   };
-  return { year: read("year"), view: read("view"), sort: read("sort"), expand: read("expand"), admin: read("admin") };
+  return {
+    year: read("year"),
+    view: read("view"),
+    sort: read("sort"),
+    expand: read("expand"),
+    admin: read("admin"),
+    rateEdit: read("rateEdit"),
+    rateItem: read("rateItem"),
+  };
 }
 
 /**

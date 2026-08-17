@@ -292,28 +292,52 @@ is noticed the person will not remember making it.
 
 ### Acceptance criteria
 
-- [ ] An Annual Item can be created with a name, and a Renewal recorded against it with a
+- [x] An Annual Item can be created with a name, and a Renewal recorded against it with a
       total and a date
-- [ ] The year a Renewal belongs to is derived from its date; no year is stored and none can
+- [x] The year a Renewal belongs to is derived from its date; no year is stored and none can
       be typed
-- [ ] Two Renewals in one calendar year both survive, and neither overwrites the other
-- [ ] A Renewal can be corrected and can be removed
-- [ ] The `פריטים שנתיים` band shows, per item: the current rate as total ÷ 12, the selected
+- [x] Two Renewals in one calendar year both survive, and neither overwrites the other
+- [x] A Renewal can be corrected and can be removed
+- [x] The `פריטים שנתיים` band shows, per item: the current rate as total ÷ 12, the selected
       year and the preceding year, and the change in ₪ and %
-- [ ] The band uses the identical comparison and marking used by `חיובים חודשיים` — one
+- [x] The band uses the identical comparison and marking used by `חיובים חודשיים` — one
       implementation, not two
-- [ ] A year in which an item was not renewed renders as `לא חודש`, visibly distinct from a
+- [x] A year in which an item was not renewed renders as `לא חודש`, visibly distinct from a
       recorded zero and from a year outside the item's life
-- [ ] The band prints its own subtotal, and no total is printed across both bands anywhere
+- [x] The band prints its own subtotal, and no total is printed across both bands anywhere
       on the page
-- [ ] The typed band writes nothing to `entries`; the grid above and both band subtotals are
+- [x] The typed band writes nothing to `entries`; the grid above and both band subtotals are
       independent, and a criterion pins that the grid's figures are byte-identical before and
       after any Rate Watch write
-- [ ] Either person can create, edit and remove any item and any renewal
-- [ ] The amount is stored in integer minor units with an explicit currency, and a non-ILS
+- [x] Either person can create, edit and remove any item and any renewal
+- [x] The amount is stored in integer minor units with an explicit currency, and a non-ILS
       currency is refused for now rather than silently coerced
-- [ ] An item's first year shows its figures and no comparison, rather than a change against
+- [x] An item's first year shows its figures and no comparison, rather than a change against
       nothing
+
+### What the build settled
+
+Three decisions the phase had to make that the plan left open, recorded so Phase 26 inherits
+them:
+
+**An Annual Item is created with its first Renewal, and its life begins there.** The schema's
+`started_on` needs a source, and the only honest one is the earliest price recorded — an item
+with a life but no price would be a start date somebody guessed. The corollary is that
+recording a Renewal *older* than the item moves `started_on` back to it rather than refusing:
+backfilling last September's quote against an item created today is an ordinary act, not an
+error. This is what makes *a year outside the item's life* a real state — the third reading of
+a year cell, beside `לא חודש` and a figure.
+
+**A typed year is a whole calendar year.** The derived band matches ינואר–יולי against
+ינואר–יולי because a monthly charge has a partial year; a renewal is one dated event and has
+none. So the two bands' year columns count different things and each says which — `שנה מלאה`
+above, the month span below — and neither is ever added to the other.
+
+**Two renewals in one year sum, and refuse to be compared against one.** The composite key
+lets a policy that slipped from December to January leave one year holding both. The year's
+figure is their sum, and the comparison reports `אין השוואה` with both counts rather than
+reading the slip as a doubling — which is Phase 24's `uneven` rule applied a year up, through
+the same `changeOf`.
 
 ---
 

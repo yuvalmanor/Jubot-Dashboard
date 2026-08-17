@@ -6,7 +6,9 @@ import { loadCategories } from "@/db/categories";
 import { DatabaseNotConfiguredError } from "@/db/client";
 import { loadLedger } from "@/db/ledger";
 import { type Person, findPersonByEmail, listPeople } from "@/db/people";
+import { loadAnnualItems } from "@/db/rate-watch";
 import { type Categories } from "@/domain/categories/categories";
+import { type AnnualItems } from "@/domain/ledger/annual-items";
 import { type Ledger, recordedYears } from "@/domain/ledger/ledger";
 import { type AnalyticsScope, HOUSEHOLD_SCOPE, personScope } from "@/domain/ledger/ledger-analytics";
 import { rateWatch } from "@/domain/ledger/rate-watch";
@@ -25,7 +27,8 @@ import { type CategoryErrorCode } from "./category-actions";
 import { CATEGORY_PANEL_ID, CategoryAdminPanel } from "./category-panels";
 import { type GridLinks, OPEN_CELL_ID, cellKey } from "./grid-links";
 import { ClosingPanel, YearGridTable, YearSummaryStrip } from "./grid-panels";
-import { RateWatchPanel } from "./rate-watch-panel";
+import { type RateErrorCode } from "./rate-actions";
+import { RATE_PANEL_ID, RateWatchPanel } from "./rate-watch-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -73,6 +76,10 @@ interface SearchParams {
   expand?: string | string[];
   /** `1` while the category panel below the grid is open. */
   admin?: string | string[];
+  /** `1` while מעקב תעריפים's own forms are open. */
+  rateEdit?: string | string[];
+  /** Which Annual Item's price history is open for correction. */
+  rateItem?: string | string[];
   /** Which cell is open for entry, as `${personalCategoryId}@${YYYY-MM}`. */
   cell?: string | string[];
   /** Which month's closing is being confirmed, as `YYYY-MM`. */
@@ -137,10 +144,13 @@ export default async function BalancePage({ searchParams }: { searchParams: Prom
             people={loaded.people}
             categories={loaded.categories}
             ledger={loaded.ledger}
+            items={loaded.items}
             view={first(params.view)}
             sort={parseSort(first(params.sort))}
             expanded={first(params.expand) === "1"}
             admin={first(params.admin) === "1"}
+            rateEdit={first(params.rateEdit) === "1"}
+            rateItem={first(params.rateItem) ?? null}
             openCell={first(params.cell) ?? null}
             closing={tryParseMonthKey(first(params.close))}
           />
@@ -155,7 +165,15 @@ export default async function BalancePage({ searchParams }: { searchParams: Prom
 // --- loading -----------------------------------------------------------------
 
 type LoadedBalance =
-  | { kind: "ok"; person: Person; people: readonly Person[]; categories: Categories; ledger: Ledger }
+  | {
+      kind: "ok";
+      person: Person;
+      people: readonly Person[];
+      categories: Categories;
+      ledger: Ledger;
+      /** מעקב תעריפים's typed half. It holds no ledger data and feeds no total of one. */
+      items: AnnualItems;
+    }
   | { kind: "unavailable"; reason: string };
 
 /**
@@ -172,8 +190,13 @@ async function loadBalance(email: string): Promise<LoadedBalance> {
         reason: `הכתובת ${email} אינה משויכת לאף אדם בטבלת people. יש לעדכן את שתי הכתובות במסד (ראו README).`,
       };
     }
-    const [people, categories, ledger] = await Promise.all([listPeople(), loadCategories(), loadLedger()]);
-    return { kind: "ok", person, people, categories, ledger };
+    const [people, categories, ledger, items] = await Promise.all([
+      listPeople(),
+      loadCategories(),
+      loadLedger(),
+      loadAnnualItems(),
+    ]);
+    return { kind: "ok", person, people, categories, ledger, items };
   } catch (error) {
     if (error instanceof DatabaseNotConfiguredError) {
       return { kind: "unavailable", reason: "משתנה הסביבה DATABASE_URL אינו מוגדר." };
@@ -190,10 +213,13 @@ function BalanceYear({
   people,
   categories,
   ledger,
+  items,
   view,
   sort,
   expanded,
   admin,
+  rateEdit,
+  rateItem,
   openCell,
   closing,
 }: {
@@ -202,20 +228,24 @@ function BalanceYear({
   people: readonly Person[];
   categories: Categories;
   ledger: Ledger;
+  items: AnnualItems;
   view: string | undefined;
   sort: GridSort;
   expanded: boolean;
   admin: boolean;
+  rateEdit: boolean;
+  rateItem: string | null;
   openCell: string | null;
   closing: CalendarMonth | null;
 }) {
   const scope = resolveScope(view, people);
   const grid = yearGrid(ledger, categories, scope, year, LEDGER_CURRENCY, today, { sort });
   // The same year and the same clock as the grid, so the panel's monthly figures
-  // divide by exactly the months the aggregate column above it divides by.
-  const watch = rateWatch(ledger, categories, year, LEDGER_CURRENCY, today);
+  // divide by exactly the months the aggregate column above it divides by. The
+  // typed items travel with them and touch nothing the grid reads.
+  const watch = rateWatch(ledger, categories, items, year, LEDGER_CURRENCY, today);
   const years = recordedYears(ledger);
-  const state: GridState = { year, view, sort, expanded, admin };
+  const state: GridState = { year, view, sort, expanded, admin, rateEdit, rateItem };
   const peopleNames = new Map(people.map((person) => [person.id, person.displayName]));
 
   // The month whose closing is being confirmed, read off the grid itself rather
@@ -247,8 +277,16 @@ function BalanceYear({
       {/* Directly beneath the table and never behind a link. Both of the sheet's
           attempts at this question died of being somewhere nobody went, and at a
           dozen rows there is nothing here to hide. It reads at household level
-          whatever tab the grid is on: a rate paid half by each Person is one rate. */}
-      <RateWatchPanel watch={watch} links={linksFor(state)} />
+          whatever tab the grid is on: a rate paid half by each Person is one rate.
+          Its own forms are behind `?rateEdit=1`, so the panel reads clean by
+          default — but the figures never are. */}
+      <RateWatchPanel
+        watch={watch}
+        items={items}
+        links={linksFor(state)}
+        editing={rateEdit}
+        openItem={rateItem}
+      />
       {/* Beneath the table, so a rename or a merge is made with the rows it
           affects in view. Closed by default: it is a screenful of forms, and the
           question this screen is opened to ask is about the money. */}
@@ -292,6 +330,9 @@ interface GridState {
   readonly sort: GridSort;
   readonly expanded: boolean;
   readonly admin: boolean;
+  /** מעקב תעריפים's forms, in the same idiom as `admin`: a panel that stays open. */
+  readonly rateEdit: boolean;
+  readonly rateItem: string | null;
 }
 
 /**
@@ -309,6 +350,8 @@ function gridParams(state: GridState): URLSearchParams {
   if (state.sort !== DEFAULT_GRID_SORT) params.set("sort", state.sort);
   if (state.expanded) params.set("expand", "1");
   if (state.admin) params.set("admin", "1");
+  if (state.rateEdit) params.set("rateEdit", "1");
+  if (state.rateItem !== null) params.set("rateItem", state.rateItem);
   return params;
 }
 
@@ -342,14 +385,29 @@ function linksFor(state: GridState): GridLinks {
     cancel: base,
     openAdmin: adminHref(state),
     closeAdmin: gridHref(state, { admin: false }),
+    // The rate panel's own links land on the panel, the way the category one
+    // lands on its. Closing the forms closes the open item with them: an item's
+    // history is a thing inside the forms, and leaving it named in a URL whose
+    // forms are shut would be state nobody can see.
+    openRates: ratesHref(state, { rateEdit: true }),
+    closeRates: gridHref(state, { rateEdit: false, rateItem: null }),
+    openRateItem: (itemId) => ratesHref(state, { rateEdit: true, rateItem: itemId }),
+    closeRateItem: ratesHref(state, { rateItem: null }),
     returnTo: {
       year: String(state.year),
       view: state.view ?? "",
       sort: state.sort,
       expand: state.expanded ? "1" : "",
       admin: state.admin ? "1" : "",
+      rateEdit: state.rateEdit ? "1" : "",
+      rateItem: state.rateItem ?? "",
     },
   };
+}
+
+/** The grid with מעקב תעריפים changed in one way, scrolled to the panel. */
+function ratesHref(state: GridState, change: Partial<GridState>): Route {
+  return `${gridHref(state, change)}#${RATE_PANEL_ID}` as Route;
 }
 
 
@@ -458,6 +516,10 @@ function YearNavigator({
         )}
         {state.expanded ? <input type="hidden" name="expand" value="1" /> : null}
         {state.admin ? <input type="hidden" name="admin" value="1" /> : null}
+        {state.rateEdit ? <input type="hidden" name="rateEdit" value="1" /> : null}
+        {state.rateItem === null ? null : (
+          <input type="hidden" name="rateItem" value={state.rateItem} />
+        )}
         <label htmlFor="year-picker" className="text-sm text-stone-600">
           שנה
         </label>
@@ -513,20 +575,29 @@ function YearNavigator({
 
 // --- notices -----------------------------------------------------------------
 
-/** Both sets of writes report here: the grid's, and the category panel's. */
-const ERROR_MESSAGES: Record<GridErrorCode | CategoryErrorCode, string> = {
+/** All three sets of writes report here: the grid's, the category panel's, and מעקב תעריפים's. */
+const ERROR_MESSAGES: Record<GridErrorCode | CategoryErrorCode | RateErrorCode, string> = {
   "no-person": "הכתובת שאיתה נכנסת אינה משויכת לאף אדם בטבלת people, ולכן אין למה לכתוב.",
-  "bad-amount": "הסכום שהוקלד אינו מספר. שום דבר לא נשמר.",
+  "bad-amount": "הסכום שהוקלד אינו מספר, אינו חיובי או אינו בשקלים. שום דבר לא נשמר.",
   "unknown-category": "הקטגוריה שנבחרה אינה קיימת.",
   "bad-name": "שם הקטגוריה ריק או ארוך מדי.",
   "duplicate-name": "כבר קיימת קטגוריה בשם הזה.",
   "type-mismatch": "לא ניתן לשייך הכנסה לקטגוריה משותפת של הוצאה, או להפך.",
   "bad-lifespan": "לא ניתן להוציא קטגוריה משימוש לפני החודש שבו היא מתחילה.",
   "bad-merge": "אין מה למזג — לקטגוריה המשותפת הזו אין קטגוריות אישיות.",
+  "bad-item-name": "שם הפריט השנתי ריק או ארוך מדי.",
+  "duplicate-item": "כבר קיים פריט שנתי בשם הזה.",
+  "bad-date": "תאריך החידוש חסר או אינו תקין. השנה נגזרת ממנו, ולכן בלעדיו אין מה לרשום.",
+  "duplicate-renewal": "כבר רשום חידוש לפריט הזה באותו תאריך. תיקון של הסכום נעשה על השורה הקיימת.",
+  "unknown-item": "הפריט השנתי שנבחר אינו קיים.",
+  "unknown-renewal": "החידוש שביקשת לתקן אינו קיים יותר.",
+  "rate-failed": "הפעולה במעקב התעריפים נכשלה. שום סכום במאזן לא זז.",
   failed: "הפעולה נכשלה.",
 };
 
-function isErrorCode(value: string | undefined): value is GridErrorCode | CategoryErrorCode {
+function isErrorCode(
+  value: string | undefined,
+): value is GridErrorCode | CategoryErrorCode | RateErrorCode {
   return value !== undefined && value in ERROR_MESSAGES;
 }
 
@@ -539,6 +610,10 @@ const DONE_MESSAGES: Readonly<Record<string, string>> = {
   lifespan: "תקופת הפעילות עודכנה. חודשים שכבר נרשמו ממשיכים להיקרא כרגיל.",
   watched: "הקטגוריה נוספה למעקב תעריפים. שום סכום לא זז — הפאנל קורא את אותם רישומים.",
   unwatched: "הקטגוריה הוסרה ממעקב תעריפים. שום סכום לא זז.",
+  "item-created": "נוצר פריט שנתי, יחד עם החידוש הראשון שלו. המאזן שמעל לא השתנה.",
+  renewed: "החידוש נרשם. השנה שלו נגזרה מהתאריך, ושום סכום במאזן לא זז.",
+  "renewal-corrected": "החידוש תוקן. אם התאריך זז, הסכום עבר איתו לשנה שהוא נופל בה.",
+  "renewal-removed": "החידוש הוסר. הפריט עצמו נשאר, עם שאר ההיסטוריה שלו.",
 };
 
 function Notices({

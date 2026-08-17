@@ -13,7 +13,20 @@ import {
 } from "@/domain/categories/categories";
 import { parseSheetExport } from "@/domain/import/sheet-export";
 import { defaultSelection, planSheetImport, planWrites } from "@/domain/import/sheet-importer";
-import { type EnteredEntry, buildLedger, recordedSpan } from "@/domain/ledger/ledger";
+import {
+  type AnnualItems,
+  EMPTY_ANNUAL_ITEMS,
+  applyAnnualItemCreation,
+  applyRenewal,
+  applyRenewalCorrection,
+  applyRenewalRemoval,
+  buildAnnualItems,
+  planAnnualItemCreation,
+  planRenewal,
+  planRenewalCorrection,
+  planRenewalRemoval,
+} from "@/domain/ledger/annual-items";
+import { type EnteredEntry, type Ledger, buildLedger, recordedSpan } from "@/domain/ledger/ledger";
 import {
   HOUSEHOLD_SCOPE,
   averageOverMonths,
@@ -23,9 +36,10 @@ import {
 } from "@/domain/ledger/ledger-analytics";
 import { yearGrid } from "@/domain/ledger/year-grid";
 import { type Money, money } from "@/domain/money/money";
+import { type CalendarDate, calendarDate } from "@/domain/time/calendar-date";
 import { type CalendarMonth, calendarMonth, monthRange } from "@/domain/time/calendar-month";
 
-import { type RateWatchRow, rateWatch } from "./rate-watch";
+import { type RateWatchItemRow, type RateWatchRow, rateWatch } from "./rate-watch";
 
 /**
  * The מעקב תעריפים reading, tested against nothing but plain data — no database
@@ -104,6 +118,49 @@ function rowOf(rows: readonly RateWatchRow[], key: string): RateWatchRow {
   return found;
 }
 
+/** The derived band alone — every reading below the typed band's own block. */
+function monthlyRows(ledger: Ledger, model: Categories, year: number): readonly RateWatchRow[] {
+  return rateWatch(ledger, model, EMPTY_ANNUAL_ITEMS, year, ILS, TODAY).monthly.rows;
+}
+
+const d = (year: number, month: number, day: number) => calendarDate(year, month, day);
+
+/** One Annual Item and its price history, added the way the household would type it. */
+function withItem(
+  model: AnnualItems,
+  id: string,
+  name: string,
+  history: readonly (readonly [CalendarDate, number])[],
+): AnnualItems {
+  const [first, ...rest] = history;
+  if (first === undefined) throw new Error("An annual item is created with its first renewal");
+
+  const created = applyAnnualItemCreation(
+    model,
+    planAnnualItemCreation(model, { name, renewedOn: first[0], amount: ils(first[1]) }, { itemId: id }),
+  );
+
+  return rest.reduce(
+    (running, [renewedOn, amount]) =>
+      applyRenewal(running, planRenewal(running, id, { renewedOn, amount: ils(amount) })),
+    created,
+  );
+}
+
+/** The car policy the plan is written around: 5,139 → 5,900, renewed each September. */
+function insured(): AnnualItems {
+  return withItem(EMPTY_ANNUAL_ITEMS, "car", "ביטוח רכב מקיף", [
+    [d(2024, 9, 1), 5_139],
+    [d(2025, 9, 1), 5_900],
+  ]);
+}
+
+function itemRowOf(rows: readonly RateWatchItemRow[], key: string): RateWatchItemRow {
+  const found = rows.find((row) => row.key === key);
+  if (found === undefined) throw new Error(`No annual item row ${key}`);
+  return found;
+}
+
 // --- what the band lists ------------------------------------------------------
 
 describe("which rows the band holds", () => {
@@ -117,16 +174,16 @@ describe("which rows the band holds", () => {
   });
 
   it("lists exactly the watched household categories and nothing else", () => {
-    const watch = rateWatch(ledger, categories(["h-net", "h-music"]), 2026, ILS, TODAY);
+    const watch = rateWatch(ledger, categories(["h-net", "h-music"]), EMPTY_ANNUAL_ITEMS, 2026, ILS, TODAY);
     expect(watch.monthly.rows.map((row) => row.key).sort()).toEqual(["h-music", "h-net"]);
   });
 
   it("renders as an empty band when nothing is watched, rather than as every category", () => {
-    expect(rateWatch(ledger, categories(), 2026, ILS, TODAY).monthly.rows).toEqual([]);
+    expect(monthlyRows(ledger, categories(), 2026)).toEqual([]);
   });
 
   it("sums both People's contributions into the one household line", () => {
-    const watch = rateWatch(ledger, categories(["h-net"]), 2026, ILS, TODAY);
+    const watch = rateWatch(ledger, categories(["h-net"]), EMPTY_ANNUAL_ITEMS, 2026, ILS, TODAY);
     const net = rowOf(watch.monthly.rows, "h-net");
 
     // 50 + 30 a month, seven counted months of 2026.
@@ -141,12 +198,13 @@ describe("which rows the band holds", () => {
   it("reads at household level whatever the grid above is showing", () => {
     // There is no scope parameter to get wrong: a rate paid half by each Person
     // is one rate, and the flag lives on the household line.
-    const watch = rateWatch(ledger, categories(["h-net"]), 2026, ILS, TODAY);
+    const watch = rateWatch(ledger, categories(["h-net"]), EMPTY_ANNUAL_ITEMS, 2026, ILS, TODAY);
     expect(rowOf(watch.monthly.rows, "h-net").personId).toBeNull();
   });
 
   it("orders by the selected year, largest first, and the order is total", () => {
-    const watch = rateWatch(ledger, categories(["h-net", "h-music", "h-food"]), 2026, ILS, TODAY);
+    const watched = categories(["h-net", "h-music", "h-food"]);
+    const watch = rateWatch(ledger, watched, EMPTY_ANNUAL_ITEMS, 2026, ILS, TODAY);
     expect(watch.monthly.rows.map((row) => row.key)).toEqual(["h-food", "h-net", "h-music"]);
   });
 });
@@ -156,7 +214,7 @@ describe("which rows the band holds", () => {
 describe("the current rate", () => {
   it("is the figure the last three recorded months agree on", () => {
     const ledger = buildLedger({ entered: every("y-music", m(2025, 1), m(2026, 7), ils(22)) });
-    const watch = rateWatch(ledger, categories(["h-music"]), 2026, ILS, TODAY);
+    const watch = rateWatch(ledger, categories(["h-music"]), EMPTY_ANNUAL_ITEMS, 2026, ILS, TODAY);
 
     expect(rowOf(watch.monthly.rows, "h-music").rate).toEqual({
       kind: "fixed",
@@ -172,7 +230,7 @@ describe("the current rate", () => {
         { personalCategoryId: "y-music", month: m(2026, 7), amount: ils(25) },
       ],
     });
-    const row = rowOf(rateWatch(ledger, categories(["h-music"]), 2026, ILS, TODAY).monthly.rows, "h-music");
+    const row = rowOf(monthlyRows(ledger, categories(["h-music"]), 2026), "h-music");
 
     // The year's own monthly average travels with it — 22 × 6 + 25, over seven.
     expect(row.rate).toEqual({ kind: "variable", average: ils(22.43) });
@@ -186,7 +244,7 @@ describe("the current rate", () => {
         { personalCategoryId: "y-music", month: m(2026, 7), amount: ils(22) },
       ],
     });
-    const row = rowOf(rateWatch(ledger, categories(["h-music"]), 2026, ILS, TODAY).monthly.rows, "h-music");
+    const row = rowOf(monthlyRows(ledger, categories(["h-music"]), 2026), "h-music");
     expect(row.rate.kind).toBe("variable");
   });
 
@@ -199,7 +257,7 @@ describe("the current rate", () => {
       ],
     });
     expect(
-      rowOf(rateWatch(ledger, categories(["h-music"]), 2026, ILS, TODAY).monthly.rows, "h-music").rate,
+      rowOf(monthlyRows(ledger, categories(["h-music"]), 2026), "h-music").rate,
     ).toEqual({ kind: "fixed", amount: ils(22), months: [m(2026, 1), m(2026, 3), m(2026, 5)] });
   });
 
@@ -212,7 +270,7 @@ describe("the current rate", () => {
         ...every("y-music", m(2026, 1), m(2026, 7), ils(55)),
       ],
     });
-    const row = rowOf(rateWatch(ledger, categories(["h-music"]), 2025, ILS, TODAY).monthly.rows, "h-music");
+    const row = rowOf(monthlyRows(ledger, categories(["h-music"]), 2025), "h-music");
     expect(row.rate).toEqual({
       kind: "fixed",
       amount: ils(55),
@@ -233,7 +291,7 @@ describe("the two years", () => {
   });
 
   it("sums what was actually recorded rather than annualising the rate", () => {
-    const row = rowOf(rateWatch(ledger, categories(["h-music"]), 2025, ILS, TODAY).monthly.rows, "h-music");
+    const row = rowOf(monthlyRows(ledger, categories(["h-music"]), 2025), "h-music");
     // Ten months at 45 and two at 55 is 560, not 55 × 12.
     expect(row.current.total).toEqual(ils(560));
     expect(row.rate).toEqual({
@@ -244,7 +302,7 @@ describe("the two years", () => {
   });
 
   it("states the change in ₪ and in %", () => {
-    const row = rowOf(rateWatch(ledger, categories(["h-music"]), 2026, ILS, TODAY).monthly.rows, "h-music");
+    const row = rowOf(monthlyRows(ledger, categories(["h-music"]), 2026), "h-music");
     // ינואר–יולי on both sides: 7 × 55 against 7 × 45.
     expect(row.current.total).toEqual(ils(385));
     expect(row.previous.total).toEqual(ils(315));
@@ -257,7 +315,7 @@ describe("the two years", () => {
   });
 
   it("matches the earlier year to the same months, so nothing collapses every January", () => {
-    const row = rowOf(rateWatch(ledger, categories(["h-music"]), 2026, ILS, TODAY).monthly.rows, "h-music");
+    const row = rowOf(monthlyRows(ledger, categories(["h-music"]), 2026), "h-music");
     expect(row.current.average.months).toEqual(monthRange(m(2026, 1), m(2026, 7)));
     expect(row.previous.average.months).toEqual(monthRange(m(2025, 1), m(2025, 7)));
   });
@@ -271,19 +329,19 @@ describe("the two years", () => {
       ],
     });
     expect(
-      rowOf(rateWatch(half, categories(["h-music"]), 2025, ILS, TODAY).monthly.rows, "h-music").change,
+      rowOf(monthlyRows(half, categories(["h-music"]), 2025), "h-music").change,
     ).toEqual({ kind: "uneven", current: 12, previous: 6 });
   });
 
   it("shows a first year as its own figures and no change, never as a rise from nothing", () => {
     const fresh = buildLedger({ entered: every("y-music", m(2026, 1), m(2026, 7), ils(22)) });
-    const row = rowOf(rateWatch(fresh, categories(["h-music"]), 2026, ILS, TODAY).monthly.rows, "h-music");
+    const row = rowOf(monthlyRows(fresh, categories(["h-music"]), 2026), "h-music");
     expect(row.previous.total).toBeNull();
     expect(row.change).toEqual({ kind: "first-year" });
   });
 
   it("leaves a year nobody recorded blank rather than reporting it as nought", () => {
-    const row = rowOf(rateWatch(ledger, categories(["h-food"]), 2026, ILS, TODAY).monthly.rows, "h-food");
+    const row = rowOf(monthlyRows(ledger, categories(["h-food"]), 2026), "h-food");
     expect(row.current.total).toBeNull();
     expect(row.previous.total).toBeNull();
     expect(row.change).toEqual({ kind: "not-recorded" });
@@ -295,7 +353,7 @@ describe("the two years", () => {
   it("gives a year that holds nothing no average either, rather than a divided zero", () => {
     // The rate column is the same rule as the year column: nothing recorded is
     // nothing to state, and 0 ÷ 12 is not a rate anybody pays.
-    const row = rowOf(rateWatch(ledger, categories(["h-food"]), 2026, ILS, TODAY).monthly.rows, "h-food");
+    const row = rowOf(monthlyRows(ledger, categories(["h-food"]), 2026), "h-food");
     expect(row.rate).toEqual({ kind: "variable", average: null });
   });
 });
@@ -311,7 +369,7 @@ describe("the 10% / 300₪ bars", () => {
         ...every("y-music", m(2026, 1), m(2026, 7), ils(after)),
       ],
     });
-    return rowOf(rateWatch(ledger, categories(["h-music"]), 2026, ILS, TODAY).monthly.rows, "h-music");
+    return rowOf(monthlyRows(ledger, categories(["h-music"]), 2026), "h-music");
   }
 
   it.each([
@@ -334,7 +392,7 @@ describe("the 10% / 300₪ bars", () => {
         { personalCategoryId: "y-food", month: m(2026, 7), amount: ils(2_500) },
       ],
     });
-    const row = rowOf(rateWatch(ledger, categories(["h-food"]), 2026, ILS, TODAY).monthly.rows, "h-food");
+    const row = rowOf(monthlyRows(ledger, categories(["h-food"]), 2026), "h-food");
 
     expect(row.rate.kind).toBe("variable");
     expect(row.change).toMatchObject({ kind: "compared", mark: null });
@@ -354,20 +412,205 @@ describe("the band's own subtotal", () => {
   });
 
   it("adds the rates and leaves the משתנה rows out, because they have none", () => {
-    const band = rateWatch(ledger, categories(["h-net", "h-music", "h-food"]), 2026, ILS, TODAY).monthly;
+    const watched = categories(["h-net", "h-music", "h-food"]);
+    const band = rateWatch(ledger, watched, EMPTY_ANNUAL_ITEMS, 2026, ILS, TODAY).monthly;
     expect(band.subtotal).toEqual(ils(102));
     expect(band.ratedRows).toBe(2);
-    expect(band.variableRows).toBe(1);
+    expect(band.unratedRows).toBe(1);
   });
 
   it("is a sum of rates and never of the years beside them", () => {
-    const band = rateWatch(ledger, categories(["h-net", "h-music"]), 2026, ILS, TODAY).monthly;
+    const watched = categories(["h-net", "h-music"]);
+    const band = rateWatch(ledger, watched, EMPTY_ANNUAL_ITEMS, 2026, ILS, TODAY).monthly;
     const years = band.rows.map((row) => row.current.total?.minorUnits ?? 0);
     expect(years.reduce((total, next) => total + next, 0)).not.toBe(band.subtotal.minorUnits);
   });
 
   it("has a currency even when the band is empty", () => {
-    expect(rateWatch(ledger, categories(), 2026, ILS, TODAY).monthly.subtotal).toEqual(ils(0));
+    const watch = rateWatch(ledger, categories(), EMPTY_ANNUAL_ITEMS, 2026, ILS, TODAY);
+    expect(watch.monthly.subtotal).toEqual(ils(0));
+  });
+});
+
+// --- the typed band -------------------------------------------------------------
+
+/**
+ * פריטים שנתיים — the half the ledger cannot supply. The ledger below is empty
+ * throughout: an Annual Item is typed, and nothing about it is read out of
+ * `entries`.
+ */
+describe("the typed band", () => {
+  const EMPTY_LEDGER = buildLedger({ entered: [] });
+
+  const typed = (items: AnnualItems, year: number) =>
+    rateWatch(EMPTY_LEDGER, categories(), items, year, ILS, TODAY).annual;
+
+  it("shows the current rate as the newest policy total over twelve", () => {
+    const row = itemRowOf(typed(insured(), 2026).rows, "car");
+    expect(row.rate).toEqual({
+      kind: "renewed",
+      total: ils(5_900),
+      monthly: ils(491.67),
+      renewedOn: d(2025, 9, 1),
+    });
+  });
+
+  it("derives each figure's year from its date, with no year stored anywhere", () => {
+    const row = itemRowOf(typed(insured(), 2025).rows, "car");
+    expect(row.current).toEqual({
+      year: 2025,
+      reading: { kind: "renewed", total: ils(5_900), renewals: 1 },
+    });
+    expect(row.previous).toEqual({
+      year: 2024,
+      reading: { kind: "renewed", total: ils(5_139), renewals: 1 },
+    });
+  });
+
+  it("states the change in ₪ and in %, and marks the move the bars were chosen for", () => {
+    // The plan's own case: 5,139 → 5,900 is +761₪ and +15%, which the grid's own
+    // 50% / 1,000₪ bar would have missed entirely.
+    const row = itemRowOf(typed(insured(), 2025).rows, "car");
+    expect(row.change).toEqual({
+      kind: "compared",
+      amount: ils(761),
+      ratio: 761 / 5_139,
+      mark: "up",
+    });
+  });
+
+  it("uses the identical marking the derived band uses — one implementation", () => {
+    // A 15% rise on a 500₪-a-month subscription is +525₪ over seven months and is
+    // marked in the band below; the same pair of bars decides this row.
+    const cheap = withItem(EMPTY_ANNUAL_ITEMS, "small", "לובי99", [
+      [d(2024, 3, 1), 300],
+      [d(2025, 3, 1), 360],
+    ]);
+    // +20% but only +60₪: over the money bar's head, exactly as רייזאפ is below.
+    expect(itemRowOf(typed(cheap, 2025).rows, "small").change).toMatchObject({
+      kind: "compared",
+      mark: null,
+    });
+  });
+
+  it("reads a year with no renewal as לא חודש, never as nought", () => {
+    // Renewed each September, read in 2026 before September has come round.
+    const row = itemRowOf(typed(insured(), 2026).rows, "car");
+    expect(row.current.reading).toEqual({ kind: "not-renewed" });
+    expect(row.change).toEqual({ kind: "not-recorded" });
+  });
+
+  it("reads a year before the item existed as outside its life, not as לא חודש", () => {
+    const row = itemRowOf(typed(insured(), 2024).rows, "car");
+    expect(row.current.reading).toEqual({ kind: "renewed", total: ils(5_139), renewals: 1 });
+    expect(row.previous.reading).toEqual({ kind: "outside" });
+  });
+
+  it("shows a first year as its own figures and no comparison", () => {
+    const fresh = withItem(EMPTY_ANNUAL_ITEMS, "fee", "רו\"ח", [[d(2026, 3, 1), 3_346]]);
+    const row = itemRowOf(typed(fresh, 2026).rows, "fee");
+    expect(row.current.reading).toEqual({ kind: "renewed", total: ils(3_346), renewals: 1 });
+    expect(row.change).toEqual({ kind: "first-year" });
+  });
+
+  it("keeps both renewals of a year that holds two, and refuses to compare it against one", () => {
+    // A policy that slipped from December to January: 2025 holds two prices, and
+    // subtracting them from 2024's one would report the slip as a doubling.
+    const slipped = withItem(EMPTY_ANNUAL_ITEMS, "car", "ביטוח רכב מקיף", [
+      [d(2024, 9, 1), 5_139],
+      [d(2025, 1, 5), 5_400],
+      [d(2025, 12, 20), 5_900],
+    ]);
+    const row = itemRowOf(typed(slipped, 2025).rows, "car");
+
+    expect(row.current.reading).toEqual({ kind: "renewed", total: ils(11_300), renewals: 2 });
+    expect(row.change).toEqual({ kind: "uneven", current: 2, previous: 1 });
+  });
+
+  it("has no rate, and is not marked, once every price is removed", () => {
+    const emptied = buildAnnualItems({ items: insured().items, renewals: [] });
+    const row = itemRowOf(typed(emptied, 2026).rows, "car");
+    expect(row.rate).toEqual({ kind: "never" });
+    expect(row.change).toEqual({ kind: "not-recorded" });
+  });
+
+  it("prints its own subtotal of monthly rates, and no total across the two bands", () => {
+    const both = withItem(insured(), "fee", "רו\"ח", [[d(2026, 3, 1), 3_600]]);
+    const band = typed(both, 2026);
+
+    // 5,900 ÷ 12 and 3,600 ÷ 12 — the rates, and nothing about the years beside them.
+    expect(band.subtotal).toEqual(ils(791.67));
+    expect(band.ratedRows).toBe(2);
+    expect(band.unratedRows).toBe(0);
+
+    // And the reading offers no field that adds the two bands together.
+    const watch = rateWatch(EMPTY_LEDGER, categories(["h-net"]), both, 2026, ILS, TODAY);
+    expect(Object.keys(watch).sort()).toEqual([
+      "annual",
+      "currentMonths",
+      "monthly",
+      "previousMonths",
+      "previousYear",
+      "year",
+    ]);
+  });
+
+  it("orders by what each item costs now, most expensive first", () => {
+    const many = withItem(withItem(insured(), "fee", "רו\"ח", [[d(2026, 3, 1), 3_346]]), "lic", "רישוי", [
+      [d(2026, 2, 1), 1_154],
+    ]);
+    expect(typed(many, 2026).rows.map((row) => row.name)).toEqual(["ביטוח רכב מקיף", "רו\"ח", "רישוי"]);
+  });
+
+  it("renders as an empty band when nothing has been typed", () => {
+    expect(typed(EMPTY_ANNUAL_ITEMS, 2026)).toEqual({
+      rows: [],
+      subtotal: ils(0),
+      ratedRows: 0,
+      unratedRows: 0,
+    });
+  });
+});
+
+// --- what the typed band leaves alone --------------------------------------------
+
+describe("a Rate Watch write moves nothing in the מאזן", () => {
+  const model = categories(["h-net"]);
+  const ledger = buildLedger({
+    entered: [
+      ...every("y-net", m(2025, 1), m(2026, 7), ils(50)),
+      ...every("e-net", m(2025, 1), m(2026, 7), ils(30)),
+    ],
+  });
+
+  /** Creating an item, renewing it, correcting that renewal and removing one. */
+  function everyWrite(): AnnualItems {
+    const created = insured();
+    const renewed = applyRenewal(
+      created,
+      planRenewal(created, "car", { renewedOn: d(2026, 9, 1), amount: ils(6_400) }),
+    );
+    const corrected = applyRenewalCorrection(
+      renewed,
+      planRenewalCorrection(renewed, "car", d(2026, 9, 1), {
+        renewedOn: d(2026, 9, 1),
+        amount: ils(6_300),
+      }),
+    );
+    return applyRenewalRemoval(corrected, planRenewalRemoval(corrected, "car", d(2024, 9, 1)));
+  }
+
+  it("leaves the grid byte-identical", () => {
+    const before = yearGrid(ledger, model, HOUSEHOLD_SCOPE, 2026, ILS, TODAY);
+    everyWrite();
+    const after = yearGrid(ledger, model, HOUSEHOLD_SCOPE, 2026, ILS, TODAY);
+    expect(JSON.stringify(after)).toBe(JSON.stringify(before));
+  });
+
+  it("leaves the derived band byte-identical, so the two bands are independent", () => {
+    const before = rateWatch(ledger, model, EMPTY_ANNUAL_ITEMS, 2026, ILS, TODAY).monthly;
+    const after = rateWatch(ledger, model, everyWrite(), 2026, ILS, TODAY).monthly;
+    expect(JSON.stringify(after)).toBe(JSON.stringify(before));
   });
 });
 
@@ -384,7 +627,7 @@ describe("against the grid directly above it", () => {
   });
 
   it("divides by exactly the months the grid's aggregate column divides by", () => {
-    const watch = rateWatch(ledger, model, 2026, ILS, TODAY);
+    const watch = rateWatch(ledger, model, EMPTY_ANNUAL_ITEMS, 2026, ILS, TODAY);
     const months = denominatorMonths(yearPeriod(2026), TODAY, recordedSpan(ledger));
 
     for (const row of watch.monthly.rows) {
@@ -397,7 +640,7 @@ describe("against the grid directly above it", () => {
 
   it("prints the same figure the grid's own row prints for that year", () => {
     const grid = yearGrid(ledger, model, HOUSEHOLD_SCOPE, 2026, ILS, TODAY);
-    const watch = rateWatch(ledger, model, 2026, ILS, TODAY);
+    const watch = rateWatch(ledger, model, EMPTY_ANNUAL_ITEMS, 2026, ILS, TODAY);
 
     for (const row of watch.monthly.rows) {
       const gridRow = grid.expenses.rows.find((candidate) => candidate.key === row.key);
@@ -474,7 +717,7 @@ describe("calibrated against the real subscription history", () => {
     })),
   });
 
-  const WATCH_2026 = rateWatch(REAL_LEDGER, REAL, 2026, ILS, TODAY);
+  const WATCH_2026 = rateWatch(REAL_LEDGER, REAL, EMPTY_ANNUAL_ITEMS, 2026, ILS, TODAY);
 
   function named(name: string): RateWatchRow {
     const found = WATCH_2026.monthly.rows.find((row) => row.name === name);
@@ -530,7 +773,7 @@ describe("calibrated against the real subscription history", () => {
   });
 
   it("refuses 2025 against 2024, where the history reaches only half the year", () => {
-    const watch2025 = rateWatch(REAL_LEDGER, REAL, 2025, ILS, TODAY);
+    const watch2025 = rateWatch(REAL_LEDGER, REAL, EMPTY_ANNUAL_ITEMS, 2025, ILS, TODAY);
     const rate = watch2025.monthly.rows.find((row) => row.name === "רייזאפ");
     expect(rate?.change).toEqual({ kind: "uneven", current: 12, previous: 6 });
   });
@@ -544,7 +787,7 @@ describe("calibrated against the real subscription history", () => {
         ...every("y-music", m(2026, 1), m(2026, 7), ils(5_900 / 12)),
       ],
     });
-    const row = rowOf(rateWatch(ledger, categories(["h-music"]), 2026, ILS, TODAY).monthly.rows, "h-music");
+    const row = rowOf(monthlyRows(ledger, categories(["h-music"]), 2026), "h-music");
     expect(row.change).toMatchObject({ kind: "compared", mark: "up" });
   });
 });

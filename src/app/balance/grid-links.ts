@@ -24,6 +24,12 @@ export interface GridLinks {
   /** This grid with the category panel open beneath it, and with it shut again. */
   readonly openAdmin: Route;
   readonly closeAdmin: Route;
+  /** This grid with מעקב תעריפים's own forms open, and with them shut again. */
+  readonly openRates: Route;
+  readonly closeRates: Route;
+  /** One Annual Item's price history, opened for correction and closed again. */
+  readonly openRateItem: (itemId: string) => Route;
+  readonly closeRateItem: Route;
   /** The fields a form carries so that its redirect lands on this exact view. */
   readonly returnTo: Readonly<Record<string, string>>;
 }
