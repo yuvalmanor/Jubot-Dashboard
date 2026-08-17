@@ -20,6 +20,8 @@ import {
 import { requireHouseholdEmail } from "@/session";
 
 import { type GridErrorCode } from "./actions";
+import { type CategoryErrorCode } from "./category-actions";
+import { CATEGORY_PANEL_ID, CategoryAdminPanel } from "./category-panels";
 import { type GridLinks, cellKey } from "./grid-links";
 import { ClosingPanel, YearGridTable, YearSummaryStrip } from "./grid-panels";
 
@@ -40,11 +42,16 @@ export const dynamic = "force-dynamic";
  * that is missing figures says so on its own column heading, with the closing of
  * it one click away.
  *
+ * And it is where the categories themselves are administered. That used to be a
+ * route of its own, which meant every rename and every merge was made on a screen
+ * with no figures on it; the panel is beneath the table now, so the consequences
+ * of a change are visible above it.
+ *
  * Everything the reader can change about the table — the year, whose money, the
  * row order, whether the household rows are opened, which cell is open, which
- * month is being closed — is a query parameter and nothing else. So a view of the
- * grid is a URL that can be sent to the other person, and the screen holds no
- * state that a reload could lose.
+ * month is being closed, whether the category panel is out — is a query parameter
+ * and nothing else. So a view of the grid is a URL that can be sent to the other
+ * person, and the screen holds no state that a reload could lose.
  */
 
 /** The ledger is kept in shekels. Explicit, never assumed from context. */
@@ -57,6 +64,8 @@ interface SearchParams {
   view?: string | string[];
   sort?: string | string[];
   expand?: string | string[];
+  /** `1` while the category panel below the grid is open. */
+  admin?: string | string[];
   /** Which cell is open for entry, as `${personalCategoryId}@${YYYY-MM}`. */
   cell?: string | string[];
   /** Which month's closing is being confirmed, as `YYYY-MM`. */
@@ -66,6 +75,8 @@ interface SearchParams {
   /** The month a closing just wrote into, and how many zeros it wrote. */
   closed?: string | string[];
   zeros?: string | string[];
+  /** What the category panel just did, as `<kind>:<subject>`. */
+  done?: string | string[];
 }
 
 function first(value: string | string[] | undefined): string | undefined {
@@ -109,6 +120,7 @@ export default async function BalancePage({ searchParams }: { searchParams: Prom
           detail={first(params.detail)}
           closed={first(params.closed)}
           zeros={first(params.zeros)}
+          done={first(params.done)}
         />
 
         {loaded.kind === "ok" ? (
@@ -121,6 +133,7 @@ export default async function BalancePage({ searchParams }: { searchParams: Prom
             view={first(params.view)}
             sort={parseSort(first(params.sort))}
             expanded={first(params.expand) === "1"}
+            admin={first(params.admin) === "1"}
             openCell={first(params.cell) ?? null}
             closing={tryParseMonthKey(first(params.close))}
           />
@@ -173,6 +186,7 @@ function BalanceYear({
   view,
   sort,
   expanded,
+  admin,
   openCell,
   closing,
 }: {
@@ -184,13 +198,14 @@ function BalanceYear({
   view: string | undefined;
   sort: GridSort;
   expanded: boolean;
+  admin: boolean;
   openCell: string | null;
   closing: CalendarMonth | null;
 }) {
   const scope = resolveScope(view, people);
   const grid = yearGrid(ledger, categories, scope, year, LEDGER_CURRENCY, today, { sort });
   const years = recordedYears(ledger);
-  const state: GridState = { year, view, sort, expanded };
+  const state: GridState = { year, view, sort, expanded, admin };
   const peopleNames = new Map(people.map((person) => [person.id, person.displayName]));
 
   // The month whose closing is being confirmed, read off the grid itself rather
@@ -219,8 +234,31 @@ function BalanceYear({
         openCell={openCell}
         links={linksFor(state)}
       />
+      {/* Beneath the table, so a rename or a merge is made with the rows it
+          affects in view. Closed by default: it is a screenful of forms, and the
+          question this screen is opened to ask is about the money. */}
+      {admin ? (
+        <CategoryAdminPanel
+          categories={categories}
+          people={people}
+          links={linksFor(state)}
+          today={today}
+        />
+      ) : (
+        <p className="text-sm text-stone-600">
+          <Link href={adminHref(state)} className="underline-offset-4 hover:underline">
+            ניהול קטגוריות
+          </Link>{" "}
+          — שמות, שיוכים, תקופות פעילות ויצירת קטגוריה חדשה, מתחת לטבלה.
+        </p>
+      )}
     </>
   );
+}
+
+/** The grid with the panel out, scrolled to it. */
+function adminHref(state: GridState): Route {
+  return `${gridHref(state, { admin: true })}#${CATEGORY_PANEL_ID}` as Route;
 }
 
 /**
@@ -238,6 +276,7 @@ interface GridState {
   readonly view: string | undefined;
   readonly sort: GridSort;
   readonly expanded: boolean;
+  readonly admin: boolean;
 }
 
 /**
@@ -254,6 +293,7 @@ function gridParams(state: GridState): URLSearchParams {
   if (state.view !== undefined) params.set("view", state.view);
   if (state.sort !== DEFAULT_GRID_SORT) params.set("sort", state.sort);
   if (state.expanded) params.set("expand", "1");
+  if (state.admin) params.set("admin", "1");
   return params;
 }
 
@@ -282,11 +322,14 @@ function linksFor(state: GridState): GridLinks {
     openCell: (categoryId, month) => withParam("cell", cellKey(categoryId, month)),
     closing: (month) => withParam("close", monthKey(month)),
     cancel: base,
+    openAdmin: adminHref(state),
+    closeAdmin: gridHref(state, { admin: false }),
     returnTo: {
       year: String(state.year),
       view: state.view ?? "",
       sort: state.sort,
       expand: state.expanded ? "1" : "",
+      admin: state.admin ? "1" : "",
     },
   };
 }
@@ -396,6 +439,7 @@ function YearNavigator({
           <input type="hidden" name="sort" value={state.sort} />
         )}
         {state.expanded ? <input type="hidden" name="expand" value="1" /> : null}
+        {state.admin ? <input type="hidden" name="admin" value="1" /> : null}
         <label htmlFor="year-picker" className="text-sm text-stone-600">
           שנה
         </label>
@@ -435,7 +479,8 @@ function YearNavigator({
           מגמות וממוצעים
         </Link>
 
-        <Link href="/balance/categories" className="text-sm text-stone-600 underline-offset-4 hover:underline">
+        {/* Not a route any more: the panel is on this page, below the table. */}
+        <Link href={adminHref(state)} className="text-sm text-stone-600 underline-offset-4 hover:underline">
           ניהול קטגוריות
         </Link>
 
@@ -450,29 +495,46 @@ function YearNavigator({
 
 // --- notices -----------------------------------------------------------------
 
-const ERROR_MESSAGES: Record<GridErrorCode, string> = {
+/** Both sets of writes report here: the grid's, and the category panel's. */
+const ERROR_MESSAGES: Record<GridErrorCode | CategoryErrorCode, string> = {
   "no-person": "הכתובת שאיתה נכנסת אינה משויכת לאף אדם בטבלת people, ולכן אין למה לכתוב.",
   "bad-amount": "הסכום שהוקלד אינו מספר. שום דבר לא נשמר.",
   "unknown-category": "הקטגוריה שנבחרה אינה קיימת.",
+  "bad-name": "שם הקטגוריה ריק או ארוך מדי.",
+  "duplicate-name": "כבר קיימת קטגוריה בשם הזה.",
+  "type-mismatch": "לא ניתן לשייך הכנסה לקטגוריה משותפת של הוצאה, או להפך.",
+  "bad-lifespan": "לא ניתן להוציא קטגוריה משימוש לפני החודש שבו היא מתחילה.",
+  "bad-merge": "אין מה למזג — לקטגוריה המשותפת הזו אין קטגוריות אישיות.",
   failed: "הפעולה נכשלה.",
 };
 
-function isGridErrorCode(value: string | undefined): value is GridErrorCode {
+function isErrorCode(value: string | undefined): value is GridErrorCode | CategoryErrorCode {
   return value !== undefined && value in ERROR_MESSAGES;
 }
+
+/** What the category panel just did. The subject is the name it did it to. */
+const DONE_MESSAGES: Readonly<Record<string, string>> = {
+  created: "נוצרה קטגוריה אישית חדשה, יחד עם השיוך שלה לקטגוריה משותפת.",
+  "personal-renamed": "השם האישי שונה. אף קטגוריה משותפת, שיוך או סכום לא זזו.",
+  renamed: "שם הקטגוריה המשותפת שונה. אף קטגוריה אישית לא השתנתה.",
+  merged: "השיוך עודכן. כל הרישומים נשמרו כפי שהיו — אותו כסף תחת כותרת אחרת.",
+  lifespan: "תקופת הפעילות עודכנה. חודשים שכבר נרשמו ממשיכים להיקרא כרגיל.",
+};
 
 function Notices({
   error,
   detail,
   closed,
   zeros,
+  done,
 }: {
   error: string | undefined;
   detail: string | undefined;
   closed: string | undefined;
   zeros: string | undefined;
+  done: string | undefined;
 }) {
-  if (isGridErrorCode(error)) {
+  if (isErrorCode(error)) {
     return (
       <div className="rounded-md border border-red-300 bg-red-50 p-4" role="alert">
         <p className="font-medium text-red-900">{ERROR_MESSAGES[error]}</p>
@@ -486,15 +548,33 @@ function Notices({
   }
 
   const month = tryParseMonthKey(closed);
-  if (month === null) return null;
+  if (month !== null) {
+    return (
+      <div className="rounded-md border border-emerald-300 bg-emerald-50 p-4" role="status">
+        <p className="font-medium text-emerald-900">
+          {formatMonth(month)}: נרשמו <bdi className="tabular">{zeros ?? "0"}</bdi> קטגוריות כאפס, והחודש
+          סגור.
+        </p>
+        <p className="mt-1 text-sm text-emerald-800">כל סכום שכבר היה רשום נשאר כפי שהיה.</p>
+      </div>
+    );
+  }
+
+  if (done === undefined) return null;
+
+  const separator = done.indexOf(":");
+  const message = DONE_MESSAGES[separator < 0 ? done : done.slice(0, separator)];
+  if (message === undefined) return null;
+  const subject = separator < 0 ? "" : done.slice(separator + 1);
 
   return (
     <div className="rounded-md border border-emerald-300 bg-emerald-50 p-4" role="status">
-      <p className="font-medium text-emerald-900">
-        {formatMonth(month)}: נרשמו <bdi className="tabular">{zeros ?? "0"}</bdi> קטגוריות כאפס, והחודש
-        סגור.
-      </p>
-      <p className="mt-1 text-sm text-emerald-800">כל סכום שכבר היה רשום נשאר כפי שהיה.</p>
+      <p className="font-medium text-emerald-900">{message}</p>
+      {subject.length === 0 ? null : (
+        <p className="mt-1 text-sm text-emerald-800">
+          <bdi>{subject}</bdi>
+        </p>
+      )}
     </div>
   );
 }

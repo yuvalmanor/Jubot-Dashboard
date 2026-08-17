@@ -19,6 +19,7 @@ import {
   applyHouseholdRename,
   applyLifespan,
   applyMerge,
+  applyPersonalCategoryRename,
   buildCategories,
   findHouseholdCategory,
   findPersonalCategory,
@@ -33,6 +34,7 @@ import {
   planHouseholdRename,
   planLifespanChange,
   planPersonalCategoryCreation,
+  planPersonalCategoryRename,
 } from "./categories";
 
 const JANUARY_2025 = calendarMonth(2025, 1);
@@ -580,6 +582,152 @@ describe("renaming a household category", () => {
     const before = healthHousehold();
     expect(() => planHouseholdRename(before, "h-yuval-health", "  ")).toThrow(InvalidCategoryNameError);
     expect(() => planHouseholdRename(before, "nope", "בריאות")).toThrow(UnknownCategoryError);
+  });
+});
+
+describe("renaming a personal category", () => {
+  /** The sheet's own near-miss: three ו's in one column against two in the other. */
+  function misspelledLoans(): Categories {
+    const yuval = planPersonalCategoryCreation(
+      EMPTY_CATEGORIES,
+      request({ personId: "yuval", name: "הלווואות", household: { kind: "new", name: "הלוואות" } }),
+      ids("yuval-loans"),
+    );
+    const afterYuval = applyCreation(EMPTY_CATEGORIES, yuval);
+    const eden = planPersonalCategoryCreation(
+      afterYuval,
+      request({ personId: "eden", name: "הלוואות", household: { kind: "existing", id: "h-yuval-loans" } }),
+      ids("eden-loans"),
+    );
+    return applyCreation(afterYuval, eden);
+  }
+
+  it("corrects הלווואות, which no screen could reach before", () => {
+    const before = misspelledLoans();
+    const after = applyPersonalCategoryRename(
+      before,
+      planPersonalCategoryRename(before, "p-yuval-loans", "  הלוואות "),
+    );
+
+    expect(findPersonalCategory(after, "p-yuval-loans")?.name).toBe("הלוואות");
+  });
+
+  it("changes no household name, no assignment and no other personal category", () => {
+    const before = misspelledLoans();
+    const after = applyPersonalCategoryRename(
+      before,
+      planPersonalCategoryRename(before, "p-yuval-loans", "הלוואות"),
+    );
+
+    expect(after.household).toEqual(before.household);
+    expect(after.assignments).toEqual(before.assignments);
+    expect(findPersonalCategory(after, "p-eden-loans")).toEqual(findPersonalCategory(before, "p-eden-loans"));
+  });
+
+  it("changes neither the type nor the lifespan of the category it renames", () => {
+    const before = misspelledLoans();
+    const renamed = applyPersonalCategoryRename(
+      before,
+      planPersonalCategoryRename(before, "p-yuval-loans", "הלוואות"),
+    );
+
+    const was = findPersonalCategory(before, "p-yuval-loans")!;
+    const now = findPersonalCategory(renamed, "p-yuval-loans")!;
+    expect(now).toEqual({ ...was, name: "הלוואות" });
+  });
+
+  it("lets the other person keep a name this one is renaming to", () => {
+    // Both People may call a category הלוואות; uniqueness is per Person, exactly
+    // as at creation.
+    const before = misspelledLoans();
+    expect(planPersonalCategoryRename(before, "p-yuval-loans", "הלוואות").name).toBe("הלוואות");
+  });
+
+  it("refuses a name the same Person already uses", () => {
+    const before = healthHousehold();
+    const after = applyCreation(
+      before,
+      planPersonalCategoryCreation(
+        before,
+        request({ personId: "yuval", name: "כושר", household: { kind: "new", name: "כושר" } }),
+        ids("yuval-fitness"),
+      ),
+    );
+
+    expect(() => planPersonalCategoryRename(after, "p-yuval-fitness", "בריאות")).toThrow(
+      DuplicateCategoryNameError,
+    );
+  });
+
+  it("allows a category to be renamed to what it already is", () => {
+    const before = healthHousehold();
+    expect(planPersonalCategoryRename(before, "p-yuval-health", "בריאות").name).toBe("בריאות");
+  });
+
+  it("refuses an empty name and an unknown category", () => {
+    const before = healthHousehold();
+    expect(() => planPersonalCategoryRename(before, "p-yuval-health", "  ")).toThrow(InvalidCategoryNameError);
+    expect(() => planPersonalCategoryRename(before, "nope", "בריאות")).toThrow(UnknownCategoryError);
+  });
+
+  it("leaves a model that still validates, with nobody unassigned", () => {
+    const before = misspelledLoans();
+    const after = applyPersonalCategoryRename(
+      before,
+      planPersonalCategoryRename(before, "p-yuval-loans", "הלוואות"),
+    );
+
+    expect(() => buildCategories(after)).not.toThrow();
+    expect(after.assignments).toHaveLength(after.personal.length);
+  });
+
+  it("is pure — planning changes nothing", () => {
+    const before = misspelledLoans();
+    planPersonalCategoryRename(before, "p-yuval-loans", "הלוואות");
+    expect(findPersonalCategory(before, "p-yuval-loans")?.name).toBe("הלווואות");
+  });
+});
+
+/**
+ * Type is fixed at creation and nothing is ever deleted. Both are load-bearing
+ * rather than unimplemented: a category that changed direction would make every
+ * month before the change unreadable, and a deleted one would take its recorded
+ * amounts with it. This pins the absence, so adding either becomes a deliberate
+ * act with a failing test in front of it.
+ */
+describe("what the lifecycle deliberately cannot do", () => {
+  const lifecycle = (before: Categories) => [
+    applyPersonalCategoryRename(before, planPersonalCategoryRename(before, "p-yuval-health", "בריאות ושיניים")),
+    applyHouseholdRename(before, planHouseholdRename(before, "h-yuval-health", "בריאות המשק")),
+    applyMerge(
+      before,
+      planCategoryMerge(
+        before,
+        { personalCategoryIds: ["p-eden-health"], household: { kind: "new", name: "רפואה בלבד" } },
+        { householdCategoryId: "h-fresh" },
+      ),
+    ),
+    applyLifespan(before, planLifespanChange(before, "p-yuval-health", { activeUntil: JANUARY_2025 })),
+  ];
+
+  it("changes no category's type", () => {
+    const before = healthHousehold();
+    const typesOf = (model: Categories) =>
+      model.personal.map((category) => `${category.id}:${category.type}`).sort();
+
+    for (const after of lifecycle(before)) {
+      expect(typesOf(after)).toEqual(typesOf(before));
+    }
+  });
+
+  it("deletes no personal category and drops no recorded amount's home", () => {
+    const before = healthHousehold();
+    const idsOf = (model: Categories) => model.personal.map((category) => category.id).sort();
+
+    for (const after of lifecycle(before)) {
+      expect(idsOf(after)).toEqual(idsOf(before));
+      expect(after.assignments).toHaveLength(after.personal.length);
+    }
   });
 });
 

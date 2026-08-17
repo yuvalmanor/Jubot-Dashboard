@@ -4,9 +4,15 @@ import {
   type Categories,
   EMPTY_CATEGORIES,
   applyCreation,
+  applyHouseholdRename,
   applyLifespan,
+  applyMerge,
+  applyPersonalCategoryRename,
+  planCategoryMerge,
+  planHouseholdRename,
   planLifespanChange,
   planPersonalCategoryCreation,
+  planPersonalCategoryRename,
 } from "@/domain/categories/categories";
 import {
   type EnteredEntry,
@@ -491,6 +497,140 @@ describe("yearGrid — the year totals agree with the month they are read from",
     expect(yearly.income.total.aggregate.total).toEqual(sum(summaries.map((s) => s.income), ILS));
     expect(yearly.expenses.total.aggregate.total).toEqual(sum(summaries.map((s) => s.expenses), ILS));
     expect(yearly.saving.aggregate.total).toEqual(sum(summaries.map((s) => s.saving), ILS));
+  });
+});
+
+/**
+ * The category panel beneath the grid can rename, merge, reassign and retire —
+ * and none of it touches an Entry. The table above it is where that promise is
+ * either kept or broken, so it is checked here rather than only in the taxonomy's
+ * own module: every figure on screen, at all three levels, across the whole
+ * history.
+ */
+describe("yearGrid — administering the taxonomy moves no money", () => {
+  const SCOPES = [HOUSEHOLD_SCOPE, YUVAL, EDEN];
+  const YEARS = [2024, 2025, 2026];
+
+  function gridWith(model: Categories, year: number, scope = HOUSEHOLD_SCOPE): YearGrid {
+    return yearGrid(LEDGER, model, scope, year, ILS, TODAY, {});
+  }
+
+  /** Every number the table prints, with no name attached to any of it. */
+  function figuresOf(view: YearGrid) {
+    const line = (summary: { readonly cells: readonly { readonly amount: Money | null }[]; readonly aggregate: { readonly total: Money; readonly amount: Money | null } }) => ({
+      cells: amountsOf(summary.cells),
+      total: summary.aggregate.total.minorUnits,
+      average: summary.aggregate.amount?.minorUnits ?? null,
+    });
+
+    return {
+      income: line(view.income.total),
+      expenses: line(view.expenses.total),
+      saving: line(view.saving),
+    };
+  }
+
+  /** The same, row by row, keyed by id rather than by name. */
+  function rowFiguresOf(view: YearGrid) {
+    const lines = [...view.income.rows, ...view.expenses.rows];
+    return Object.fromEntries(
+      lines.map((line) => [
+        line.key,
+        {
+          cells: amountsOf(line.cells),
+          total: line.aggregate.total.minorUnits,
+          average: line.aggregate.amount?.minorUnits ?? null,
+        },
+      ]),
+    );
+  }
+
+  it("changes not one figure when a personal category is renamed", () => {
+    const renamed = applyPersonalCategoryRename(
+      CATEGORIES,
+      planPersonalCategoryRename(CATEGORIES, "p-health", "בריאות ושיניים"),
+    );
+
+    for (const year of YEARS) {
+      for (const scope of SCOPES) {
+        expect(figuresOf(gridWith(renamed, year, scope))).toEqual(figuresOf(gridWith(CATEGORIES, year, scope)));
+        expect(rowFiguresOf(gridWith(renamed, year, scope))).toEqual(
+          rowFiguresOf(gridWith(CATEGORIES, year, scope)),
+        );
+      }
+    }
+
+    // And the rename did reach the screen, or the check above would pass on a
+    // model nothing had happened to.
+    expect(row(gridWith(renamed, 2025, YUVAL).expenses.rows, "p-health").name).toBe("בריאות ושיניים");
+  });
+
+  it("changes not one figure when a household category is renamed", () => {
+    const renamed = applyHouseholdRename(
+      CATEGORIES,
+      planHouseholdRename(CATEGORIES, "h-health", "בריאות המשק"),
+    );
+
+    for (const year of YEARS) {
+      for (const scope of SCOPES) {
+        expect(figuresOf(gridWith(renamed, year, scope))).toEqual(figuresOf(gridWith(CATEGORIES, year, scope)));
+      }
+    }
+    expect(row(gridWith(renamed, 2025).expenses.rows, "h-health").name).toBe("בריאות המשק");
+  });
+
+  it("keeps every band subtotal and חיסכון across a merge — the same money under one heading", () => {
+    const merged = applyMerge(
+      CATEGORIES,
+      planCategoryMerge(
+        CATEGORIES,
+        { personalCategoryIds: ["p-travel"], household: { kind: "existing", id: "h-health" } },
+        { householdCategoryId: "unused" },
+      ),
+    );
+
+    for (const year of YEARS) {
+      for (const scope of SCOPES) {
+        expect(figuresOf(gridWith(merged, year, scope))).toEqual(figuresOf(gridWith(CATEGORIES, year, scope)));
+      }
+    }
+  });
+
+  it("sums the two merged household rows into the one that replaces them", () => {
+    const merged = applyMerge(
+      CATEGORIES,
+      planCategoryMerge(
+        CATEGORIES,
+        { personalCategoryIds: ["p-travel"], household: { kind: "existing", id: "h-health" } },
+        { householdCategoryId: "unused" },
+      ),
+    );
+
+    const after = row(gridWith(merged, 2025).expenses.rows, "h-health");
+    const health = row(gridWith(CATEGORIES, 2025).expenses.rows, "h-health");
+    const travel = row(gridWith(CATEGORIES, 2025).expenses.rows, "h-travel");
+
+    expect(after.aggregate.total).toEqual(sum([health.aggregate.total, travel.aggregate.total], ILS));
+    expect(gridWith(merged, 2025).expenses.rows.map((line) => line.key)).not.toContain("h-travel");
+  });
+
+  it("changes nothing at all at person level, where a merge has nothing to move", () => {
+    const merged = applyMerge(
+      CATEGORIES,
+      planCategoryMerge(
+        CATEGORIES,
+        { personalCategoryIds: ["p-travel"], household: { kind: "existing", id: "h-health" } },
+        { householdCategoryId: "unused" },
+      ),
+    );
+
+    for (const year of YEARS) {
+      for (const scope of [YUVAL, EDEN]) {
+        expect(rowFiguresOf(gridWith(merged, year, scope))).toEqual(
+          rowFiguresOf(gridWith(CATEGORIES, year, scope)),
+        );
+      }
+    }
   });
 });
 

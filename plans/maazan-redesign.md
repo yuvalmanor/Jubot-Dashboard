@@ -393,18 +393,62 @@ exactly as it did.
 
 ### Acceptance criteria
 
-- [ ] Category administration renders below the grid; `/balance/categories` no longer exists
-- [ ] A personal category can be created from the panel, and always creates or joins a
+- [x] Category administration renders below the grid; `/balance/categories` no longer exists
+      <!-- `?admin=1`, so the panel is a URL like every other piece of state on this
+           screen and a write can land back on it. Closed by default: it is a
+           screenful of forms — 84 rename forms against the real data — and the
+           question the screen is opened to ask is about the money. The route is
+           gone; `/balance/categories` now 404s, verified. -->
+- [x] A personal category can be created from the panel, and always creates or joins a
       household category in one indivisible operation
-- [ ] A personal category can be renamed, and `הלווואות` is correctable
-- [ ] Renaming a personal category changes no household name, no assignment and no amount
-- [ ] Household rename, merge, reassignment and lifespan all work as they did
-- [ ] Either person can perform any of these on either person's categories
-- [ ] No operation in the panel can leave a personal category unassigned
-- [ ] No operation can change a category's type or delete anything
-- [ ] Every figure in the grid above reads identically before and after a rename or a merge
+      <!-- `planPersonalCategoryCreation`, which returns the category, the household
+           line and the assignment as one result. Verified live: עדן's בדיקת פאנל,
+           active from 2025-03, created together with the household line it joins.
+           The lifespan is a field, so a category invented today can still cover the
+           months it was actually being spent in. -->
+- [x] A personal category can be renamed, and `הלווואות` is correctable
+      <!-- `planPersonalCategoryRename`. Verified against the real near-miss: עדן's
+           `הלווואות` with three ו's, corrected to `הלוואות`. -->
+- [x] Renaming a personal category changes no household name, no assignment and no amount
+      <!-- Verified live after that rename: the household line was still `הלווואות`,
+           the assignment still pointed at it, and the grid's 478 cells hashed
+           identically before and after. -->
+- [x] Household rename, merge, reassignment and lifespan all work as they did
+      <!-- All four exercised live. The merge folded household `הלווואות` into
+           `הלוואות`: two rows of 5,000.00 became one of 10,000.00 and the emptied
+           line went. -->
+- [x] Either person can perform any of these on either person's categories
+      <!-- The ownership check is gone — there is no `requireOwn` and no `not-yours`
+           outcome. Verified signed in as יובל: renamed עדן's category, created one
+           for her, retired it and reassigned it. -->
+- [x] No operation in the panel can leave a personal category unassigned
+      <!-- The reassign control offers the household lines of that type plus a new
+           one, never "none", and every write goes through `planCategoryMerge`,
+           which reassigns rather than unassigns. `buildCategories` rejects an
+           unassigned model, and the tests assert one assignment per personal
+           category after each operation. -->
+- [x] No operation can change a category's type or delete anything
+      <!-- There is no shape in the domain that does either: no type field on any
+           plan, and no `plan…Deletion`. Pinned by a test that runs all four
+           lifecycle operations and compares types and ids before and after. An
+           emptied *household* line is dropped, which is a name with no amounts
+           under it. -->
+- [x] Every figure in the grid above reads identically before and after a rename or a merge
       <!-- A merge moves assignments only. The household total is the same money counted
            under a different heading. -->
+      <!-- Checked in the domain over the whole history at all three levels, and
+           again live: through a personal rename, a household merge, a creation, a
+           retirement and a reassignment, the 2025 הכנסות / הוצאות / חיסכון rows
+           stayed byte-identical — 570,931.00, 365,175.00, 205,756.00. -->
+
+---
+
+## Phase 22 — what came out differently
+
+The panel is **closed by default**, behind `?admin=1`. The criterion asks for it below the
+grid, and it is; rendering ~35 household cards and ~100 personal forms on every read of the
+מאזן would have made the screen slower to answer the question it is actually opened for.
+Opening it is one link, in the same place the old route's link was.
 
 ---
 

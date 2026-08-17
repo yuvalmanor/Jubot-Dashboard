@@ -19,9 +19,15 @@
  *
  * The lifecycle operations obey the same rule. A merge moves an assignment from
  * one Household Category to another and never removes it; retirement closes a
- * lifespan and never deletes a row. Nothing here can make a recorded amount
- * unreachable, which is why every one of them is safe to run over four years of
- * history.
+ * lifespan and never deletes a row; a rename — of either level — changes one name
+ * column and nothing else. Nothing here can make a recorded amount unreachable,
+ * which is why every one of them is safe to run over four years of history.
+ *
+ * Two things this module deliberately cannot do: change a category's **type**,
+ * which is fixed at creation because a category does not change direction from
+ * month to month, and **delete** anything. There is no `plan…Deletion` and no
+ * shape that drops a Personal Category, because the amounts recorded against one
+ * are still money that happened.
  */
 
 import { type CalendarMonth, compareMonths } from "@/domain/time/calendar-month";
@@ -450,6 +456,59 @@ export function applyHouseholdRename(categories: Categories, rename: HouseholdCa
     ...categories,
     household: categories.household.map((category) =>
       category.id === rename.householdCategoryId ? { ...category, name: rename.name } : category,
+    ),
+  });
+}
+
+// --- renaming a personal category --------------------------------------------
+
+export interface PersonalCategoryRename {
+  readonly personalCategoryId: string;
+  readonly name: string;
+}
+
+/**
+ * A Personal Category's name is the Person's own wording, and until now there was
+ * no way to correct it. That gap was not hypothetical: the sheet carried
+ * `הלווואות` with three ו's in one column against `הלוואות` in the other, and the
+ * importer reported the near-miss to a screen that could do nothing about it.
+ *
+ * It changes one column on one row. The Household Category has its own name, the
+ * assignment is a row of ids, and an Entry points at the category by id — so no
+ * household line is renamed, nothing is re-routed and no amount moves. Uniqueness
+ * is per Person, exactly as at creation: יובל's בריאות and עדן's רפואה are two
+ * categories, and so would be two categories both named בריאות.
+ */
+export function planPersonalCategoryRename(
+  categories: Categories,
+  personalCategoryId: string,
+  name: string,
+): PersonalCategoryRename {
+  const target = findPersonalCategory(categories, personalCategoryId);
+  if (target === undefined) {
+    throw new UnknownCategoryError(personalCategoryId);
+  }
+  const next = requireName(name);
+
+  const clash = categories.personal.find(
+    (category) =>
+      category.id !== target.id && category.personId === target.personId && sameName(category.name, next),
+  );
+  if (clash !== undefined) {
+    throw new DuplicateCategoryNameError(next);
+  }
+
+  return { personalCategoryId: target.id, name: next };
+}
+
+export function applyPersonalCategoryRename(
+  categories: Categories,
+  rename: PersonalCategoryRename,
+): Categories {
+  return buildCategories({
+    ...categories,
+    personal: categories.personal.map((category) =>
+      category.id === rename.personalCategoryId ? { ...category, name: rename.name } : category,
     ),
   });
 }

@@ -7,6 +7,7 @@ import {
   type HouseholdCategoryRename,
   type PersonalCategory,
   type PersonalCategoryCreation,
+  type PersonalCategoryRename,
   buildCategories,
   isCategoryType,
 } from "@/domain/categories/categories";
@@ -135,6 +136,17 @@ export async function insertPersonalCategory(creation: PersonalCategoryCreation)
       [creation.assignment.personalCategoryId, creation.assignment.householdCategoryId, creation.personal.type],
     );
   });
+}
+
+/**
+ * One column on one row. The assignment is a pair of ids and an entry points at
+ * the category by id, so correcting a spelling reaches neither.
+ */
+export async function renamePersonalCategory(rename: PersonalCategoryRename): Promise<void> {
+  await query(`update personal_categories set name = $2 where id = $1`, [
+    rename.personalCategoryId,
+    rename.name,
+  ]);
 }
 
 /** One column on one row. No personal category and no entry is touched. */

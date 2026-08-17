@@ -21,6 +21,9 @@ export interface GridLinks {
   readonly closing: (month: CalendarMonth) => Route;
   /** This grid with neither open — what cancelling either goes back to. */
   readonly cancel: Route;
+  /** This grid with the category panel open beneath it, and with it shut again. */
+  readonly openAdmin: Route;
+  readonly closeAdmin: Route;
   /** The fields a form carries so that its redirect lands on this exact view. */
   readonly returnTo: Readonly<Record<string, string>>;
 }

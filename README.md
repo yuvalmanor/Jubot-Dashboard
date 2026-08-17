@@ -240,11 +240,21 @@ Three rules hold it together:
 
 ### Category lifecycle
 
-`/balance/categories` administers the taxonomy over the amounts. None of it touches
+Category administration is a **panel beneath the grid**, not a route of its own. It used to
+be one, which meant every rename and every merge was made on a screen with no figures on it;
+now the table is directly above, so the consequence of a change is in view while it is made.
+`?admin=1` opens it, like every other piece of state on that screen. None of it touches
 `entries`, which is why any of it is safe to run over four years of history.
 
-- **Renaming** a household category changes one column on one row. Personal names are the
-  Person's own and are never touched by it.
+- **Creating** a personal category yields the category, the household line it joins or
+  creates, and the assignment between them as one indivisible result. It used to exist only
+  on the month form, so making a category always meant going somewhere you did not want to be.
+- **Renaming a personal category** changes one column on one row: no household name, no
+  assignment, no amount. This is what corrects `הלווואות` — three ו's in one column against
+  `הלוואות` in the other, which the importer reported to a screen that could do nothing
+  about it.
+- **Renaming** a household category likewise changes one column on one row. Personal names
+  are the Person's own and are never touched by it.
 - **Merging** moves assignments from one household line to another and drops the emptied
   one — a household category holds no amounts, so an empty one is a name and nothing else.
   Household totals before and after a merge are the same money under a different heading.
@@ -253,8 +263,20 @@ Three rules hold it together:
   holds a figure for it keeps showing that figure — retiring can never hide money. Moving
   `active_from` earlier is what makes an older month enterable.
 
-Household lines belong to both People, so either may rename or merge them. A personal
-category is one Person's own naming, so only its owner may move or retire it.
+Both People administer both columns — the same rule that governs recording amounts. A
+Personal Category is still one Person's own naming, and the panel says whose each one is,
+but there is no read-only half of the screen.
+
+Two things are absent by design rather than unbuilt. **Type** is fixed at creation: a
+category does not change direction from month to month, and one that did would make every
+month before the change unreadable. And nothing is **deleted** — there is no `plan…Deletion`
+in the domain and no shape that drops a Personal Category, because the amounts recorded
+against one are still money that happened. `categories.test.ts` pins both absences, so
+adding either becomes a deliberate act with a failing test in front of it.
+
+That none of this moves money is checked where it would show: `year-grid.test.ts` renders
+the whole grid at all three levels across the whole history, before and after each
+operation, and compares the figures.
 
 ### Reading the trend
 

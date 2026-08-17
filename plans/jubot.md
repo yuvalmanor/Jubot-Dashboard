@@ -33,8 +33,9 @@ for terms like RSU, ACWI, IRR.
 | Path | Area |
 | --- | --- |
 | `/` | dashboard overview |
-| `/balance` | מאזן הכנסות-הוצאות — month entry and reading |
-| `/balance/categories` | category administration (personal, household, assignments) |
+| `/balance` | מאזן הכנסות-הוצאות — the year grid, and category administration beneath it |
+| `/balance/month` | one month's entry form (superseded `/balance`'s, [maazan-redesign](maazan-redesign.md) Phase 19) |
+| ~~`/balance/categories`~~ | *removed* — folded into the panel under `/balance` ([maazan-redesign](maazan-redesign.md) Phase 22) |
 | `/balance/insights` | trends, averages, deviations, year-over-year |
 | `/balance/import` | sheet import review (disposable) |
 | `/snapshots` | מיפוי — snapshot list and history |

@@ -127,7 +127,6 @@ export async function runImport(form: FormData): Promise<void> {
 
   revalidatePath("/balance");
   revalidatePath("/balance/month");
-  revalidatePath("/balance/categories");
   revalidatePath("/balance/import");
   backTo(outcome);
 }

@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 
 import { loadCategories } from "@/db/categories";
 import { saveMonthEntries } from "@/db/ledger";
@@ -12,6 +11,7 @@ import { type CalendarMonth, monthKey, tryParseMonthKey } from "@/domain/time/ca
 import { requireHouseholdEmail } from "@/session";
 
 import { closeOneMonth } from "./close-month";
+import { type ReturnTo, backToGrid, returnToFrom } from "./return-to";
 
 /**
  * The grid's two writes: one cell, and one month's closing.
@@ -40,39 +40,18 @@ interface Outcome {
   readonly zeros?: number;
 }
 
-/** Everything the reader had chosen about the table, carried through the write. */
-interface ReturnTo {
-  readonly year: string;
-  readonly view: string;
-  readonly sort: string;
-  readonly expand: string;
-}
-
 function readText(form: FormData, field: string): string {
   const value = form.get(field);
   return typeof value === "string" ? value : "";
 }
 
-function returnToFrom(form: FormData): ReturnTo {
-  return {
-    year: readText(form, "year"),
-    view: readText(form, "view"),
-    sort: readText(form, "sort"),
-    expand: readText(form, "expand"),
-  };
-}
-
 function backTo(returnTo: ReturnTo, outcome: Outcome): never {
-  const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(returnTo)) {
-    if (value.length > 0) params.set(key, value);
-  }
-  if (outcome.code !== null) params.set("error", outcome.code);
-  if (outcome.detail !== undefined) params.set("detail", outcome.detail);
-  if (outcome.closed !== undefined) params.set("closed", outcome.closed);
-  if (outcome.zeros !== undefined) params.set("zeros", String(outcome.zeros));
-  const query = params.toString();
-  redirect(query.length === 0 ? "/balance" : `/balance?${query}`);
+  backToGrid(returnTo, {
+    error: outcome.code ?? "",
+    detail: outcome.detail ?? "",
+    closed: outcome.closed ?? "",
+    zeros: outcome.zeros === undefined ? "" : String(outcome.zeros),
+  });
 }
 
 function failureFor(error: unknown): Outcome {

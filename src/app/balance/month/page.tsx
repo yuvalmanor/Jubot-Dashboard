@@ -382,7 +382,9 @@ function MonthNavigator({ month, view }: { month: CalendarMonth; view: string | 
           מגמות וממוצעים
         </Link>
 
-        <Link href="/balance/categories" className="text-sm text-stone-600 underline-offset-4 hover:underline">
+        {/* The panel lives under the year grid now, where a rename's consequences
+            are visible in the table above it. */}
+        <Link href="/balance?admin=1#categories" className="text-sm text-stone-600 underline-offset-4 hover:underline">
           ניהול קטגוריות
         </Link>
 

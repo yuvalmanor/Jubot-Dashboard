@@ -692,7 +692,7 @@ function CellEntryForm({
 }
 
 /** What a write carries so that it comes back to the exact view it was made from. */
-function ReturnToFields({ links }: { links: GridLinks }) {
+export function ReturnToFields({ links }: { links: GridLinks }) {
   return (
     <>
       {Object.entries(links.returnTo).map(([name, value]) => (
