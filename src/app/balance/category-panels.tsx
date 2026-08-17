@@ -20,6 +20,7 @@ import {
   renameHousehold,
   renamePersonal,
   setLifespan,
+  setWatched,
 } from "./category-actions";
 import { type GridLinks } from "./grid-links";
 import { ReturnToFields } from "./grid-panels";
@@ -307,11 +308,18 @@ function HouseholdCard({
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h4 className="text-base font-semibold">
           <bdi>{category.name}</bdi>
+          {category.watched ? (
+            <span className="ms-2 rounded bg-sky-100 px-2 py-0.5 text-xs font-normal text-sky-900">
+              במעקב תעריפים
+            </span>
+          ) : null}
         </h4>
         <span className="text-xs font-medium tracking-wide text-stone-500">
           {TYPE_LABELS[category.type]}
         </span>
       </div>
+
+      <WatchToggle category={category} links={links} />
 
       <p className="mt-2 text-sm text-stone-600">
         מוזנת מ־
@@ -385,6 +393,47 @@ function HouseholdCard({
         )}
       </div>
     </article>
+  );
+}
+
+/**
+ * The one flag that decides what מעקב תעריפים lists.
+ *
+ * It is on the household card and not on the personal rows because a rate paid
+ * half by each Person is one rate, and the panel sums both People automatically.
+ * Unticking posts nothing, which is exactly what "not watched" is — so the same
+ * form both flags and unflags, and neither is a special case.
+ *
+ * It writes one boolean. No amount moves, and the table above the panel reads
+ * identically before and after.
+ */
+function WatchToggle({ category, links }: { category: HouseholdCategory; links: GridLinks }) {
+  return (
+    <form action={setWatched} className="mt-3 flex flex-wrap items-center gap-3">
+      <ReturnToFields links={links} />
+      <input type="hidden" name="householdCategoryId" value={category.id} />
+      {/* An explicit pairing rather than a wrapping label: a bare checkbox whose
+          only value is "1" is announced as "1" by anything reading the page. */}
+      <input
+        id={`watched-${category.id}`}
+        type="checkbox"
+        name="watched"
+        value="1"
+        defaultChecked={category.watched}
+      />
+      <label htmlFor={`watched-${category.id}`} className="-ms-1.5 text-sm">
+        מעקב תעריפים
+      </label>
+      <button
+        type="submit"
+        className="rounded-md border border-stone-300 bg-white px-3 py-1 text-sm font-medium hover:bg-stone-50"
+      >
+        שמירת המעקב
+      </button>
+      <span className="text-xs text-stone-500">
+        מוסיף את השורה לפאנל שמתחת לטבלה. אינו מזיז שום סכום.
+      </span>
+    </form>
   );
 }
 

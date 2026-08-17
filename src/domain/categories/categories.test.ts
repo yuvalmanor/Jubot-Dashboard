@@ -17,6 +17,7 @@ import {
   allPersonalCategories,
   applyCreation,
   applyHouseholdRename,
+  applyHouseholdWatch,
   applyLifespan,
   applyMerge,
   applyPersonalCategoryRename,
@@ -32,9 +33,11 @@ import {
   personalCategoriesOf,
   planCategoryMerge,
   planHouseholdRename,
+  planHouseholdWatch,
   planLifespanChange,
   planPersonalCategoryCreation,
   planPersonalCategoryRename,
+  watchedHouseholdCategories,
 } from "./categories";
 
 const JANUARY_2025 = calendarMonth(2025, 1);
@@ -231,7 +234,7 @@ describe("no personal category is ever unassigned", () => {
             activeUntil: null,
           },
         ],
-        household: [{ id: "h-1", name: "חשמל", type: "expense" }],
+        household: [{ id: "h-1", name: "חשמל", type: "expense", watched: false }],
         assignments: [],
       }),
     ).toThrow(UnassignedPersonalCategoryError);
@@ -269,7 +272,7 @@ describe("no personal category is ever unassigned", () => {
             activeUntil: null,
           },
         ],
-        household: [{ id: "h-1", name: "משכורת", type: "income" }],
+        household: [{ id: "h-1", name: "משכורת", type: "income", watched: false }],
         assignments: [{ personalCategoryId: "p-1", householdCategoryId: "h-1" }],
       }),
     ).toThrow(CategoryTypeMismatchError);
@@ -289,8 +292,8 @@ describe("no personal category is ever unassigned", () => {
           },
         ],
         household: [
-          { id: "h-1", name: "חשמל", type: "expense" },
-          { id: "h-2", name: "בית", type: "expense" },
+          { id: "h-1", name: "חשמל", type: "expense", watched: false },
+          { id: "h-2", name: "בית", type: "expense", watched: false },
         ],
         assignments: [
           { personalCategoryId: "p-1", householdCategoryId: "h-1" },
@@ -313,7 +316,7 @@ describe("no personal category is ever unassigned", () => {
             activeUntil: calendarMonth(2025, 5),
           },
         ],
-        household: [{ id: "h-1", name: "חשמל", type: "expense" }],
+        household: [{ id: "h-1", name: "חשמל", type: "expense", watched: false }],
         assignments: [{ personalCategoryId: "p-1", householdCategoryId: "h-1" }],
       }),
     ).toThrow(MalformedCategoriesError);
@@ -582,6 +585,57 @@ describe("renaming a household category", () => {
     const before = healthHousehold();
     expect(() => planHouseholdRename(before, "h-yuval-health", "  ")).toThrow(InvalidCategoryNameError);
     expect(() => planHouseholdRename(before, "nope", "בריאות")).toThrow(UnknownCategoryError);
+  });
+});
+
+describe("watching a household category's rate", () => {
+  it("starts unwatched, so מעקב תעריפים is something somebody chose", () => {
+    const categories = healthHousehold();
+    expect(categories.household.every((category) => !category.watched)).toBe(true);
+    expect(watchedHouseholdCategories(categories)).toEqual([]);
+  });
+
+  it("flags one line and leaves every other one alone", () => {
+    const before = separateHealth();
+    const after = applyHouseholdWatch(before, planHouseholdWatch(before, "h-eden-food", true));
+
+    expect(watchedHouseholdCategories(after).map((category) => category.id)).toEqual(["h-eden-food"]);
+    expect(after.household.filter((category) => category.id !== "h-eden-food")).toEqual(
+      before.household.filter((category) => category.id !== "h-eden-food"),
+    );
+  });
+
+  it("unflags the same way it flags", () => {
+    const before = separateHealth();
+    const on = applyHouseholdWatch(before, planHouseholdWatch(before, "h-eden-food", true));
+    const off = applyHouseholdWatch(on, planHouseholdWatch(on, "h-eden-food", false));
+
+    expect(off).toEqual(before);
+  });
+
+  it("touches no personal category, no assignment and no name", () => {
+    const before = separateHealth();
+    const after = applyHouseholdWatch(before, planHouseholdWatch(before, "h-eden-food", true));
+
+    expect(after.personal).toEqual(before.personal);
+    expect(after.assignments).toEqual(before.assignments);
+    expect(after.household.map((category) => category.name)).toEqual(
+      before.household.map((category) => category.name),
+    );
+  });
+
+  it("refuses an unknown category rather than flagging nothing quietly", () => {
+    expect(() => planHouseholdWatch(healthHousehold(), "nope", true)).toThrow(UnknownCategoryError);
+  });
+
+  it("survives a rename, so a watched line stays watched under its new name", () => {
+    const before = applyHouseholdWatch(
+      healthHousehold(),
+      planHouseholdWatch(healthHousehold(), "h-yuval-health", true),
+    );
+    const renamed = applyHouseholdRename(before, planHouseholdRename(before, "h-yuval-health", "בריאות ורפואה"));
+
+    expect(findHouseholdCategory(renamed, "h-yuval-health")?.watched).toBe(true);
   });
 });
 

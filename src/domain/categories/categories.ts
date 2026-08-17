@@ -61,6 +61,15 @@ export interface HouseholdCategory {
   /** Its own name. Renaming it changes no personal name. */
   readonly name: string;
   readonly type: CategoryType;
+  /**
+   * Whether this line appears in מעקב תעריפים — a **Watched Category**.
+   *
+   * It sits at the household level and not on the personal rows because the
+   * question is about a rate the household pays, and a rate paid half by each
+   * Person is one rate. Nothing else reads it: flagging a category changes no
+   * amount, no assignment and no reading of the grid.
+   */
+  readonly watched: boolean;
 }
 
 export interface CategoryAssignment {
@@ -402,8 +411,10 @@ function resolveHousehold(
     throw new DuplicateCategoryNameError(name);
   }
 
+  // A new line is not watched. מעקב תעריפים is a deliberate act, and a panel that
+  // filled itself with every category ever created would be the grid again.
   return {
-    household: { id: newHouseholdId, name, type: request.type },
+    household: { id: newHouseholdId, name, type: request.type, watched: false },
     householdIsNew: true,
   };
 }
@@ -458,6 +469,46 @@ export function applyHouseholdRename(categories: Categories, rename: HouseholdCa
       category.id === rename.householdCategoryId ? { ...category, name: rename.name } : category,
     ),
   });
+}
+
+// --- watching a household category's rate ------------------------------------
+
+export interface HouseholdWatchChange {
+  readonly householdCategoryId: string;
+  readonly watched: boolean;
+}
+
+/**
+ * Put a Household Category into מעקב תעריפים, or take it out.
+ *
+ * One boolean on one row. It reaches no Personal Category, no assignment and no
+ * Entry, so the grid above the panel reads identically before and after — the
+ * flag decides what the panel *lists*, never what anything is worth.
+ */
+export function planHouseholdWatch(
+  categories: Categories,
+  householdCategoryId: string,
+  watched: boolean,
+): HouseholdWatchChange {
+  const target = findHouseholdCategory(categories, householdCategoryId);
+  if (target === undefined) {
+    throw new UnknownCategoryError(householdCategoryId);
+  }
+  return { householdCategoryId: target.id, watched };
+}
+
+export function applyHouseholdWatch(categories: Categories, change: HouseholdWatchChange): Categories {
+  return buildCategories({
+    ...categories,
+    household: categories.household.map((category) =>
+      category.id === change.householdCategoryId ? { ...category, watched: change.watched } : category,
+    ),
+  });
+}
+
+/** The Household Categories flagged for מעקב תעריפים, alphabetical in Hebrew. */
+export function watchedHouseholdCategories(categories: Categories): readonly HouseholdCategory[] {
+  return sortByName(categories.household.filter((category) => category.watched));
 }
 
 // --- renaming a personal category --------------------------------------------
@@ -621,7 +672,10 @@ function resolveMergeTarget(
     throw new DuplicateCategoryNameError(name);
   }
 
-  return { household: { id: newHouseholdId, name, type: first.type }, householdIsNew: true };
+  return {
+    household: { id: newHouseholdId, name, type: first.type, watched: false },
+    householdIsNew: true,
+  };
 }
 
 export function applyMerge(categories: Categories, merge: CategoryMerge): Categories {

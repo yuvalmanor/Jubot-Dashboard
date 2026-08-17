@@ -9,6 +9,7 @@ import { type Person, findPersonByEmail, listPeople } from "@/db/people";
 import { type Categories } from "@/domain/categories/categories";
 import { type Ledger, recordedYears } from "@/domain/ledger/ledger";
 import { type AnalyticsScope, HOUSEHOLD_SCOPE, personScope } from "@/domain/ledger/ledger-analytics";
+import { rateWatch } from "@/domain/ledger/rate-watch";
 import { type GridSort, DEFAULT_GRID_SORT, isGridSort, yearGrid } from "@/domain/ledger/year-grid";
 import {
   type CalendarMonth,
@@ -24,6 +25,7 @@ import { type CategoryErrorCode } from "./category-actions";
 import { CATEGORY_PANEL_ID, CategoryAdminPanel } from "./category-panels";
 import { type GridLinks, OPEN_CELL_ID, cellKey } from "./grid-links";
 import { ClosingPanel, YearGridTable, YearSummaryStrip } from "./grid-panels";
+import { RateWatchPanel } from "./rate-watch-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +43,11 @@ export const dynamic = "force-dynamic";
  * `/balance/month` when it is a משותף line summing two People — and a past month
  * that is missing figures says so on its own column heading, with the closing of
  * it one click away.
+ *
+ * Beneath the table sits מעקב תעריפים, which answers the question the grid does
+ * not: whether a price somebody set has moved. It is always on screen — both of
+ * the spreadsheet's attempts at it died of being somewhere nobody went — and every
+ * figure in it is a breakdown of money the table above already counts.
  *
  * And it is where the categories themselves are administered. That used to be a
  * route of its own, which meant every rename and every merge was made on a screen
@@ -204,6 +211,9 @@ function BalanceYear({
 }) {
   const scope = resolveScope(view, people);
   const grid = yearGrid(ledger, categories, scope, year, LEDGER_CURRENCY, today, { sort });
+  // The same year and the same clock as the grid, so the panel's monthly figures
+  // divide by exactly the months the aggregate column above it divides by.
+  const watch = rateWatch(ledger, categories, year, LEDGER_CURRENCY, today);
   const years = recordedYears(ledger);
   const state: GridState = { year, view, sort, expanded, admin };
   const peopleNames = new Map(people.map((person) => [person.id, person.displayName]));
@@ -234,6 +244,11 @@ function BalanceYear({
         openCell={openCell}
         links={linksFor(state)}
       />
+      {/* Directly beneath the table and never behind a link. Both of the sheet's
+          attempts at this question died of being somewhere nobody went, and at a
+          dozen rows there is nothing here to hide. It reads at household level
+          whatever tab the grid is on: a rate paid half by each Person is one rate. */}
+      <RateWatchPanel watch={watch} links={linksFor(state)} />
       {/* Beneath the table, so a rename or a merge is made with the rows it
           affects in view. Closed by default: it is a screenful of forms, and the
           question this screen is opened to ask is about the money. */}
@@ -522,6 +537,8 @@ const DONE_MESSAGES: Readonly<Record<string, string>> = {
   renamed: "שם הקטגוריה המשותפת שונה. אף קטגוריה אישית לא השתנתה.",
   merged: "השיוך עודכן. כל הרישומים נשמרו כפי שהיו — אותו כסף תחת כותרת אחרת.",
   lifespan: "תקופת הפעילות עודכנה. חודשים שכבר נרשמו ממשיכים להיקרא כרגיל.",
+  watched: "הקטגוריה נוספה למעקב תעריפים. שום סכום לא זז — הפאנל קורא את אותם רישומים.",
+  unwatched: "הקטגוריה הוסרה ממעקב תעריפים. שום סכום לא זז.",
 };
 
 function Notices({

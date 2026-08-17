@@ -8,6 +8,7 @@ import {
   loadCategories,
   renameHouseholdCategory,
   renamePersonalCategory,
+  setHouseholdCategoryWatched,
   setPersonalCategoryLifespan,
 } from "@/db/categories";
 import { findPersonByEmail, listPeople } from "@/db/people";
@@ -19,11 +20,13 @@ import {
   InvalidLifespanError,
   InvalidMergeError,
   UnknownCategoryError,
+  findHouseholdCategory,
   findPersonalCategory,
   isCategoryType,
   personalCategoriesOf,
   planCategoryMerge,
   planHouseholdRename,
+  planHouseholdWatch,
   planLifespanChange,
   planPersonalCategoryCreation,
   planPersonalCategoryRename,
@@ -201,6 +204,28 @@ export async function renameHousehold(form: FormData): Promise<void> {
     );
     await renameHouseholdCategory(rename);
     return { code: null, done: `renamed:${rename.name}` };
+  });
+}
+
+/**
+ * Put a household line into מעקב תעריפים, or take it out.
+ *
+ * The form posts the state it wants rather than the word "toggle", so a stale
+ * page cannot flip a flag somebody else has already flipped: pressing the button
+ * on a screen drawn before the change lands on the state that screen was showing,
+ * which is the state the person meant.
+ *
+ * It writes one boolean and reaches no amount, so the grid above the panel reads
+ * identically before and after.
+ */
+export async function setWatched(form: FormData): Promise<void> {
+  await run(form, async () => {
+    const categories = await loadCategories();
+    const watched = readText(form, "watched") === "1";
+    const change = planHouseholdWatch(categories, readText(form, "householdCategoryId"), watched);
+    const category = findHouseholdCategory(categories, change.householdCategoryId);
+    await setHouseholdCategoryWatched(change);
+    return { code: null, done: `${watched ? "watched" : "unwatched"}:${category?.name ?? ""}` };
   });
 }
 

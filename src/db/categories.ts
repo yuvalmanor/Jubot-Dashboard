@@ -5,6 +5,7 @@ import {
   type CategoryMerge,
   type HouseholdCategory,
   type HouseholdCategoryRename,
+  type HouseholdWatchChange,
   type PersonalCategory,
   type PersonalCategoryCreation,
   type PersonalCategoryRename,
@@ -37,6 +38,7 @@ interface HouseholdCategoryRow extends Record<string, unknown> {
   id: string;
   name: string;
   type: string;
+  watched: boolean;
 }
 
 interface AssignmentRow extends Record<string, unknown> {
@@ -69,7 +71,7 @@ function toHouseholdCategory(row: HouseholdCategoryRow): HouseholdCategory {
   if (!isCategoryType(row.type)) {
     throw new MalformedCategoryRowError(row.id, `unknown category type ${row.type}`);
   }
-  return { id: row.id, name: row.name, type: row.type };
+  return { id: row.id, name: row.name, type: row.type, watched: row.watched };
 }
 
 function toAssignment(row: AssignmentRow): CategoryAssignment {
@@ -89,7 +91,7 @@ export async function loadCategories(): Promise<Categories> {
               to_char(active_until, 'YYYY-MM') as active_until
          from personal_categories`,
     ),
-    query<HouseholdCategoryRow>(`select id, name, type from household_categories`),
+    query<HouseholdCategoryRow>(`select id, name, type, watched from household_categories`),
     query<AssignmentRow>(`select personal_category_id, household_category_id from category_assignments`),
   ]);
 
@@ -146,6 +148,18 @@ export async function renamePersonalCategory(rename: PersonalCategoryRename): Pr
   await query(`update personal_categories set name = $2 where id = $1`, [
     rename.personalCategoryId,
     rename.name,
+  ]);
+}
+
+/**
+ * Put a household line into מעקב תעריפים, or take it out. One boolean on one row:
+ * `entries` is not mentioned here, and the panel derives every figure it shows
+ * from the same amounts the grid above already reads.
+ */
+export async function setHouseholdCategoryWatched(change: HouseholdWatchChange): Promise<void> {
+  await query(`update household_categories set watched = $2 where id = $1`, [
+    change.householdCategoryId,
+    change.watched,
   ]);
 }
 

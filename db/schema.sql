@@ -64,6 +64,12 @@ create table if not exists household_categories (
   unique (id, type)
 );
 
+-- מעקב תעריפים: whether this line appears in the Rate Watch panel below the year
+-- grid. A flag over the taxonomy and not over the money — nothing derived from it
+-- is ever added to a מאזן total, because the amounts it points at are already
+-- counted there.
+alter table household_categories add column if not exists watched boolean not null default false;
+
 -- Owned by exactly one Person, using that Person's own naming. Retirement is a
 -- lifespan (active_until), never a delete — history must keep resolving.
 create table if not exists personal_categories (
