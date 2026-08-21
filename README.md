@@ -72,10 +72,13 @@ they are* — it is what connects a Google account to that Person's categories a
 The two must agree. `db/seed.sql` ships the same placeholder addresses as `.env.example`;
 on a real instance put the two real addresses in both places:
 
-```sql
-update people set email = 'yuval@…' where id = 'yuval';
-update people set email = 'eden@…'  where id = 'eden';
+```bash
+npm run db:person -- yuval yuval@…
 ```
+
+That writes one column on one row and prints both back. The seed never overwrites a
+configured address — `email` is deliberately absent from its upsert — so applying a
+schema change later cannot sign either Person out of their own ledger.
 
 An allowed address with no matching Person row gets a signed-in shell that says so, rather
 than someone else's ledger.
@@ -108,10 +111,11 @@ is lost by it — no route renders data without a session.
    `DATABASE_SSL` is not needed — TLS is on for every host except localhost.
 2. **The two People.** `db/seed.sql` ships placeholder addresses; put the two real ones on
    the rows, or a sign-in lands in a signed-in shell with no ledger behind it:
-   ```sql
-   update people set email = 'yuval@…' where id = 'yuval';
-   update people set email = 'eden@…'  where id = 'eden';
+   ```bash
+   npm run db:person -- yuval yuval@…
    ```
+   Once per Person, against the same `DATABASE_URL` step 1 used. Re-running `db:apply`
+   afterwards leaves the addresses alone.
 3. **Import the repository into Vercel** (Hobby plan). The framework preset, build command
    and output directory are all detected; nothing needs overriding.
 4. **Environment variables**, on Production and Preview both:

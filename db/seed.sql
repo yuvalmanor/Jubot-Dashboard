@@ -16,13 +16,19 @@ on conflict (base, quote, as_of) do update
 
 -- The two People. `email` is the link from a Google sign-in to a Person, so on a
 -- deployed instance these must be the two real addresses — the same two that are
--- in JUBOT_ALLOWED_EMAILS. The placeholders below match .env.example.
+-- in JUBOT_ALLOWED_EMAILS. The placeholders below match .env.example, and are what
+-- an empty database starts with (see README for how to put the real ones on).
+--
+-- `email` is deliberately **not** in the update. This file is what `npm run db:apply`
+-- runs to apply a schema change, so an upsert that reset the address would sign both
+-- People out of their own ledger every time the schema moved — the row would survive
+-- and stop matching the account that owns it. It did exactly that once. A configured
+-- address is a fact about the deployment; nothing that ships a table may overwrite it.
 insert into people (id, display_name, email)
 values ('yuval', 'יובל', 'yuval@example.com'),
        ('eden',  'עדן',  'eden@example.com')
 on conflict (id) do update
-  set display_name = excluded.display_name,
-      email        = excluded.email;
+  set display_name = excluded.display_name;
 
 -- No categories are seeded. Every Personal Category is named by the Person who
 -- owns it, and creating one always creates or joins a Household Category.
