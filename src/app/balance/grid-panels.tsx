@@ -129,10 +129,27 @@ const PINNED_END = "sticky z-20";
 const PINNED_TOP = "sticky top-0 z-30";
 const PINNED_TOP_START = "sticky start-0 top-0 z-40";
 const PINNED_TOP_END = "sticky top-0 z-40";
-/** The foot — חיסכון. */
-const PINNED_BOTTOM = "sticky bottom-0 z-30";
-const PINNED_BOTTOM_START = "sticky start-0 bottom-0 z-40";
-const PINNED_BOTTOM_END = "sticky bottom-0 z-40";
+/**
+ * The foot — סה״כ הכנסות, סה״כ הוצאות and חיסכון, stacked. Each row carries its
+ * own offset, the way the two aggregate columns each carry their own.
+ */
+const PINNED_BOTTOM = "sticky z-30";
+const PINNED_BOTTOM_START = "sticky start-0 z-40";
+const PINNED_BOTTOM_END = "sticky z-40";
+
+/**
+ * How tall one foot row is, and therefore how far apart the three are pinned.
+ *
+ * The three sit one above the other, so each offset is a multiple of this and a
+ * row taller than it claims would cover the row above. They are told their
+ * height rather than taking it from their content — which is why חיסכון's
+ * "הכנסות − הוצאות, מחושב בקריאה" note now lives in the legend: a second line in
+ * one of the three would push the other two out of true.
+ */
+const FOOT_ROW = "2.5rem";
+
+/** The three foot rows, bottom-most first. */
+const FOOT_OFFSETS = ["0rem", FOOT_ROW, `calc(2 * ${FOOT_ROW})`] as const;
 
 export function YearGridTable({
   grid,
@@ -167,7 +184,8 @@ export function YearGridTable({
       <p id={TABLE_LEGEND_ID} className="px-4 py-3 text-start text-sm text-stone-500">
         כל הסכומים בשקלים. <span className="text-stone-400">—</span> פירושו שהחודש לא נרשם; 0 פירושו
         שנרשם אפס. סימון בתא פירושו חריגה מהממוצע של אותה שורה. לחיצה על תא פותחת אותו לרישום, או
-        מובילה לחודש עצמו כששורה משותפת מסכמת את שני בני הבית.
+        מובילה לחודש עצמו כששורה משותפת מסכמת את שני בני הבית. שלוש שורות הסיכום נעוצות לתחתית
+        החלון; חיסכון הוא הכנסות פחות הוצאות, מחושב בקריאה.
       </p>
 
       {/* The window: both axes scroll here, and it is the containing block every
@@ -223,7 +241,6 @@ export function YearGridTable({
           <Band
             band={grid.income}
             title="הכנסות"
-            subtotal="סה״כ הכנסות"
             expanded={expanded}
             peopleNames={peopleNames}
             openCell={openCell}
@@ -232,34 +249,21 @@ export function YearGridTable({
           <Band
             band={grid.expenses}
             title="הוצאות"
-            subtotal="סה״כ הוצאות"
             expanded={expanded}
             peopleNames={peopleNames}
             openCell={openCell}
             links={links}
           />
 
-          {/* Pinned to the foot of the window. הכנסות − הוצאות is the line the
-              year is read for, and in a window this short it would otherwise be
-              the one line only a scroll to the very bottom could show. */}
+          {/* All three pinned to the foot, stacked. חיסכון is the line the year is
+              read for, and it is never read on its own: a saving that moved is a
+              question about which of the two above it moved. Each band used to
+              carry its own subtotal, which put the two of them a scroll apart and
+              left חיסכון quoting figures that were off the screen. */}
           <tfoot>
-            <tr>
-              <th
-                scope="row"
-                className={`${PINNED_BOTTOM_START} ${CATEGORY_PADDING} border-t-2 border-stone-300 bg-stone-50 py-2 text-start font-semibold`}
-              >
-                חיסכון
-                <span className="block text-xs font-normal text-stone-500">
-                  הכנסות − הוצאות, מחושב בקריאה
-                </span>
-              </th>
-              <SummaryCells
-                summary={grid.saving}
-                tone="bg-stone-50"
-                top="border-t-2 border-stone-300"
-                pinned
-              />
-            </tr>
+            <FootRow label="סה״כ הכנסות" summary={grid.income.total} offset={FOOT_OFFSETS[2]} />
+            <FootRow label="סה״כ הוצאות" summary={grid.expenses.total} offset={FOOT_OFFSETS[1]} />
+            <FootRow label="חיסכון" summary={grid.saving} offset={FOOT_OFFSETS[0]} lead />
           </tfoot>
         </table>
       </div>
@@ -356,7 +360,6 @@ function ClosingNote({ column, links }: { column: GridMonth; links: GridLinks })
 function Band({
   band,
   title,
-  subtotal,
   expanded,
   peopleNames,
   openCell,
@@ -364,7 +367,6 @@ function Band({
 }: {
   band: GridBand;
   title: string;
-  subtotal: string;
   expanded: boolean;
   peopleNames: ReadonlyMap<string, string>;
   openCell: string | null;
@@ -394,17 +396,41 @@ function Band({
           links={links}
         />
       ))}
-
-      <tr>
-        <th
-          scope="row"
-          className={`${PINNED_START} ${CATEGORY_PADDING} border-t border-stone-200 bg-stone-50 py-2 text-start font-semibold`}
-        >
-          {subtotal}
-        </th>
-        <SummaryCells summary={band.total} tone="bg-stone-50" top="border-t border-stone-200" />
-      </tr>
     </tbody>
+  );
+}
+
+/**
+ * One of the three pinned foot rows.
+ *
+ * `offset` is its place in the stack, counted from the foot of the window.
+ * The height is set rather than inherited; `FOOT_ROW` says why.
+ */
+function FootRow({
+  label,
+  summary,
+  offset,
+  lead = false,
+}: {
+  label: string;
+  summary: GridSummaryRow;
+  offset: string;
+  /** חיסכון: the line the year is read for, and the one given the heavier rule. */
+  lead?: boolean;
+}) {
+  const top = lead ? "border-t-2 border-stone-300" : "border-t border-stone-200";
+
+  return (
+    <tr style={{ height: FOOT_ROW }}>
+      <th
+        scope="row"
+        className={`${PINNED_BOTTOM_START} ${CATEGORY_PADDING} ${top} bg-stone-50 py-2 text-start font-semibold`}
+        style={{ insetBlockEnd: offset }}
+      >
+        {label}
+      </th>
+      <SummaryCells summary={summary} tone="bg-stone-50" top={top} foot={offset} />
+    </tr>
   );
 }
 
@@ -523,43 +549,30 @@ function ContributionRow({
 }
 
 /**
- * The twelve cells and the two aggregates of a subtotal or of חיסכון.
+ * The twelve cells and the two aggregates of one of the three foot rows.
  *
- * `pinned` is חיסכון, held at the foot of the window. A pinned row has the rest of
- * the table sliding underneath it, so its cells have to carry the row's own
- * background — a subtotal in the middle of the scroll can leave a past month
- * transparent over the table's white, and this row cannot.
+ * `foot` is how far above the foot of the window this row is pinned. All three
+ * have the rest of the table sliding underneath them, so their cells have to
+ * carry the row's own background: a month that scrolled past would otherwise
+ * show through the table's white.
  */
 function SummaryCells({
   summary,
   tone,
   top,
-  pinned = false,
+  foot,
 }: {
   summary: GridSummaryRow;
   tone: string;
   top: string;
-  pinned?: boolean;
+  foot: string;
 }) {
   return (
     <>
       {summary.cells.map((cell) => (
-        <Cell
-          key={cell.month.month}
-          cell={cell}
-          top={top}
-          tone={pinned ? tone : ""}
-          pinBottom={pinned}
-          emphasis
-        />
+        <Cell key={cell.month.month} cell={cell} top={top} tone={tone} foot={foot} emphasis />
       ))}
-      <AggregateCells
-        aggregate={summary.aggregate}
-        tone={tone}
-        top={top}
-        pinBottom={pinned}
-        emphasis
-      />
+      <AggregateCells aggregate={summary.aggregate} tone={tone} top={top} foot={foot} emphasis />
     </>
   );
 }
@@ -578,31 +591,31 @@ function AggregateCells({
   top,
   emphasis = false,
   muted = false,
-  pinBottom = false,
+  foot,
 }: {
   aggregate: GridRow["aggregate"];
   tone: string;
   top: string;
   emphasis?: boolean;
   muted?: boolean;
-  /** On חיסכון, where these two are pinned to the end edge *and* to the foot. */
-  pinBottom?: boolean;
+  /** On a foot row, where these two are pinned to the end edge *and* to the foot. */
+  foot?: string;
 }) {
   const weight = emphasis ? "font-semibold" : "";
   const size = muted ? "py-1.5 text-xs text-stone-600" : "py-2";
-  const pin = pinBottom ? PINNED_BOTTOM_END : PINNED_END;
+  const pin = foot === undefined ? PINNED_END : PINNED_BOTTOM_END;
 
   return (
     <>
       <td
         className={`${pin} ${AGGREGATE_PADDING} ${top} ${tone} ${weight} ${size} border-s border-stone-200 text-end`}
-        style={{ insetInlineEnd: AGGREGATE_WIDTH }}
+        style={{ insetInlineEnd: AGGREGATE_WIDTH, insetBlockEnd: foot }}
       >
         <bdi className="tabular">{format(aggregate.total, { withSymbol: false })}</bdi>
       </td>
       <td
         className={`${pin} ${AGGREGATE_PADDING} ${top} ${tone} ${weight} ${size} text-end`}
-        style={{ insetInlineEnd: 0 }}
+        style={{ insetInlineEnd: 0, insetBlockEnd: foot }}
       >
         <bdi className="tabular">
           {aggregate.amount === null
@@ -654,7 +667,7 @@ function Cell({
   tone = "",
   emphasis = false,
   muted = false,
-  pinBottom = false,
+  foot,
   entry,
 }: {
   cell: GridCell;
@@ -663,7 +676,8 @@ function Cell({
   tone?: string;
   emphasis?: boolean;
   muted?: boolean;
-  pinBottom?: boolean;
+  /** On a foot row, how far above the foot of the window it is pinned. */
+  foot?: string;
   entry?: CellEntry;
 }) {
   // Opaque throughout: these cells sit beside pinned columns, and a translucent
@@ -675,15 +689,16 @@ function Cell({
         ? "bg-stone-50"
         : tone;
   const size = muted ? "py-1.5 text-xs text-stone-600" : "py-2";
-  const pin = pinBottom ? PINNED_BOTTOM : "";
+  const pin = foot === undefined ? "" : PINNED_BOTTOM;
   const className = `${pin} ${CELL_PADDING} ${top} ${tint} ${size} text-end ${emphasis ? "font-semibold" : ""}`;
+  const style = foot === undefined ? undefined : { insetBlockEnd: foot };
   const mark = cell.deviation === null ? null : DEVIATION_MARK[cell.deviation];
 
   if (entry !== undefined && entry.open && cell.writesTo !== null) {
     // The id the link that opened it pointed at, so the window over the table is
     // scrolled to the field rather than to the top of the year.
     return (
-      <td id={OPEN_CELL_ID} className={className}>
+      <td id={OPEN_CELL_ID} className={className} style={style}>
         <CellEntryForm cell={cell} entry={entry} categoryId={cell.writesTo} />
       </td>
     );
@@ -707,7 +722,11 @@ function Cell({
       </>
     );
 
-  return <td className={className}>{withDestination(figure, cell, entry)}</td>;
+  return (
+    <td className={className} style={style}>
+      {withDestination(figure, cell, entry)}
+    </td>
+  );
 }
 
 /**

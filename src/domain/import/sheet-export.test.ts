@@ -118,7 +118,12 @@ describe("parsing the real export", () => {
     const row = rowOf(blockOf(blocks, "עדן", 2026), "אוכל בחוץ");
     expect(row.cells[0]).toEqual({ kind: "blank" });
 
-    const zeroCell = rowOf(blockOf(blocks, "עדן", 2026), 'שכ"ד').cells[7];
+    // יובל's צביקה in May 2026: a month that is closed and really was zero. עדן's
+    // שכ"ד used to serve here, until she filled August and the cell stopped being
+    // one. The 2026 tab's trailing zeros cannot stand in for it — those are the
+    // formula zeros for months that have not happened, which is the other half of
+    // the distinction this test is about.
+    const zeroCell = rowOf(blockOf(blocks, "יובל", 2026), "צביקה").cells[4];
     expect(zeroCell).toEqual({
       kind: "amount",
       text: "0",

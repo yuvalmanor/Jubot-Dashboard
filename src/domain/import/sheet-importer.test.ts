@@ -73,7 +73,7 @@ describe("what the import covers", () => {
   it("reads the tabs in the supported layout as one continuous span", () => {
     expect(PROPOSAL.span).toEqual({
       from: calendarMonth(2024, 7),
-      to: calendarMonth(2026, 7),
+      to: calendarMonth(2026, 10),
     });
   });
 
@@ -81,13 +81,20 @@ describe("what the import covers", () => {
     // The 2026 tab carries formula zeros for months that have not happened. A zero
     // is a recorded fact, so these cannot be imported and cannot be told from real
     // ones by their value — the boundary is where the tab stops saying anything.
-    expect(PROPOSAL.entries.some((entry) => entry.month.year === 2026 && entry.month.month > 7)).toBe(
-      false,
-    );
+    expect(
+      PROPOSAL.entries.some((entry) => entry.month.year === 2026 && entry.month.month > 10),
+    ).toBe(false);
     expect(PROPOSAL.flags).toContainEqual({
       kind: "unrecorded-tail",
       banner: "הוצאות חודשיות - יובל (2026)",
-      from: calendarMonth(2026, 8),
+      from: calendarMonth(2026, 11),
+    });
+    // The two people are not filled in lockstep, and the boundary is per block:
+    // עדן had not recorded October when this export was taken.
+    expect(PROPOSAL.flags).toContainEqual({
+      kind: "unrecorded-tail",
+      banner: "הוצאות חודשיות - עדן (2026)",
+      from: calendarMonth(2026, 10),
     });
   });
 

@@ -16,3 +16,6 @@ next-env.d.ts
 
 # The local PGlite data directory (npm run db:local).
 .pglite/
+
+# Hand-exported copies of the household Google Sheet, read by the importer. Not committed.
+.sheet-import/
