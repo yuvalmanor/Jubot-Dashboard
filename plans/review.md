@@ -57,19 +57,62 @@ control that looks like a way out, next to where the mode was entered.
 A complete dated restatement of every Account, with history, comparison and derived
 currency tables.
 
-**Verdict:** _pending_
+**Verdict:** מספק, with one defect. **Lowest priority of the eight** — Yuval: "for now
+this is good enough, the צילום feature has the lowest priority". Nothing here is to be
+redesigned before the areas that still have no verdict.
+
+The one thing to carry forward: **the צילום חדש entry boxes are not aligned.**
+
+Checked on 2026-11-06. The form is `grid gap-4 sm:grid-cols-4`, so its four fields share
+one row, but their inputs sit on two different baselines 32px apart: תאריך and הערה at
+one height, שער USD/ILS and מחיר מניית RSU a line lower. The cause is the help text
+between each label and its input — "נשמר על הצילום ולא ישתנה אחר כך" and "דולרים
+למניה — נשמר על הצילום כמו השער". Two fields carry it and two do not, so two labels
+are a line taller and push their inputs down. A grid row does not align what is inside its
+cells, only the cells.
+
+Three ways out, and the choice is the design question below in miniature: align the cells'
+contents (`items-end`, or each cell a column with the input at its foot), move the help
+text under the input where its height is nobody else's problem, or drop the help text from
+the form and say it once above. The third is the one that answers "נקי וחלק".
 
 ### שווי נטו — `/net-worth`
 
 Trajectory, currency exposure, allocation, change decomposition.
 
-**Verdict:** _pending_
+**Verdict:** מספק. Low priority — Yuval: "כמו מקודם, מספיק טוב כרגע, בעדיפות
+נמוכה". No specific defect named.
 
 ### נכסים ופרוייקטים — `/projects`
 
 Funding legs, expenses, the closed pot and its balance.
 
-**Verdict:** _pending_
+**Verdict:** שבור. The first area of the eight to need a redesign, and the first with a
+scope gap rather than only a presentation one.
+
+Yuval: "כל הפיצ'ר הזה לא ברור הרמת המימוש שלו, גם כשנכנסים לכרטיסייה של כל
+פרויקט זה מסורבל וגם המבט הכללי ואופן ההכנסה. אני רוצה שתחשוב על דשבורד של
+פרויקט אבל לא מורכב מידי, כזה שמפרט גורמי מימון, הוצאות הכנסות ועדכוני צמיחה".
+
+Three complaints, and they are not the same complaint:
+
+- **The project page is clumsy.** Seven stacked sections, each with a paragraph of prose
+  before it, two tables each with its own four-field form underneath, then a deal-terms
+  form and a project-definition form. Everything the feature knows is on one page at one
+  level of emphasis.
+- **The overview is clumsy.** Each project is three stat tiles and two sentences, which
+  takes a card the height of a screen to say what one line could.
+- **Entry is clumsy.** Every band's form is a separate block below its table rather than a
+  row of it, so adding a leg means leaving the table that shows the legs.
+
+And two things he asked for **do not exist in the model at all**:
+
+- **הכנסות.** A project can be funded and spent, but nothing records what it has paid
+  back. A distribution that arrives today has nowhere to go.
+- **עדכוני צמיחה.** Nothing records a project being worth more than it cost — which is
+  [[ADR 0003]] on purpose, not an oversight.
+
+The design is in `plans/project-dashboard.md`, with the two decisions those gaps force.
 
 ### מחשבון RSU — `/rsu`
 

@@ -1,5 +1,11 @@
 # Illiquid assets are held at cost and never re-valued
 
+> **Superseded on 2026-11-06 by [0005](0005-illiquid-assets-carry-their-latest-stated-valuation.md).** The premise below —
+> that no valuation exists and none will be sought — was wrong: the CGM homes are
+> re-appraised every few years and Meteor's sponsor reports growth. Kept because the
+> distinction it draws between a measured figure and an invented one is the reason
+> Value Basis exists, and 0005 leans on it.
+
 Real-estate projects are more than half the household's non-pension capital, and a
 dashboard that never marks them to market looks like an omission. It is deliberate.
 

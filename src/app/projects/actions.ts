@@ -105,12 +105,12 @@ function failureFor(error: unknown): Omit<Outcome, "projectId"> {
     return {
       code: "overdrawn",
       detail:
-        `בפוט יש ${format(error.balance)}, וההוצאה מבקשת ${format(error.attempted)} — ` +
+        `בקופה יש ${format(error.balance)}, וההוצאה מבקשת ${format(error.attempted)} — ` +
         `חסרים ${format(error.shortfall)}.`,
     };
   }
   if (error instanceof FundingLegRequiredError) {
-    return { code: "leg-required", detail: `בלעדיה יחסרו בפוט ${format(error.shortfall)}.` };
+    return { code: "leg-required", detail: `בלעדיה יחסרו בקופה ${format(error.shortfall)}.` };
   }
   if (error instanceof InvalidProjectError) return { code: "bad-project", detail: error.message };
   if (error instanceof UnknownProjectError) return { code: "unknown-project" };

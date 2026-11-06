@@ -92,7 +92,7 @@ export default async function ProjectPage({
         email={email}
         person={loaded.kind === "ok" ? loaded.person : null}
         title={loaded.kind === "ok" ? loaded.reading.project.name : "פרוייקט"}
-        subtitle="פוט סגור — רגלי מימון ממלאות, הוצאות נמשכות"
+        subtitle="קופה סגורה — רגלי מימון ממלאות, הוצאות נמשכות"
         back={{ href: "/projects", label: "חזרה לרשימת הפרוייקטים" }}
       />
 
@@ -176,7 +176,7 @@ function PotPanel({ reading }: { reading: ProjectReading }) {
 
   return (
     <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <h2 className="text-sm font-semibold tracking-wide text-stone-500">הפוט</h2>
+      <h2 className="text-sm font-semibold tracking-wide text-stone-500">הקופה</h2>
 
       <dl className="mt-3 grid gap-4 sm:grid-cols-3">
         <div>
@@ -202,7 +202,7 @@ function PotPanel({ reading }: { reading: ProjectReading }) {
       <p className="mt-4 text-xs text-stone-500">
         היתרה מחושבת בכל קריאה כ־<bdi className="tabular">Σ(רגלי מימון) − Σ(הוצאות)</bdi> ואינה נשמרת
         בשום מקום, ולכן אין רצף פעולות שיכול להשאיר אותה חלוקה על השורות שמתחתיה. הוצאה גדולה מהיתרה
-        נדחית: הכנסת כסף נוסף לפוט היא רגל מימון חדשה, ולא הוצאה גדולה יותר.
+        נדחית: הכנסת כסף נוסף לקופה היא רגל מימון חדשה, ולא הוצאה גדולה יותר.
       </p>
     </section>
   );
@@ -284,8 +284,8 @@ function LegsPanel({ reading }: { reading: ProjectReading }) {
     <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
       <h2 className="text-sm font-semibold tracking-wide text-stone-500">רגלי מימון</h2>
       <p className="mt-1 text-sm text-stone-600">
-        כל מקור שמימן את הפרוייקט, במטבע שבו שולם בפועל. הוספת כסף לפוט היא הוספת רגל — אין דרך אחרת,
-        וזה מה שמונע מהפוט להתמלא בלי שיהיה כתוב מאיפה.
+        כל מקור שמימן את הפרוייקט, במטבע שבו שולם בפועל. הוספת כסף לקופה היא הוספת רגל — אין דרך אחרת,
+        וזה מה שמונע מהקופה להתמלא בלי שיהיה כתוב מאיפה.
       </p>
 
       {legs.length === 0 ? (
@@ -299,7 +299,7 @@ function LegsPanel({ reading }: { reading: ProjectReading }) {
                 <th className="py-2 text-start font-medium">תאריך</th>
                 <th className="py-2 text-end font-medium">כפי ששולם</th>
                 <th className="py-2 text-end font-medium">שער</th>
-                <th className="py-2 text-end font-medium">בפוט</th>
+                <th className="py-2 text-end font-medium">בקופה</th>
                 <th className="py-2" />
               </tr>
             </thead>
@@ -365,7 +365,7 @@ function ExpensesPanel({ reading }: { reading: ProjectReading }) {
     <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
       <h2 className="text-sm font-semibold tracking-wide text-stone-500">ספר ההוצאות</h2>
       <p className="mt-1 text-sm text-stone-600">
-        מה הוצא ועל מה. הוצאה נמשכת <span className="font-medium">מתוך</span> הפוט ולעולם לא מוסיפה לו,
+        מה הוצא ועל מה. הוצאה נמשכת <span className="font-medium">מתוך</span> הקופה ולעולם לא מוסיפה לה,
         ולכן היתרה יורדת בדיוק בסכום שנרשם. נשארו <bdi className="tabular">{format(pot.balance)}</bdi>{" "}
         להוציא.
       </p>
@@ -381,7 +381,7 @@ function ExpensesPanel({ reading }: { reading: ProjectReading }) {
                 <th className="py-2 text-start font-medium">תאריך</th>
                 <th className="py-2 text-end font-medium">כפי ששולם</th>
                 <th className="py-2 text-end font-medium">שער</th>
-                <th className="py-2 text-end font-medium">מהפוט</th>
+                <th className="py-2 text-end font-medium">מהקופה</th>
                 <th className="py-2" />
               </tr>
             </thead>
@@ -774,7 +774,7 @@ function DefinitionPanel({
       </form>
 
       <p className="mt-3 text-xs text-stone-500">
-        מטבע הפוט (<bdi>{project.currency}</bdi>) אינו ניתן לשינוי — שינוי שלו היה משנה את המטבע של כל
+        מטבע הקופה (<bdi>{project.currency}</bdi>) אינו ניתן לשינוי — שינוי שלו היה משנה את המטבע של כל
         רגל וכל הוצאה שכבר נרשמו בו, ואת המשמעות של השער הרשום לצידן.{" "}
         <Link href="/accounts" className="underline underline-offset-4">
           ניהול החשבונות

@@ -57,8 +57,9 @@ _Avoid_: mapping of categories, balance sheet, net worth
 
 **Value Basis** (בסיס השווי):
 How an Account's value was arrived at: שווי שוק (an exact market figure), עלות (what was
-put in, never re-assessed), or הערכה (someone's judgement). Real estate is held at עלות
-because no current valuation exists and none will be sought.
+put in), or הערכה (someone's judgement). Real estate reads at עלות until something is
+stated about it — a re-appraisal is שווי שוק, a sponsor's own report of growth is הערכה
+(ADR 0005).
 _Avoid_: valuation method, source
 
 **Funding Leg** (רגל מימון):
@@ -94,10 +95,30 @@ _Avoid_: row, cell, record, line item
 ### Projects and holdings
 
 **Project** (פרוייקט):
-A closed pot of capital with a name and a purpose — CGM 1, CGM 2, Meteor 6. Its Funding
+A closed Pot of capital with a name and a purpose — CGM 1, CGM 2, Meteor 6. Its Funding
 Legs fill it, its Expenses drain it, and `יתרה = legs − expenses`. Expenses are always paid
-*out of* the pot, never added to it; putting more money in means adding a Funding Leg.
+*out of* the Pot, never added to it; putting more money in means adding a Funding Leg.
 _Avoid_: investment, deal, asset
+
+**Pot** (קופה):
+The capital inside one Project, in the one currency that Project is run in. It has a
+balance, it is filled and drained, and it is closed: it cannot go below zero and cannot be
+topped up except by a Funding Leg.
+_Avoid_: פוט (the English word in Hebrew letters, which is what this was called and reads
+as a transliteration rather than as Hebrew), קרן (taken: קרן השתלמות, קרן כספית, and
+"principal"), חשבון (taken: that is an Account in מיפוי)
+
+**Valuation** (עדכון שווי):
+A dated, sourced statement of what a Project is worth now — a re-appraisal, or the
+sponsor's own report. It is an event, not a running number: nothing extrapolates between
+two of them, and a Project reads the last one stated. Per ADR 0005 it carries a Value
+Basis, which is what separates an appraisal from the sponsor's word.
+_Avoid_: growth, appreciation, mark-to-market
+
+**Distribution** (חלוקה):
+Money a Project pays back. It leaves the Pot and lands in an Account, so it never changes
+`יתרה` — that figure answers what is left to deploy, never what has been earned.
+_Avoid_: income, return, profit, dividend
 
 **Position** (החזקה):
 What an Account is invested in — `1159235 ACWI`, `1209220 FTSE`. Answers "what did we buy".

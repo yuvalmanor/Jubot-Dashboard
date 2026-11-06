@@ -59,7 +59,7 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
         email={email}
         person={loaded.kind === "ok" ? loaded.person : null}
         title="נכסים ופרוייקטים"
-        subtitle="כל פרוייקט הוא פוט סגור: רגלי מימון ממלאות אותו, הוצאות נמשכות ממנו"
+        subtitle="כל פרוייקט הוא קופה סגורה: רגלי מימון ממלאות אותה, הוצאות נמשכות ממנה"
         back={{ href: "/", label: "חזרה ללוח המחוונים" }}
       />
 
@@ -85,7 +85,7 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
             <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
               <h2 className="text-sm font-semibold tracking-wide text-stone-500">פרוייקט חדש</h2>
               <p className="mt-1 text-sm text-stone-600">
-                מטבע הפוט הוא מה שהפרוייקט מתנהל בו, ואינו ניתן לשינוי אחר כך: שינוי שלו היה משנה את
+                מטבע הקופה הוא מה שהפרוייקט מתנהל בו, ואינו ניתן לשינוי אחר כך: שינוי שלו היה משנה את
                 המטבע של כל רגל וכל הוצאה שכבר נרשמו בו.
               </p>
 
@@ -100,7 +100,7 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
                   />
                 </Field>
 
-                <Field label="מטבע הפוט" note="לא ניתן לשינוי אחר כך">
+                <Field label="מטבע הקופה" note="לא ניתן לשינוי אחר כך">
                   <Select name="currency" defaultValue="USD">
                     {CURRENCIES.map((currency) => (
                       <option key={currency} value={currency}>
@@ -206,7 +206,7 @@ function ProjectCard({ reading, today }: { reading: ProjectReading; today: Dated
           </Link>
         </h2>
         <p className="text-sm text-stone-500">
-          נפתח ב־{formatDate(project.startedOn)} · פוט ב־<bdi>{project.currency}</bdi>
+          נפתח ב־{formatDate(project.startedOn)} · קופה ב־<bdi>{project.currency}</bdi>
         </p>
       </div>
 
