@@ -3,28 +3,36 @@
  *
  * The export was first taken by hand, which made every later refresh an afternoon
  * and made "is this still what the sheet says?" a question nobody could answer
- * cheaply. This is the answer: the Drive connector reads the sheet, and this
- * script turns what it returns into the file `sheet-export.ts` parses.
+ * cheaply. This is the answer: a reading of the sheet goes in, and this script
+ * turns it into the file `sheet-export.ts` parses.
  *
  *   Sheet: https://docs.google.com/spreadsheets/d/1tOw032pAwJSVOVv66wnILR1X5rxVVCI2paNAzDdJGLg/edit
  *
- * The conversion itself is `src/domain/import/drive-read.ts`, where it can be
- * tested without a network; this is the shell around it — fetch, report, write.
+ * **Take the reading as `.xlsx`** — File → Download → Microsoft Excel. The Drive
+ * connector was the way in until 2026-11-06, when it stopped returning a Google
+ * Sheet as full grids; `src/domain/import/xlsx-read.ts` records what it returns
+ * now and why nothing can be built from it.
+ *
+ * The conversions themselves are `xlsx-read.ts` and `drive-read.ts`, where they
+ * can be tested without a network; this is the shell around them — read, report,
+ * write.
  *
  * It **proposes**, like the importer it feeds. Without `--write` it reports and
  * changes nothing.
  *
- *   npm run sheet:refresh -- <drive-read>              # report only
- *   npm run sheet:refresh -- <drive-read> --blocks     # and dump every cell
- *   npm run sheet:refresh -- <drive-read> --against-db # and say what an import would move
- *   npm run sheet:refresh -- <drive-read> --write      # rewrite the export
+ *   npm run sheet:refresh -- <reading>              # report only
+ *   npm run sheet:refresh -- <reading> --blocks     # and dump every cell
+ *   npm run sheet:refresh -- <reading> --against-db # and say what an import would move
+ *   npm run sheet:refresh -- <reading> --write      # rewrite the export
  *
  * `--against-db` is read-only too: it compares the plan against what `DATABASE_URL`
  * already holds and reports what an import *would* write, which is how "re-running
  * changes nothing that was already correct" is checked without writing anything.
  *
- * `<drive-read>` is whatever the Drive connector's `read_file_content` returned:
- * either its JSON result (`{"fileContent": "…"}`) or that string on its own.
+ * `<reading>` is the sheet exported to `.xlsx`, or — from before the connector
+ * changed — whatever its `read_file_content` returned, either the JSON result
+ * (`{"fileContent": "…"}`) or that string on its own. The three are told apart by
+ * the file's extension and its first byte, never by a flag.
  */
 
 import { readFileSync, writeFileSync } from "node:fs";
@@ -45,6 +53,7 @@ import {
   planSheetImport,
   planWrites,
 } from "@/domain/import/sheet-importer";
+import { driveReadFrom } from "@/domain/import/xlsx-read";
 import { toDecimalString } from "@/domain/money/money";
 import { type CalendarMonth, compareMonths, monthKey } from "@/domain/time/calendar-month";
 
@@ -58,8 +67,19 @@ const PEOPLE = [
 
 // --- reading what Drive returned ---------------------------------------------
 
-/** The connector's result, or the Markdown on its own. Both are ordinary files. */
+/**
+ * The reading, from whichever of the two shapes it arrives in.
+ *
+ * A `.xlsx` is the household's sheet exported by hand, which is the only way in
+ * since the Drive connector stopped returning full grids; `xlsx-read.ts` says
+ * what changed. The other two are what the connector used to hand back — its
+ * JSON result, or the Markdown on its own — and are still read, because the
+ * committed export was taken that way and a refresh has to be able to say that
+ * nothing moved.
+ */
 function driveMarkdown(path: string): string {
+  if (path.toLowerCase().endsWith(".xlsx")) return driveReadFrom(readFileSync(path));
+
   const raw = readFileSync(path, "utf8");
   try {
     const parsed: unknown = JSON.parse(raw);

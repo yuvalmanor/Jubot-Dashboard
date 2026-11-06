@@ -361,16 +361,31 @@ or a retirement made afterwards.
 The export was first taken by hand, which made "is this still what the sheet says?" a
 question nobody could answer cheaply. It is now a command.
 
-The sheet is [Mapping](https://docs.google.com/spreadsheets/d/1tOw032pAwJSVOVv66wnILR1X5rxVVCI2paNAzDdJGLg/edit),
-read through the Drive connector — ask Claude to read that file and save what comes back.
-What the connector returns is *already* Markdown tables with merged cells written as
-`[merged] label`, which is the shape `sheet-export.ts` parses, so the conversion is a
-selection rather than a translation: `src/domain/import/drive-read.ts` keeps the tabs
-carrying the `הוצאות חודשיות` banner, composes the file, and edits no cell on the way
-through. A reading with no such banner is refused rather than written short.
+The sheet is [Mapping](https://docs.google.com/spreadsheets/d/1tOw032pAwJSVOVv66wnILR1X5rxVVCI2paNAzDdJGLg/edit).
+Open it and take a copy — **File → Download → Microsoft Excel (.xlsx)**. That file is the
+reading; nothing else is needed, and it does not belong in the tree (`.sheet-import/` is
+ignored, and is a tidy place to leave it).
+
+`src/domain/import/xlsx-read.ts` turns the workbook into Markdown tables with merged cells
+written as `[merged] label`, which is the shape `sheet-export.ts` parses. It reads the
+cached value of every cell and never a formula. Then `src/domain/import/drive-read.ts`
+keeps the tabs carrying the `הוצאות חודשיות` banner, composes the file, and edits no cell
+on the way through; a reading with no such banner is refused rather than written short.
+
+Until **2026-11-06** the reading came from the Drive connector instead, which returned the
+sheet as full grids already in that shape. It now returns a per-tab summary — a range, two
+sample rows and a list of columns — with no figures in it at all, so there is nothing there
+to build an export from. The script still accepts what the connector used to return, since
+the committed export was taken that way and "nothing moved" has to stay checkable, but a
+fresh reading has to be an `.xlsx`.
+
+One consequence of the change is worth knowing: the connector returned what a cell
+*displayed*, and this reads what it *holds*. A cell formatted as a whole number shows
+25,608 and holds 25,608.16, so two figures in the committed history moved by agorot the
+first time it was read this way. The new reading is the faithful one.
 
 ```bash
-npm run sheet:refresh -- <drive-read> --blocks --against-db
+npm run sheet:refresh -- <reading> --blocks --against-db
 ```
 
 That writes nothing. It reports which tabs it found and every cell of each block, for
