@@ -730,3 +730,62 @@ describe("recordedYears — what a year selector may offer", () => {
     expect(recordedYears(EMPTY_LEDGER)).toEqual([]);
   });
 });
+
+describe("yearGrid — the same months one year earlier", () => {
+  it("compares against exactly the months the aggregates count, moved back twelve", () => {
+    const { before } = grid(2026);
+    expect(before.year).toBe(2025);
+    expect(before.months.map(monthKey)).toEqual(
+      grid(2026).denominatorMonths.map((month) => monthKey(m(month.year - 1, month.month))),
+    );
+  });
+
+  it("reads the earlier side over the same span, so neither side divides by more months", () => {
+    const current = grid(2026);
+    const earlier = yearGrid(LEDGER, CATEGORIES, HOUSEHOLD_SCOPE, 2025, ILS, TODAY);
+
+    // ינואר–יולי 2025, read off the 2025 grid's own cells rather than its aggregates:
+    // the 2025 aggregates count all twelve months, and this comparison counts seven.
+    const sevenOf = (cells: readonly { readonly amount: Money | null }[]) =>
+      sum(
+        cells.slice(0, 7).flatMap((cell) => (cell.amount === null ? [] : [cell.amount])),
+        ILS,
+      );
+
+    expect(current.before.income).toEqual(sevenOf(earlier.income.total.cells));
+    expect(current.before.expenses).toEqual(sevenOf(earlier.expenses.total.cells));
+    expect(current.before.saving).toEqual(
+      subtract(current.before.income, current.before.expenses),
+    );
+  });
+
+  it("is never clamped to the ledger's span, so a year the history does not reach behind compares against nothing", () => {
+    // History begins in יולי 2024, so 2024's counted months have no 2023 behind them.
+    const { before } = grid(2024);
+    expect(before.year).toBe(2023);
+    expect(before.recordedMonths).toBe(0);
+    expect(before.income).toEqual(ils(0));
+    expect(before.saving).toEqual(ils(0));
+  });
+
+  it("counts a month of the earlier year as recorded when anything in scope holds a figure", () => {
+    expect(grid(2026).before.recordedMonths).toBe(7);
+    // 2025 counts all twelve months; only יולי–דצמבר 2024 hold anything.
+    expect(grid(2025).before.recordedMonths).toBe(6);
+  });
+
+  it("answers at the level the grid is being read at", () => {
+    const household = grid(2026).before;
+    const yuval = grid(2026, YUVAL).before;
+    const eden = grid(2026, EDEN).before;
+    expect(household.income).toEqual(sum([yuval.income, eden.income], ILS));
+    expect(household.expenses).toEqual(sum([yuval.expenses, eden.expenses], ILS));
+  });
+
+  it("has nothing to compare for a year with no counted months at all", () => {
+    const { before } = grid(2027);
+    expect(before.months).toEqual([]);
+    expect(before.recordedMonths).toBe(0);
+    expect(before.income).toEqual(ils(0));
+  });
+});

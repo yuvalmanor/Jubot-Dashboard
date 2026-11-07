@@ -12,7 +12,8 @@ import { format, toDecimalString } from "@/domain/money/money";
 import { formatMonth, formatMonthName, monthKey } from "@/domain/time/calendar-month";
 
 import { closeMonthFromGrid, saveCell } from "./actions";
-import { Denominator, monthsPhrase } from "./denominator";
+import { CellEditor } from "./cell-editor";
+import { monthsPhrase } from "./denominator";
 import { type GridLinks, OPEN_CELL_ID, cellKey } from "./grid-links";
 
 /**
@@ -157,6 +158,7 @@ export function YearGridTable({
   peopleNames,
   openCell,
   links,
+  controls,
 }: {
   grid: YearGrid;
   expanded: boolean;
@@ -164,29 +166,43 @@ export function YearGridTable({
   /** Which cell is open for entry, as `${personalCategoryId}@${YYYY-MM}`. */
   openCell: string | null;
   links: GridLinks;
+  /** How the rows are ordered and whether they are opened — the page owns the URLs. */
+  controls?: React.ReactNode;
 }) {
   const empty = grid.income.rows.length + grid.expenses.rows.length === 0;
 
   if (empty) {
     return (
-      <p className="rounded-card bg-surface shadow-card p-5 text-stone-600">
-        אין קטגוריות ואין רישומים בשנה הזו.
-      </p>
+      <section className="rounded-card bg-surface shadow-card p-5">
+        <TableHeader controls={controls} />
+        <p className="mt-3 text-stone-600">אין קטגוריות ואין רישומים בשנה הזו.</p>
+      </section>
     );
   }
 
   return (
     <section className="overflow-hidden rounded-card bg-surface shadow-card">
-      {/* The legend was a <caption>, which put it inside the window: as wide as the
-          table, so it scrolled sideways with the months, and gone as soon as the
-          rows moved — in a window this short it would also cost two of the rows it
-          explains. It stays above the window and the table points at it. */}
-      <p id={TABLE_LEGEND_ID} className="px-4 py-3 text-start text-sm text-stone-500">
-        כל הסכומים בשקלים. <span className="text-stone-400">—</span> פירושו שהחודש לא נרשם; 0 פירושו
-        שנרשם אפס. סימון בתא פירושו חריגה מהממוצע של אותה שורה. לחיצה על תא פותחת אותו לרישום, או
-        מובילה לחודש עצמו כששורה משותפת מסכמת את שני בני הבית. שלוש שורות הסיכום נעוצות לתחתית
-        החלון; חיסכון הוא הכנסות פחות הוצאות, מחושב בקריאה.
-      </p>
+      <div className="px-4 pt-4 sm:px-5">
+        <TableHeader controls={controls} />
+
+        {/* The legend was a <caption>, which put it inside the window: as wide as
+            the table, so it scrolled sideways with the months, and gone as soon as
+            the rows moved — in a window this short it would also cost two of the
+            rows it explains. It stays above the window, folded, and the table
+            points at it: four lines of prose between a reader and the figures is
+            four lines nobody reads twice. */}
+        <details className="mt-2 mb-3">
+          <summary className="inline-flex cursor-pointer items-center gap-1 rounded-md text-[13px] text-stone-500 transition-colors hover:text-stone-900">
+            <span aria-hidden="true">?</span> מקרא
+          </summary>
+          <p id={TABLE_LEGEND_ID} className="mt-2 max-w-3xl text-start text-[13px] text-stone-500">
+            כל הסכומים בשקלים. <span className="text-stone-400">—</span> פירושו שהחודש לא נרשם; 0
+            פירושו שנרשם אפס. סימון בתא פירושו חריגה מהממוצע של אותה שורה. לחיצה על תא פותחת אותו
+            לרישום במקום, או מובילה לחודש עצמו כששורה משותפת מסכמת את שני בני הבית. שלוש שורות
+            הסיכום נעוצות לתחתית החלון; חיסכון הוא הכנסות פחות הוצאות, מחושב בקריאה.
+          </p>
+        </details>
+      </div>
 
       {/* The window: both axes scroll here, and it is the containing block every
           pinned cell in the table resolves against. */}
@@ -268,6 +284,16 @@ export function YearGridTable({
         </table>
       </div>
     </section>
+  );
+}
+
+/** The table's own heading: what it is, and the two things a reader changes about it. */
+function TableHeader({ controls }: { controls?: React.ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+      <h2 className="title text-[15px] font-semibold">קטגוריות מול חודשים</h2>
+      {controls}
+    </div>
   );
 }
 
@@ -730,15 +756,18 @@ function Cell({
 }
 
 /**
- * The one affordance a cell gets. A cell that is a single category-month opens in
- * place — "I forgot חו"ל in May" should not cost a form of twenty-two fields — and
- * one that is not goes to the month, which is the only screen that can say whose
- * money it was. A month that has not arrived leads nowhere; it is inert, blanks
- * and all.
+ * The one affordance a cell gets. A cell that is a single category-month **opens
+ * where it sits** — "I forgot חו"ל in May" should not cost a form of twenty-two
+ * fields, nor a page load to put a cursor in a box — and one that is not goes to
+ * the month, which is the only screen that can say whose money it was. A month
+ * that has not arrived leads nowhere; it is inert, blanks and all.
  *
- * `prefetch={false}` on all of them: three hundred cells prefetching a route each
- * would fetch the whole ledger a hundred times over to save a click that has not
- * happened.
+ * The editor's anchor still carries the server-rendered `?cell=` URL, so the
+ * screen fills its holes with scripts turned off exactly as it did before.
+ *
+ * `prefetch={false}` on the month links: three hundred cells prefetching a route
+ * each would fetch the whole ledger a hundred times over to save a click that has
+ * not happened.
  */
 function withDestination(
   figure: React.ReactNode,
@@ -747,15 +776,27 @@ function withDestination(
 ): React.ReactNode {
   if (entry === undefined || cell.standing === "future") return figure;
 
-  const href =
-    cell.writesTo === null
-      ? entry.links.month(cell.month, entry.personId)
-      : entry.links.openCell(cell.writesTo, cell.month);
+  if (cell.writesTo === null) {
+    return (
+      <Link
+        href={entry.links.month(cell.month, entry.personId)}
+        prefetch={false}
+        className="block hover:underline"
+      >
+        {figure}
+      </Link>
+    );
+  }
 
   return (
-    <Link href={href} prefetch={false} className="block hover:underline">
+    <CellEditor
+      href={entry.links.openCell(cell.writesTo, cell.month)}
+      fields={{ ...entry.links.returnTo, month: monthKey(cell.month), cell: cell.writesTo }}
+      label={`${entry.label}, ${formatMonth(cell.month)}`}
+      defaultValue={cell.amount === null ? "" : toDecimalString(cell.amount)}
+    >
       {figure}
-    </Link>
+    </CellEditor>
   );
 }
 
@@ -904,46 +945,5 @@ export function ClosingPanel({
         חודש אחד בכל פעם. אין בשום מקום פעולה שסוגרת יותר מחודש אחד.
       </p>
     </section>
-  );
-}
-
-/** The three averages, above the table, each stating what it divided by. */
-export function YearSummaryStrip({ grid }: { grid: YearGrid }) {
-  return (
-    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
-      <div className="grid gap-4 sm:grid-cols-3">
-        <AverageFigure label="ממוצע הכנסות" summary={grid.income.total} />
-        <AverageFigure label="ממוצע הוצאות" summary={grid.expenses.total} />
-        <AverageFigure label="ממוצע חיסכון" summary={grid.saving} emphasis />
-      </div>
-
-      <p className="mt-4 text-sm text-stone-500">
-        הממוצע מחלק בחודשים הסגורים של השנה, כפי שההיסטוריה מגיעה אליהם. החודש הנוכחי מוצג בטור שלו
-        ואינו נכנס לא לסכום ולא לממוצע.
-      </p>
-    </section>
-  );
-}
-
-function AverageFigure({
-  label,
-  summary,
-  emphasis = false,
-}: {
-  label: string;
-  summary: GridSummaryRow;
-  emphasis?: boolean;
-}) {
-  return (
-    <div>
-      <p className="text-[13px] font-medium text-stone-500">{label}</p>
-      <bdi className={`tabular block ${emphasis ? "text-3xl font-semibold" : "text-2xl"}`}>
-        {/* The same figure as the ממוצע חודשי column of the subtotal row below,
-            printed at the same precision, so the two can never look like two
-            different numbers. */}
-        {summary.aggregate.amount === null ? "—" : format(summary.aggregate.amount, { withMinorUnits: false })}
-      </bdi>
-      <Denominator average={summary.aggregate} />
-    </div>
   );
 }

@@ -65,6 +65,7 @@ import { type MonthClosure, monthClosure } from "@/domain/ledger/month-closure";
 import { type Currency, type Money, subtract, sum, zero } from "@/domain/money/money";
 import {
   type CalendarMonth,
+  addMonths,
   calendarMonth,
   compareMonths,
   monthKey,
@@ -163,6 +164,30 @@ export interface GridBand {
   readonly total: GridSummaryRow;
 }
 
+/**
+ * The same year one year earlier, over exactly the months this year's aggregates
+ * count.
+ *
+ * The two sides are matched one for one and the earlier side is never clamped to
+ * the ledger's own span: a comparison whose halves divided by different numbers
+ * of months would report the difference between the divisors as a change in
+ * spending. So a year read in אוגוסט compares ינואר–יולי against ינואר–יולי, and
+ * a year the history does not reach behind compares against nothing and says so.
+ */
+export interface YearBefore {
+  readonly year: number;
+  /** The counted months of this year, each moved back twelve. */
+  readonly months: readonly CalendarMonth[];
+  /**
+   * How many of those months hold a figure anywhere in scope. Nought means there
+   * is no comparison to draw, which is a different fact from a comparison to zero.
+   */
+  readonly recordedMonths: number;
+  readonly income: Money;
+  readonly expenses: Money;
+  readonly saving: Money;
+}
+
 export interface YearGrid {
   readonly year: number;
   readonly scope: AnalyticsScope;
@@ -175,6 +200,8 @@ export interface YearGrid {
   readonly expenses: GridBand;
   /** חיסכון = הכנסות − הוצאות, derived on read. There is nothing to write to. */
   readonly saving: GridSummaryRow;
+  /** The same months a year earlier, for the three figures the year is read for. */
+  readonly before: YearBefore;
 }
 
 const MONTHS_IN_YEAR = 12;
@@ -423,6 +450,46 @@ function savingOf(
 }
 
 /**
+ * The three headline figures over the same months one year earlier.
+ *
+ * Read from the same primitives the grid itself reads from, so the comparison and
+ * the figure it is a comparison *of* cannot be arrived at by two different routes.
+ */
+function yearBefore(
+  ledger: Ledger,
+  categories: Categories,
+  scope: AnalyticsScope,
+  counted: readonly CalendarMonth[],
+  currency: Currency,
+  year: number,
+): YearBefore {
+  const months = counted.map((month) => addMonths(month, -MONTHS_IN_YEAR));
+
+  const totalOf = (type: CategoryType): Money =>
+    sum(
+      categoryGroups(categories, scope, { type }).map(
+        (group) => averageOverMonths(ledger, group, months, currency).total,
+      ),
+      currency,
+    );
+
+  const income = totalOf("income");
+  const expenses = totalOf("expense");
+  const every = categoryGroups(categories, scope);
+
+  return {
+    year: year - 1,
+    months,
+    recordedMonths: months.filter((month) =>
+      every.some((group) => readGroupMonth(ledger, group, month, currency).recorded),
+    ).length,
+    income,
+    expenses,
+    saving: subtract(income, expenses),
+  };
+}
+
+/**
  * One year of the מאזן at household or person level.
  *
  * `today` and the currency are parameters: a function that asks the system for
@@ -480,5 +547,6 @@ export function yearGrid(
     income,
     expenses,
     saving: savingOf(income.total, expenses.total, months, counted, currency),
+    before: yearBefore(ledger, categories, scope, counted, currency, year),
   };
 }

@@ -25,8 +25,11 @@ import { requireHouseholdEmail } from "@/session";
 import { type GridErrorCode } from "./actions";
 import { type CategoryErrorCode } from "./category-actions";
 import { CATEGORY_PANEL_ID, CategoryAdminPanel } from "./category-panels";
+import { OverflowMenu, PrimaryAction, Segmented, type SegmentedOption } from "./chrome";
 import { type GridLinks, OPEN_CELL_ID, cellKey } from "./grid-links";
-import { ClosingPanel, YearGridTable, YearSummaryStrip } from "./grid-panels";
+import { ClosingPanel, YearGridTable } from "./grid-panels";
+import { YearHeadline } from "./headline";
+import { MonthStrip } from "./month-strip";
 import { type RateErrorCode } from "./rate-actions";
 import { RATE_PANEL_ID, RateWatchPanel } from "./rate-watch-panel";
 
@@ -41,11 +44,21 @@ export const dynamic = "force-dynamic";
  * household figure derived from the personal ones on each read, and a blank that
  * means *not recorded* rather than *nought*.
  *
- * It is also where the holes get filled. A cell leads to wherever its figure can
- * be written — opened in place when the cell is one category-month, and on
- * `/balance/month` when it is a משותף line summing two People — and a past month
- * that is missing figures says so on its own column heading, with the closing of
- * it one click away.
+ * It is laid out as the four questions a person opens it with, in the order they
+ * ask them, and nothing else is given a band of its own:
+ *
+ * 1. **Which year, whose money, and what now** — one bar of chrome, sticky, every
+ *    control on it a link. It used to be four separate cards, two of which cost a
+ *    form submission to change one thing.
+ * 2. **How is the year going** — הכנסות, הוצאות and חיסכון as three cards, each
+ *    carrying the total, the same months a year earlier, twelve bars and the
+ *    monthly average. The trend used to be a screen away; a year's shape is not
+ *    an advanced question.
+ * 3. **What is left to record** — the twelve months as twelve tiles, each saying
+ *    what it saved and what it is missing, and each a way into that month. Filling
+ *    a hole in מאי no longer means opening the current month and walking back.
+ * 4. **Where the money went** — the grid, unchanged in substance: pinned headings,
+ *    pinned totals, and a cell that opens where it sits.
  *
  * Beneath the table sits מעקב תעריפים, which answers the question the grid does
  * not: whether a price somebody set has moved. It is always on screen — both of
@@ -128,15 +141,7 @@ export default async function BalancePage({ searchParams }: { searchParams: Prom
         back={{ href: "/", label: "חזרה ללוח המחוונים" }}
       />
 
-      <main className="mt-6 space-y-6 sm:mt-8">
-        <Notices
-          error={first(params.error)}
-          detail={first(params.detail)}
-          closed={first(params.closed)}
-          zeros={first(params.zeros)}
-          done={first(params.done)}
-        />
-
+      <main className="mt-5 space-y-4 sm:mt-6 sm:space-y-5">
         {loaded.kind === "ok" ? (
           <BalanceYear
             year={year}
@@ -153,6 +158,15 @@ export default async function BalancePage({ searchParams }: { searchParams: Prom
             rateItem={first(params.rateItem) ?? null}
             openCell={first(params.cell) ?? null}
             closing={tryParseMonthKey(first(params.close))}
+            notices={
+              <Notices
+                error={first(params.error)}
+                detail={first(params.detail)}
+                closed={first(params.closed)}
+                zeros={first(params.zeros)}
+                done={first(params.done)}
+              />
+            }
           />
         ) : (
           <UnavailablePanel reason={loaded.reason} />
@@ -178,8 +192,9 @@ type LoadedBalance =
 
 /**
  * The whole ledger, not one year of it. Both aggregate columns are clamped to the
- * span the history actually covers, and the year selector offers the years that
- * hold data — neither is answerable from a single year's entries.
+ * span the history actually covers, the year selector offers the years that hold
+ * data, and the comparison reaches a year back — none of the three is answerable
+ * from a single year's entries.
  */
 async function loadBalance(email: string): Promise<LoadedBalance> {
   try {
@@ -222,6 +237,7 @@ function BalanceYear({
   rateItem,
   openCell,
   closing,
+  notices,
 }: {
   year: number;
   today: CalendarMonth;
@@ -237,6 +253,7 @@ function BalanceYear({
   rateItem: string | null;
   openCell: string | null;
   closing: CalendarMonth | null;
+  notices: React.ReactNode;
 }) {
   const scope = resolveScope(view, people);
   const grid = yearGrid(ledger, categories, scope, year, LEDGER_CURRENCY, today, { sort });
@@ -246,11 +263,12 @@ function BalanceYear({
   const watch = rateWatch(ledger, categories, items, year, LEDGER_CURRENCY, today);
   const years = recordedYears(ledger);
   const state: GridState = { year, view, sort, expanded, admin, rateEdit, rateItem };
+  const links = linksFor(state);
   const peopleNames = new Map(people.map((person) => [person.id, person.displayName]));
 
   // The month whose closing is being confirmed, read off the grid itself rather
-  // than computed again: the panel below the table and the column heading above it
-  // must be describing the same blanks.
+  // than computed again: the panel and the tile that led to it must be describing
+  // the same blanks.
   const closingMonth =
     closing === null
       ? undefined
@@ -258,22 +276,29 @@ function BalanceYear({
 
   return (
     <>
-      <YearNavigator state={state} years={years} today={today} />
-      <ViewTabs state={state} people={people} />
-      <YearSummaryStrip grid={grid} />
-      {/* At person level a row is already personal — there is nothing underneath
-          it to open, so the toggle is absent rather than present and inert. */}
-      <TableControls state={state} expandable={scope.kind === "household"} />
+      <Toolbar state={state} years={years} people={people} today={today} />
+
+      {notices}
+
+      <YearHeadline grid={grid} />
+
+      <MonthStrip grid={grid} links={links} />
+
       {closingMonth === undefined ? null : (
-        <ClosingPanel column={closingMonth} links={linksFor(state)} peopleNames={peopleNames} />
+        <ClosingPanel column={closingMonth} links={links} peopleNames={peopleNames} />
       )}
+
       <YearGridTable
         grid={grid}
         expanded={expanded}
         peopleNames={peopleNames}
         openCell={openCell}
-        links={linksFor(state)}
+        links={links}
+        // At person level a row is already personal — there is nothing underneath
+        // it to open, so the toggle is absent rather than present and inert.
+        controls={<TableControls state={state} expandable={scope.kind === "household"} />}
       />
+
       {/* Directly beneath the table and never behind a link. Both of the sheet's
           attempts at this question died of being somewhere nobody went, and at a
           dozen rows there is nothing here to hide. It reads at household level
@@ -283,10 +308,11 @@ function BalanceYear({
       <RateWatchPanel
         watch={watch}
         items={items}
-        links={linksFor(state)}
+        links={links}
         editing={rateEdit}
         openItem={rateItem}
       />
+
       {/* Beneath the table, so a rename or a merge is made with the rows it
           affects in view. Closed by default: it is a screenful of forms, and the
           question this screen is opened to ask is about the money. */}
@@ -294,11 +320,11 @@ function BalanceYear({
         <CategoryAdminPanel
           categories={categories}
           people={people}
-          links={linksFor(state)}
+          links={links}
           today={today}
         />
       ) : (
-        <p className="text-sm text-stone-600">
+        <p className="px-1 text-sm text-stone-500">
           <Link href={adminHref(state)} className="underline-offset-4 hover:underline">
             ניהול קטגוריות
           </Link>{" "}
@@ -378,7 +404,8 @@ function linksFor(state: GridState): GridLinks {
     month: (month, personId) =>
       `/balance/month?month=${monthKey(month)}&view=${personId ?? state.view ?? HOUSEHOLD_VIEW}` as Route,
     // The fragment scrolls the window over the table to the cell that was clicked,
-    // which a fresh URL would otherwise have left above the fold.
+    // which a fresh URL would otherwise have left above the fold. Only the
+    // no-script path takes it: with scripts the cell opens where it sits.
     openCell: (categoryId, month) =>
       `${withParam("cell", cellKey(categoryId, month))}#${OPEN_CELL_ID}` as Route,
     closing: (month) => withParam("close", monthKey(month)),
@@ -410,166 +437,130 @@ function ratesHref(state: GridState, change: Partial<GridState>): Route {
   return `${gridHref(state, change)}#${RATE_PANEL_ID}` as Route;
 }
 
+// --- the one bar of chrome ----------------------------------------------------
 
-function ViewTabs({ state, people }: { state: GridState; people: readonly Person[] }) {
+/**
+ * Which year, whose money, and the one thing to do next.
+ *
+ * Sticky, because the table below it is taller than a screen and the year a
+ * figure belongs to is the one thing a reader must never have to scroll to
+ * recover. Everything on it is a link: the year used to be a `<select>` and a
+ * submit button, which is two actions and a round trip to answer "and 2025?".
+ */
+function Toolbar({
+  state,
+  years,
+  people,
+  today,
+}: {
+  state: GridState;
+  years: readonly number[];
+  people: readonly Person[];
+  today: CalendarMonth;
+}) {
+  // The selected year is always among the options, even when the ledger holds
+  // nothing for it — a control that could not show its own state would be worse
+  // than one offering a year that turns out to be empty.
+  const options = years.includes(state.year)
+    ? years
+    : [...years, state.year].sort((left, right) => left - right);
+
+  const yearOptions: readonly SegmentedOption[] = options.map((option) => ({
+    key: String(option),
+    label: String(option),
+    href: gridHref(state, { year: option }),
+    muted: !years.includes(option),
+  }));
+
   const current = people.some((person) => person.id === state.view) ? state.view : HOUSEHOLD_VIEW;
-
-  const tabs = [
-    ...people.map((person) => ({ key: person.id, label: person.displayName })),
-    { key: HOUSEHOLD_VIEW, label: "משותף" },
+  const scopeOptions: readonly SegmentedOption[] = [
+    ...people.map((person) => ({
+      key: person.id,
+      label: person.displayName,
+      href: gridHref(state, { view: person.id }),
+    })),
+    { key: HOUSEHOLD_VIEW, label: "משותף", href: gridHref(state, { view: HOUSEHOLD_VIEW }) },
   ];
 
+  const monthHref = `/balance/month?month=${monthKey(today)}&view=${state.view ?? HOUSEHOLD_VIEW}` as Route;
+
   return (
-    <nav aria-label="רמת קריאה" className="flex flex-wrap gap-2">
-      {tabs.map((tab) => {
-        const active = tab.key === current;
-        return (
+    // Above the table: the grid's own pinned headings sit as high as z-40 inside
+    // their window, and the bar has to stay over them as the page scrolls past.
+    <div className="sticky top-0 z-50 -mx-4 bg-canvas/85 px-4 py-2 backdrop-blur-md sm:-mx-6 sm:px-6">
+      <section className="rounded-card bg-surface shadow-card flex flex-wrap items-center justify-between gap-x-4 gap-y-3 px-3 py-2.5 sm:px-4">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          {/* Years read left to right whatever the page's direction, the way the
+              months across the table do. */}
+          <div dir="ltr">
+            <Segmented label="שנה" options={yearOptions} current={String(state.year)} />
+          </div>
+          <Segmented label="רמת קריאה" options={scopeOptions} current={current ?? HOUSEHOLD_VIEW} />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
           <Link
-            key={tab.key}
-            href={gridHref(state, { view: tab.key })}
-            aria-current={active ? "page" : undefined}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-              active
-                ? "bg-stone-900 text-white"
-                : "text-stone-600 hover:bg-stone-900/5 hover:text-stone-900"
-            }`}
+            href={`/balance/insights?month=${monthKey(today)}` as Route}
+            className="rounded-xl px-3 py-2 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
           >
-            {tab.label}
+            מגמות וממוצעים
           </Link>
-        );
-      })}
-    </nav>
+
+          <PrimaryAction href={monthHref}>
+            <span aria-hidden="true" className="text-base leading-none">
+              +
+            </span>
+            רישום חודשי
+          </PrimaryAction>
+
+          <OverflowMenu
+            items={[
+              {
+                href: adminHref(state),
+                label: "ניהול קטגוריות",
+                note: "שמות, שיוכים ותקופות פעילות, מתחת לטבלה",
+              },
+              {
+                href: "/balance/import" as Route,
+                label: "ייבוא מהגיליון",
+                note: "רץ פעם אחת. נשמר כאן ואין לו מקום אחר",
+              },
+            ]}
+          />
+        </div>
+      </section>
+    </div>
   );
 }
 
 /** How the rows are ordered, and whether the household lines are opened. */
 function TableControls({ state, expandable }: { state: GridState; expandable: boolean }) {
-  const orders = [
-    { key: "size" as const, label: "לפי גודל" },
-    { key: "name" as const, label: "לפי א״ב" },
-  ];
-
   return (
-    <section className="flex flex-wrap items-center justify-between gap-3 rounded-card bg-surface shadow-card px-4 py-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm text-stone-600">סדר השורות</span>
-        {orders.map((order) => {
-          const active = order.key === state.sort;
-          return (
-            <Link
-              key={order.key}
-              href={gridHref(state, { sort: order.key })}
-              aria-current={active ? "true" : undefined}
-              className={`rounded-lg px-3 py-1 text-sm transition-colors ${
-                active
-                  ? "bg-stone-900 text-white"
-                  : "text-stone-600 hover:bg-stone-900/5 hover:text-stone-900"
-              }`}
-            >
-              {order.label}
-            </Link>
-          );
-        })}
-        <span className="text-xs text-stone-500">
-          {state.sort === "size"
-            ? "הסכום השנתי הגדול ביותר למעלה"
-            : "אותה שורה באותו מקום בכל קריאה"}
-        </span>
-      </div>
+    <div className="flex flex-wrap items-center gap-2">
+      <Segmented
+        label="סדר השורות"
+        size="sm"
+        current={state.sort}
+        options={[
+          { key: "size", label: "לפי גודל", href: gridHref(state, { sort: "size" }) },
+          { key: "name", label: "לפי א״ב", href: gridHref(state, { sort: "name" }) },
+        ]}
+      />
 
       {expandable ? (
         <Link
           href={gridHref(state, { expanded: !state.expanded })}
-          className="rounded-lg px-3 py-1 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
+          aria-pressed={state.expanded}
+          className={`rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-colors ${
+            state.expanded
+              ? "bg-stone-900 text-white hover:bg-stone-700"
+              : "text-stone-500 hover:bg-stone-900/5 hover:text-stone-900"
+          }`}
         >
-          {state.expanded ? "סגירת הפירוט האישי" : "פתיחת הפירוט האישי"}
+          פירוט אישי
         </Link>
       ) : null}
-    </section>
-  );
-}
-
-function YearNavigator({
-  state,
-  years,
-  today,
-}: {
-  state: GridState;
-  years: readonly number[];
-  today: CalendarMonth;
-}) {
-  const { year, view } = state;
-
-  // The selected year is always among the options, even when the ledger holds
-  // nothing for it — a control that could not show its own state would be worse
-  // than one offering a year that turns out to be empty.
-  const options = years.includes(year) ? years : [...years, year].sort((left, right) => left - right);
-
-  return (
-    <section className="flex flex-wrap items-center justify-between gap-3 rounded-card bg-surface shadow-card p-4">
-      <form className="flex items-center gap-2" action="/balance" method="get">
-        {/* A GET form submits only its own fields, so the rest of the view has to
-            travel with it or changing the year would quietly reset the order. */}
-        {view === undefined ? null : <input type="hidden" name="view" value={view} />}
-        {state.sort === DEFAULT_GRID_SORT ? null : (
-          <input type="hidden" name="sort" value={state.sort} />
-        )}
-        {state.expanded ? <input type="hidden" name="expand" value="1" /> : null}
-        {state.admin ? <input type="hidden" name="admin" value="1" /> : null}
-        {state.rateEdit ? <input type="hidden" name="rateEdit" value="1" /> : null}
-        {state.rateItem === null ? null : (
-          <input type="hidden" name="rateItem" value={state.rateItem} />
-        )}
-        <label htmlFor="year-picker" className="text-sm text-stone-600">
-          שנה
-        </label>
-        <select
-          id="year-picker"
-          name="year"
-          defaultValue={String(year)}
-          className="tabular rounded-lg bg-sunken px-2 py-1.5 text-sm"
-        >
-          {options.map((option) => (
-            <option key={option} value={String(option)}>
-              {option}
-              {years.includes(option) ? "" : " (ריקה)"}
-            </option>
-          ))}
-        </select>
-        <button
-          type="submit"
-          className="rounded-lg px-3 py-1.5 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
-        >
-          הצגה
-        </button>
-      </form>
-
-      <div className="flex flex-wrap items-center gap-4">
-        <Link
-          href={`/balance/month?month=${monthKey(today)}` as Route}
-          className="rounded-lg bg-stone-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-stone-700"
-        >
-          רישום חודשי
-        </Link>
-
-        <Link
-          href={`/balance/insights?month=${monthKey(today)}` as Route}
-          className="text-sm text-stone-600 underline-offset-4 hover:underline"
-        >
-          מגמות וממוצעים
-        </Link>
-
-        {/* Not a route any more: the panel is on this page, below the table. */}
-        <Link href={adminHref(state)} className="text-sm text-stone-600 underline-offset-4 hover:underline">
-          ניהול קטגוריות
-        </Link>
-
-        {/* Run once, not used. Reachable from the מאזן and from nowhere else. */}
-        <Link href="/balance/import" className="text-sm text-stone-600 underline-offset-4 hover:underline">
-          ייבוא מהגיליון
-        </Link>
-      </div>
-    </section>
+    </div>
   );
 }
 
@@ -616,6 +607,38 @@ const DONE_MESSAGES: Readonly<Record<string, string>> = {
   "renewal-removed": "החידוש הוסר. הפריט עצמו נשאר, עם שאר ההיסטוריה שלו.",
 };
 
+function Notice({
+  tone,
+  role,
+  title,
+  detail,
+}: {
+  tone: "bad" | "good";
+  role: "alert" | "status";
+  title: React.ReactNode;
+  detail?: React.ReactNode;
+}) {
+  const colours =
+    tone === "bad"
+      ? { surface: "bg-rose-50", dot: "bg-rose-600", head: "text-rose-900", body: "text-rose-800" }
+      : {
+          surface: "bg-emerald-50",
+          dot: "bg-emerald-600",
+          head: "text-emerald-900",
+          body: "text-emerald-800",
+        };
+
+  return (
+    <div className={`rounded-card ${colours.surface} flex gap-3 p-4`} role={role}>
+      <span aria-hidden="true" className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${colours.dot}`} />
+      <div className="min-w-0">
+        <p className={`font-medium ${colours.head}`}>{title}</p>
+        {detail === undefined ? null : <p className={`mt-1 text-sm ${colours.body}`}>{detail}</p>}
+      </div>
+    </div>
+  );
+}
+
 function Notices({
   error,
   detail,
@@ -631,27 +654,29 @@ function Notices({
 }) {
   if (isErrorCode(error)) {
     return (
-      <div className="rounded-lg bg-red-50 p-4" role="alert">
-        <p className="font-medium text-red-900">{ERROR_MESSAGES[error]}</p>
-        {detail === undefined ? null : (
-          <p className="mt-1 text-sm text-red-800">
-            <bdi>{detail}</bdi>
-          </p>
-        )}
-      </div>
+      <Notice
+        tone="bad"
+        role="alert"
+        title={ERROR_MESSAGES[error]}
+        detail={detail === undefined ? undefined : <bdi>{detail}</bdi>}
+      />
     );
   }
 
   const month = tryParseMonthKey(closed);
   if (month !== null) {
     return (
-      <div className="rounded-lg bg-emerald-50 p-4" role="status">
-        <p className="font-medium text-emerald-900">
-          {formatMonth(month)}: נרשמו <bdi className="tabular">{zeros ?? "0"}</bdi> קטגוריות כאפס, והחודש
-          סגור.
-        </p>
-        <p className="mt-1 text-sm text-emerald-800">כל סכום שכבר היה רשום נשאר כפי שהיה.</p>
-      </div>
+      <Notice
+        tone="good"
+        role="status"
+        title={
+          <>
+            {formatMonth(month)}: נרשמו <bdi className="tabular">{zeros ?? "0"}</bdi> קטגוריות כאפס,
+            והחודש סגור.
+          </>
+        }
+        detail="כל סכום שכבר היה רשום נשאר כפי שהיה."
+      />
     );
   }
 
@@ -663,20 +688,18 @@ function Notices({
   const subject = separator < 0 ? "" : done.slice(separator + 1);
 
   return (
-    <div className="rounded-lg bg-emerald-50 p-4" role="status">
-      <p className="font-medium text-emerald-900">{message}</p>
-      {subject.length === 0 ? null : (
-        <p className="mt-1 text-sm text-emerald-800">
-          <bdi>{subject}</bdi>
-        </p>
-      )}
-    </div>
+    <Notice
+      tone="good"
+      role="status"
+      title={message}
+      detail={subject.length === 0 ? undefined : <bdi>{subject}</bdi>}
+    />
   );
 }
 
 function UnavailablePanel({ reason }: { reason: string }) {
   return (
-    <div className="rounded-lg bg-amber-50 p-4">
+    <div className="rounded-card bg-amber-50 p-4">
       <p className="font-medium text-amber-900">לא ניתן לקרוא את המאזן</p>
       <p className="mt-1 text-sm text-amber-800">{reason}</p>
     </div>
