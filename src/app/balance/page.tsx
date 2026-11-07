@@ -32,7 +32,7 @@ import { YearHeadline } from "./headline";
 import { MonthStrip } from "./month-strip";
 import { type RateErrorCode } from "./rate-actions";
 import { RATE_PANEL_ID, RateWatchPanel } from "./rate-watch-panel";
-import { ExpenseShares, groupColours } from "./shares";
+import { type SharesBasis, ExpenseShares, groupColours } from "./shares";
 
 export const dynamic = "force-dynamic";
 
@@ -93,6 +93,8 @@ interface SearchParams {
   expand?: string | string[];
   /** `1` while the category panel below the grid is open. */
   admin?: string | string[];
+  /** `month` while the פילוח is read as a monthly average rather than a year's total. */
+  shares?: string | string[];
   /** `1` while מעקב תעריפים's own forms are open. */
   rateEdit?: string | string[];
   /** Which Annual Item's price history is open for correction. */
@@ -153,6 +155,7 @@ export default async function BalancePage({ searchParams }: { searchParams: Prom
             sort={parseSort(first(params.sort))}
             expanded={first(params.expand) === "1"}
             admin={first(params.admin) === "1"}
+            shares={first(params.shares) === "month" ? "month" : "year"}
             rateEdit={first(params.rateEdit) === "1"}
             rateItem={first(params.rateItem) ?? null}
             openCell={first(params.cell) ?? null}
@@ -229,6 +232,7 @@ function BalanceYear({
   sort,
   expanded,
   admin,
+  shares,
   rateEdit,
   rateItem,
   openCell,
@@ -244,6 +248,7 @@ function BalanceYear({
   sort: GridSort;
   expanded: boolean;
   admin: boolean;
+  shares: SharesBasis;
   rateEdit: boolean;
   rateItem: string | null;
   openCell: string | null;
@@ -256,7 +261,7 @@ function BalanceYear({
   // typed items travel with them and touch nothing the grid reads.
   const watch = rateWatch(ledger, categories, items, year, LEDGER_CURRENCY, today);
   const years = recordedYears(ledger);
-  const state: GridState = { year, view, sort, expanded, admin, rateEdit, rateItem };
+  const state: GridState = { year, view, sort, expanded, admin, shares, rateEdit, rateItem };
   const links = linksFor(state);
   const peopleNames = new Map(people.map((person) => [person.id, person.displayName]));
   // Decided once: the chart draws its wedges in these colours and the table marks
@@ -271,7 +276,14 @@ function BalanceYear({
 
       <YearHeadline grid={grid} />
 
-      <ExpenseShares grid={grid} />
+      <ExpenseShares
+        grid={grid}
+        basis={shares}
+        links={{
+          year: gridHref(state, { shares: "year" }),
+          month: gridHref(state, { shares: "month" }),
+        }}
+      />
 
       <MonthStrip grid={grid} links={links} />
 
@@ -344,6 +356,8 @@ interface GridState {
   readonly sort: GridSort;
   readonly expanded: boolean;
   readonly admin: boolean;
+  /** Whether the פילוח prints a year's totals or a monthly average. */
+  readonly shares: SharesBasis;
   /** מעקב תעריפים's forms, in the same idiom as `admin`: a panel that stays open. */
   readonly rateEdit: boolean;
   readonly rateItem: string | null;
@@ -364,6 +378,7 @@ function gridParams(state: GridState): URLSearchParams {
   if (state.sort !== DEFAULT_GRID_SORT) params.set("sort", state.sort);
   if (state.expanded) params.set("expand", "1");
   if (state.admin) params.set("admin", "1");
+  if (state.shares === "month") params.set("shares", "month");
   if (state.rateEdit) params.set("rateEdit", "1");
   if (state.rateItem !== null) params.set("rateItem", state.rateItem);
   return params;
@@ -413,6 +428,7 @@ function linksFor(state: GridState): GridLinks {
       sort: state.sort,
       expand: state.expanded ? "1" : "",
       admin: state.admin ? "1" : "",
+      shares: state.shares === "month" ? "month" : "",
       rateEdit: state.rateEdit ? "1" : "",
       rateItem: state.rateItem ?? "",
     },

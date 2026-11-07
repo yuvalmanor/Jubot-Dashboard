@@ -77,8 +77,14 @@ const COLUMN_COUNT = 15;
  * `svh` rather than `vh`: on a phone `vh` is the height the viewport has *without*
  * the browser's toolbars, so a `vh` box is taller than what can be seen until the
  * toolbars retract.
+ *
+ * It was 55svh, which with the heading above it left six rows of a fifty-row
+ * table on screen — the window was shorter than the chrome around it. The floor
+ * matters as much as the ceiling: on a short laptop 72svh of a 600px viewport is
+ * still only a handful of rows, so the window never drops below 22rem and the
+ * page scrolls instead.
  */
-const TABLE_VIEWPORT = "max-h-[55svh]";
+const TABLE_VIEWPORT = "max-h-[72svh] min-h-[22rem]";
 
 /** The legend, referred to by the table it no longer sits inside. */
 const TABLE_LEGEND_ID = "year-grid-legend";
@@ -176,8 +182,11 @@ export function YearGridTable({
 
   if (empty) {
     return (
-      <section className="rounded-card bg-surface shadow-card p-5">
-        <TableHeader controls={controls} />
+      <section className="rounded-card bg-surface shadow-card p-4 sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+          <h2 className="title text-[13px] font-semibold text-stone-600">קטגוריות מול חודשים</h2>
+          {controls}
+        </div>
         <p className="mt-3 text-stone-600">אין קטגוריות ואין רישומים בשנה הזו.</p>
       </section>
     );
@@ -185,29 +194,38 @@ export function YearGridTable({
 
   return (
     <section className="overflow-hidden rounded-card bg-surface shadow-card">
-      <div className="px-4 pt-4 sm:px-5">
-        <TableHeader controls={controls} />
+      {/* One line of chrome over the table, not three. The heading, the controls
+          and the legend's own toggle share a row — what was here before was a
+          title line, a controls line and a legend line stacked, which cost about
+          as much height as six rows of the table they sat on top of.
 
-        {/* The legend was a <caption>, which put it inside the window: as wide as
-            the table, so it scrolled sideways with the months, and gone as soon as
-            the rows moved — in a window this short it would also cost two of the
-            rows it explains. It stays above the window, folded, and the table
-            points at it: four lines of prose between a reader and the figures is
-            four lines nobody reads twice. */}
-        <details className="mt-2 mb-3">
-          <summary className="inline-flex cursor-pointer items-center gap-1 rounded-md text-[13px] text-stone-500 transition-colors hover:text-stone-900">
-            <span aria-hidden="true">?</span> מקרא
-          </summary>
-          <p id={TABLE_LEGEND_ID} className="mt-2 max-w-3xl text-start text-[13px] text-stone-500">
+          The legend was a <caption>, which put it inside the window: as wide as
+          the table, so it scrolled sideways with the months, and gone as soon as
+          the rows moved. It stays above the window, folded, and the table points
+          at it: four lines of prose between a reader and the figures is four
+          lines nobody reads twice. */}
+      <details className="group px-3 pt-2.5 pb-2 sm:px-4">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+          <div className="flex items-baseline gap-2">
+            <h2 className="title text-[13px] font-semibold text-stone-600">קטגוריות מול חודשים</h2>
+            <summary className="cursor-pointer list-none text-[12px] text-stone-400 transition-colors hover:text-stone-900">
+              <span aria-hidden="true">? </span>
+              <span className="group-open:hidden">מקרא</span>
+              <span className="hidden group-open:inline">סגירת המקרא</span>
+            </summary>
+          </div>
+          {controls}
+        </div>
+
+        <p id={TABLE_LEGEND_ID} className="mt-2 max-w-3xl text-start text-[13px] text-stone-500">
             כל הסכומים בשקלים. חודש שלא נרשם בו דבר נקרא כאפס ומוצג כ
             <span className="tabular text-stone-300">0</span> אפור;{" "}
             <span className="text-stone-300">—</span> פירושו חודש שטרם הגיע. סימון בתא פירושו חריגה
             מהממוצע של אותה שורה. לחיצה על תא פותחת אותו לרישום במקום, או מובילה לחודש עצמו כששורה
             משותפת מסכמת את שני בני הבית. שלוש שורות הסיכום נעוצות לתחתית החלון; חיסכון הוא הכנסות
             פחות הוצאות, מחושב בקריאה.
-          </p>
-        </details>
-      </div>
+        </p>
+      </details>
 
       {/* The window: both axes scroll here, and it is the containing block every
           pinned cell in the table resolves against. */}
@@ -291,16 +309,6 @@ export function YearGridTable({
         </table>
       </div>
     </section>
-  );
-}
-
-/** The table's own heading: what it is, and the two things a reader changes about it. */
-function TableHeader({ controls }: { controls?: React.ReactNode }) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-      <h2 className="title text-[15px] font-semibold">קטגוריות מול חודשים</h2>
-      {controls}
-    </div>
   );
 }
 

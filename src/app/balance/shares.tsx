@@ -1,5 +1,9 @@
+import type { Route } from "next";
+
 import { type ShareSlice, type YearGrid } from "@/domain/ledger/year-grid";
-import { type Currency, format, sum } from "@/domain/money/money";
+
+import { Segmented } from "./chrome";
+import { type Currency, type Money, divide, format, sum } from "@/domain/money/money";
 
 /**
  * Where the year's הוצאות went, as parts of one whole.
@@ -17,6 +21,13 @@ import { type Currency, format, sum } from "@/domain/money/money";
  * a Group is drawn as part of its Group's wedge and the wedge opens onto its
  * parts. Nothing is added up twice: `yearGrid` decides the wedges from the very
  * same row totals the table prints, so a wedge and its row cannot disagree.
+ *
+ * It reads two ways, and the ring is the same ring in both: a year's total and
+ * a monthly average divide by the very same months, so the wedges are identical
+ * and only the figures move. That is why this is a switch over one chart rather
+ * than a second chart beside it — two rings of identical proportions would be
+ * one picture printed twice, and the question "is 70,794 a lot" is a different
+ * question from "is 7,079 a month a lot" only in the units.
  *
  * Colour does two jobs and no more. A Group carries an accent, because a Group
  * is an identity the household chose and put a name to. Everything else is one
@@ -177,14 +188,43 @@ export function groupColours(grid: YearGrid): ReadonlyMap<string, string> {
   return colours;
 }
 
-export function ExpenseShares({ grid }: { grid: YearGrid }) {
-  const whole = grid.expenses.total.aggregate.total;
-  const slices = paint(grid.expenseShares, "ILS");
+/** Which figures the card prints. The wedges are the same either way. */
+export type SharesBasis = "year" | "month";
+
+export function ExpenseShares({
+  grid,
+  basis,
+  links,
+}: {
+  grid: YearGrid;
+  basis: SharesBasis;
+  /** The same card read the other way. */
+  links: { readonly year: Route; readonly month: Route };
+}) {
+  const months = grid.denominatorMonths.length;
+  // An average over no months is undefined, not nought — the same rule every
+  // other average on this screen follows — so with nothing to divide by the card
+  // stays on the year's totals and the switch is not offered.
+  const divisible = months > 0;
+  const reading: SharesBasis = divisible ? basis : "year";
+  const per = (amount: Money) => (reading === "month" ? divide(amount, months) : amount);
+
+  const slices = paint(grid.expenseShares, "ILS").map((slice) => ({ ...slice, total: per(slice.total) }));
+  const whole = per(grid.expenses.total.aggregate.total);
+
+  const heading = (
+    <Heading
+      reading={reading}
+      months={months}
+      whole={slices.length === 0 ? null : format(whole, { withMinorUnits: false })}
+      links={divisible ? links : null}
+    />
+  );
 
   if (slices.length === 0) {
     return (
-      <section className="rounded-card bg-surface shadow-card p-5">
-        <Heading whole={null} />
+      <section className="rounded-card bg-surface shadow-card p-4 sm:p-5">
+        {heading}
         <p className="mt-2 text-stone-600">אין הוצאות רשומות בשנה הזו, ואין מה לפלח.</p>
       </section>
     );
@@ -192,7 +232,7 @@ export function ExpenseShares({ grid }: { grid: YearGrid }) {
 
   return (
     <section className="rounded-card bg-surface shadow-card p-4 sm:p-5">
-      <Heading whole={format(whole, { withMinorUnits: false })} />
+      {heading}
 
       <div className="mt-4 flex flex-col items-center gap-5 sm:flex-row sm:items-start sm:gap-7">
         <Ring slices={slices} />
@@ -202,14 +242,45 @@ export function ExpenseShares({ grid }: { grid: YearGrid }) {
   );
 }
 
-function Heading({ whole }: { whole: string | null }) {
+function Heading({
+  reading,
+  months,
+  whole,
+  links,
+}: {
+  reading: SharesBasis;
+  months: number;
+  whole: string | null;
+  links: { readonly year: Route; readonly month: Route } | null;
+}) {
   return (
-    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-      <h2 className="title text-[15px] font-semibold">לאן הלך הכסף</h2>
-      {whole === null ? null : (
-        <p className="text-[13px] text-stone-500">
-          סך ההוצאות <bdi className="tabular font-medium text-stone-700">{whole}</bdi>
-        </p>
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h2 className="title text-[15px] font-semibold">לאן הלך הכסף</h2>
+        {whole === null ? null : (
+          <p className="text-[13px] text-stone-500">
+            {reading === "month" ? "ממוצע חודשי" : "סך ההוצאות"}{" "}
+            <bdi className="tabular font-medium text-stone-700">{whole}</bdi>
+            {reading === "month" ? (
+              <>
+                {" · "}
+                <bdi className="tabular">÷{months}</bdi>
+              </>
+            ) : null}
+          </p>
+        )}
+      </div>
+
+      {links === null ? null : (
+        <Segmented
+          label="איך לקרוא את הפילוח"
+          size="sm"
+          current={reading}
+          options={[
+            { key: "year", label: "סכום שנתי", href: links.year },
+            { key: "month", label: "ממוצע לחודש", href: links.month },
+          ]}
+        />
       )}
     </div>
   );

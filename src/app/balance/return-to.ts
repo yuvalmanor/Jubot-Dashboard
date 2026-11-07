@@ -18,6 +18,8 @@ export interface ReturnTo {
   readonly expand: string;
   /** `"1"` while the category panel below the grid is open. */
   readonly admin: string;
+  /** `"month"` while the פילוח is read as a monthly average. */
+  readonly shares: string;
   /** `"1"` while מעקב תעריפים's own forms are open. */
   readonly rateEdit: string;
   /** Which Annual Item's price history is open for correction, if any. */
@@ -30,6 +32,7 @@ const FIELDS: readonly (keyof ReturnTo)[] = [
   "sort",
   "expand",
   "admin",
+  "shares",
   "rateEdit",
   "rateItem",
 ];
@@ -45,6 +48,7 @@ export function returnToFrom(form: FormData): ReturnTo {
     sort: read("sort"),
     expand: read("expand"),
     admin: read("admin"),
+    shares: read("shares"),
     rateEdit: read("rateEdit"),
     rateItem: read("rateItem"),
   };
