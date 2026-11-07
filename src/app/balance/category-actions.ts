@@ -22,9 +22,16 @@ import {
   InvalidLifespanError,
   InvalidMergeError,
   UnknownCategoryError,
+  applyHouseholdGroup,
+  applyHouseholdRename,
+  applyHouseholdWatch,
+  applyLifespan,
+  applyMerge,
+  applyPersonalCategoryRename,
   findHouseholdCategory,
   findPersonalCategory,
   isCategoryType,
+  householdCategoryOf,
   personalCategoriesOf,
   planCategoryMerge,
   planHouseholdGroup,
@@ -34,7 +41,7 @@ import {
   planPersonalCategoryCreation,
   planPersonalCategoryRename,
 } from "@/domain/categories/categories";
-import { monthOf, tryParseMonthKey } from "@/domain/time/calendar-month";
+import { monthKey, monthOf, tryParseMonthKey } from "@/domain/time/calendar-month";
 import { requireHouseholdEmail } from "@/session";
 
 import { type ReturnTo, backToGrid, returnToFrom } from "./return-to";
@@ -231,6 +238,172 @@ export async function setWatched(form: FormData): Promise<void> {
     const category = findHouseholdCategory(categories, change.householdCategoryId);
     await setHouseholdCategoryWatched(change);
     return { code: null, done: `${watched ? "watched" : "unwatched"}:${category?.name ?? ""}` };
+  });
+}
+
+// --- saving a whole table of them at once ------------------------------------
+
+/**
+ * The two tables of the admin panel save the way a spreadsheet does: change as
+ * many rows as you like, press once.
+ *
+ * It used to be a card per category with a button per field — six buttons on a
+ * card, thirty-five cards — so renaming four lines cost four page loads, and
+ * anything typed into another card was thrown away by the one that was saved.
+ * That is the wrong shape for administering a taxonomy, where changes arrive in
+ * batches: tagging eleven lines as חשבונות should be eleven selects and one
+ * press.
+ *
+ * Each row is compared against what is stored and only the differences are
+ * written, so a save with nothing changed writes nothing. Every write is still
+ * one of the same planned, validated operations a single card used — there is no
+ * bulk path into the database that goes round the domain — and the order is
+ * fixed: names, then Groups, then מעקב, and **merges last**, because a merge is
+ * the one operation that deletes a row the earlier ones may have been editing.
+ *
+ * `entries` is not mentioned here either. Thirty-five rows saved in one press
+ * move exactly as much money as thirty-five cards did: none.
+ */
+
+function readIds(form: FormData, field: string): readonly string[] {
+  return form.getAll(field).filter((value): value is string => typeof value === "string");
+}
+
+function readRow(form: FormData, field: string, id: string): string {
+  return readText(form, `${field}:${id}`);
+}
+
+/** "Nothing to save" is a different answer from "saved", and the panel says which. */
+function savedOutcome(changes: number): Outcome {
+  return { code: null, done: changes === 0 ? "nothing" : `saved:${changes}` };
+}
+
+export async function saveHouseholdCategories(form: FormData): Promise<void> {
+  await run(form, async () => {
+    let categories = await loadCategories();
+    const ids = readIds(form, "id");
+    let changes = 0;
+
+    for (const id of ids) {
+      const current = findHouseholdCategory(categories, id);
+      if (current === undefined) continue;
+
+      const name = readRow(form, "name", id).trim();
+      if (name.length > 0 && name !== current.name) {
+        const rename = planHouseholdRename(categories, id, name);
+        await renameHouseholdCategory(rename);
+        categories = applyHouseholdRename(categories, rename);
+        changes += 1;
+      }
+
+      const group = readRow(form, "group", id).trim();
+      if ((group.length === 0 ? null : group) !== current.group) {
+        const change = planHouseholdGroup(categories, id, group);
+        await setHouseholdCategoryGroup(change);
+        categories = applyHouseholdGroup(categories, change);
+        changes += 1;
+      }
+
+      const watched = readRow(form, "watched", id) === "1";
+      if (watched !== current.watched) {
+        const change = planHouseholdWatch(categories, id, watched);
+        await setHouseholdCategoryWatched(change);
+        categories = applyHouseholdWatch(categories, change);
+        changes += 1;
+      }
+    }
+
+    // Last, and against the model as the merges leave it: a merge empties its
+    // source and drops it, so a row an earlier merge already removed is skipped
+    // rather than failed, and a target named by two merges still resolves.
+    for (const id of ids) {
+      const targetId = readRow(form, "merge", id);
+      if (targetId.length === 0 || targetId === id) continue;
+      if (findHouseholdCategory(categories, id) === undefined) continue;
+      if (findHouseholdCategory(categories, targetId) === undefined) continue;
+
+      const members = personalCategoriesOf(categories, id);
+      if (members.length === 0) continue;
+
+      const merge = planCategoryMerge(
+        categories,
+        {
+          personalCategoryIds: members.map((category) => category.id),
+          household: { kind: "existing", id: targetId },
+        },
+        { householdCategoryId: crypto.randomUUID() },
+      );
+      await applyCategoryMerge(merge);
+      categories = applyMerge(categories, merge);
+      changes += 1;
+    }
+
+    return savedOutcome(changes);
+  });
+}
+
+export async function savePersonalCategories(form: FormData): Promise<void> {
+  await run(form, async () => {
+    let categories = await loadCategories();
+    const ids = readIds(form, "id");
+    let changes = 0;
+
+    for (const id of ids) {
+      const current = findPersonalCategory(categories, id);
+      if (current === undefined) continue;
+
+      const name = readRow(form, "name", id).trim();
+      if (name.length > 0 && name !== current.name) {
+        const rename = planPersonalCategoryRename(categories, id, name);
+        await renamePersonalCategory(rename);
+        categories = applyPersonalCategoryRename(categories, rename);
+        changes += 1;
+      }
+
+      const from = tryParseMonthKey(readRow(form, "from", id));
+      const untilText = readRow(form, "until", id);
+      const until = untilText.length === 0 ? null : tryParseMonthKey(untilText);
+      const movedFrom = from !== null && monthKey(from) !== monthKey(current.activeFrom);
+      const movedUntil =
+        (until === null ? "" : monthKey(until)) !==
+        (current.activeUntil === null ? "" : monthKey(current.activeUntil));
+
+      if (movedFrom || movedUntil) {
+        const change = planLifespanChange(categories, id, {
+          activeFrom: from ?? current.activeFrom,
+          activeUntil: until,
+        });
+        await setPersonalCategoryLifespan(change);
+        categories = applyLifespan(categories, change);
+        changes += 1;
+      }
+    }
+
+    // After the renames, for the same reason the household table merges last: a
+    // reassignment can empty a household line, and emptying one drops it.
+    for (const id of ids) {
+      const current = findPersonalCategory(categories, id);
+      if (current === undefined) continue;
+      const choice = readRow(form, "household", id);
+      if (choice.length === 0) continue;
+      if (choice === householdCategoryOf(categories, id).id) continue;
+      if (choice !== "new" && findHouseholdCategory(categories, choice) === undefined) continue;
+
+      const merge = planCategoryMerge(
+        categories,
+        {
+          personalCategoryIds: [id],
+          household:
+            choice === "new" ? { kind: "new", name: current.name } : { kind: "existing", id: choice },
+        },
+        { householdCategoryId: crypto.randomUUID() },
+      );
+      await applyCategoryMerge(merge);
+      categories = applyMerge(categories, merge);
+      changes += 1;
+    }
+
+    return savedOutcome(changes);
   });
 }
 

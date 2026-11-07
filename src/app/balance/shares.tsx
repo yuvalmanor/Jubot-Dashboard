@@ -1,5 +1,5 @@
 import { type ShareSlice, type YearGrid } from "@/domain/ledger/year-grid";
-import { format } from "@/domain/money/money";
+import { type Currency, format, sum } from "@/domain/money/money";
 
 /**
  * Where the year's הוצאות went, as parts of one whole.
@@ -27,33 +27,71 @@ import { format } from "@/domain/money/money";
  */
 
 /**
- * The accents a Group may carry, in the order Groups are met.
+ * Eight hues, and a ninth neutral for the tail.
  *
- * Validated as a categorical set against the light surface: all four clear the
- * lightness band, the chroma floor, 3:1 contrast, and adjacent-pair separation
- * under protanopia, deuteranopia and tritanopia. A fifth Group is not given an
- * invented fifth hue — a generated colour is indistinguishable from one of these
- * under CVD — it falls through to the ranked ramp like any other line, and its
- * name in the list is what identifies it.
+ * It was one hue, darkest first, on the reasoning that rank is the only thing
+ * separating one ungrouped line from the next. The household read a ring of
+ * twenty-three reds and said it was not a split, it was a gradient — which is
+ * fair, and the fix is a real categorical palette rather than more reds.
+ *
+ * Eight *hues* is the ceiling and not a preference. These eight clear every hard
+ * gate against this surface on the adjacent pairlist, which is the right
+ * pairlist for a ring because wedges touch their neighbours: worst adjacent
+ * separation ΔE 9.1 under protanopia and 19.6 with full colour vision. A ninth
+ * invented hue would be indistinguishable from one of these under
+ * colour-blindness, so there is not one.
+ *
+ * The ninth to sixteenth wedges take the same eight hues again, mixed halfway to
+ * the surface. That is a tint and not a new hue: it separates on lightness,
+ * which is the one channel every kind of colour-blindness keeps. It is a
+ * compromise and worth naming as one — at sixteen wedges colour has stopped
+ * being an identity and become a way of telling one sliver from the next — and
+ * it is only sound because the ranked list beside the ring names every wedge and
+ * prints its figure, so nothing here is ever identified by colour alone. The
+ * same relief is what allows three of the eight to sit under 3:1 against the
+ * surface.
+ *
+ * Past the sixteenth, the tail folds into אחר, which opens in the list onto the
+ * lines inside it exactly as a Group does. The way to have fewer wedges is to
+ * mark more lines into a Group, which is what Groups are for.
  */
-const GROUP_ACCENTS = ["#b45309", "#0d9488", "#6d28d9", "#9f1239"] as const;
-
-/**
- * One hue, darkest first: this is a magnitude, and the reader's question of it
- * is "which is biggest", never "which is which". Past the eighth the tail stays
- * at the lightest step — a tail is a tail, and the list beside it is where its
- * names are.
- */
-const RANK_RAMP = [
-  "#9f1239",
-  "#be123c",
-  "#e11d48",
-  "#f43f5e",
-  "#fb7185",
-  "#fda4af",
-  "#fecdd3",
-  "#ffe4e6",
+const WEDGE_HUES = [
+  "#2a78d6",
+  "#eb6834",
+  "#1baf7a",
+  "#eda100",
+  "#e87ba4",
+  "#008300",
+  "#6250d6",
+  "#e34948",
 ] as const;
+
+/** The tail. Deliberately the one colour on the ring that is not an identity. */
+const TAIL_COLOUR = "#a8a29e";
+
+/** How far the second lap is mixed towards the surface. */
+const TINT = 0.5;
+
+/** `#rrggbb` mixed towards white. Not a new hue — the same one, lighter. */
+function tint(hex: string, towards: number): string {
+  const channel = (at: number) => {
+    const value = Number.parseInt(hex.slice(at, at + 2), 16);
+    return Math.round(value + (255 - value) * towards)
+      .toString(16)
+      .padStart(2, "0");
+  };
+  return `#${channel(1)}${channel(3)}${channel(5)}`;
+}
+
+/** Sixteen fills: the eight hues, then the same eight lighter. */
+const WEDGE_FILLS: readonly string[] = [
+  ...WEDGE_HUES,
+  ...WEDGE_HUES.map((hue) => tint(hue, TINT)),
+];
+
+/** What the folded tail is called, and the key it is drawn under. */
+const TAIL_NAME = "אחר";
+const TAIL_KEY = "tail:other";
 
 /** Degrees of surface left between two wedges, so adjacent fills never touch. */
 const WEDGE_GAP = 1.2;
@@ -67,28 +105,81 @@ interface PaintedSlice extends ShareSlice {
 }
 
 /**
- * The accent each Group carries, decided once for the whole screen.
+ * Which slices are drawn in their own colour, and what the rest become.
  *
- * The table marks its rows with it and the ring draws its wedges with it, so a
- * Group is one colour everywhere it appears — which is the only thing that makes
- * "the amber rows" and "the amber wedge" the same sentence. Groups are met in
- * size order, so the mapping is stable for as long as the Groups are, and it
- * follows the entity and never its rank: an ungrouped line moving up or down
- * repaints nothing.
+ * A Group is never folded. It is an identity the household chose and put a name
+ * to, and it carries the same colour in the table as it does here — so if קבועות
+ * fell into the tail one year its rows would lose their mark for no reason the
+ * reader could see. The remaining slots go to the biggest lines, and everything
+ * after that becomes one אחר wedge that the list opens.
+ *
+ * Hues are assigned in the order the wedges are drawn, because that is the order
+ * the palette was validated in: neighbours on the ring touch, and these eight
+ * clear the gates as an adjacent sequence.
+ */
+function paint(slices: readonly ShareSlice[], currency: Currency): readonly PaintedSlice[] {
+  const groups = slices.filter((slice) => slice.isGroup);
+  const rest = slices.filter((slice) => !slice.isGroup);
+  const kept = new Set([
+    ...groups.slice(0, WEDGE_FILLS.length).map((slice) => slice.key),
+    ...rest.slice(0, Math.max(0, WEDGE_FILLS.length - groups.length)).map((slice) => slice.key),
+  ]);
+
+  const drawn: PaintedSlice[] = [];
+  const folded: ShareSlice[] = [];
+  for (const slice of slices) {
+    if (kept.has(slice.key)) {
+      drawn.push({ ...slice, colour: WEDGE_FILLS[drawn.length] ?? TAIL_COLOUR });
+    } else {
+      folded.push(slice);
+    }
+  }
+
+  if (folded.length === 0) return drawn;
+
+  // The tail is one wedge and a dozen names. Its parts are the folded lines
+  // themselves, so nothing is hidden — it is listed one level in, not dropped.
+  const total = sum(
+    folded.map((slice) => slice.total),
+    currency,
+  );
+  return [
+    ...drawn,
+    {
+      key: TAIL_KEY,
+      name: `${TAIL_NAME} (${folded.length})`,
+      isGroup: false,
+      total,
+      share: folded.reduce((running, slice) => running + (slice.share ?? 0), 0),
+      parts: folded.map((slice) => ({
+        key: slice.key,
+        name: slice.name,
+        total: slice.total,
+        share: slice.share,
+      })),
+      colour: TAIL_COLOUR,
+    },
+  ];
+}
+
+/**
+ * The colour each Group is drawn in, for the table to mark its rows with.
+ *
+ * One colour per Group across the whole screen is the only thing that makes "the
+ * blue rows" and "the blue wedge" the same sentence, so the table asks the chart
+ * rather than deciding for itself.
  */
 export function groupColours(grid: YearGrid): ReadonlyMap<string, string> {
-  const accents = new Map<string, string>();
-  for (const slice of grid.expenseShares) {
-    if (!slice.isGroup) continue;
-    const accent = GROUP_ACCENTS[accents.size];
-    if (accent !== undefined) accents.set(slice.name, accent);
+  const colours = new Map<string, string>();
+  for (const slice of paint(grid.expenseShares, "ILS")) {
+    if (slice.isGroup) colours.set(slice.name, slice.colour);
   }
-  return accents;
+  return colours;
 }
 
 export function ExpenseShares({ grid }: { grid: YearGrid }) {
   const whole = grid.expenses.total.aggregate.total;
-  const slices = paint(grid.expenseShares, groupColours(grid));
+  const slices = paint(grid.expenseShares, "ILS");
 
   if (slices.length === 0) {
     return (
@@ -122,21 +213,6 @@ function Heading({ whole }: { whole: string | null }) {
       )}
     </div>
   );
-}
-
-/** Each slice's colour: a Group's accent, or its place in the ranked ramp. */
-function paint(
-  slices: readonly ShareSlice[],
-  accents: ReadonlyMap<string, string>,
-): readonly PaintedSlice[] {
-  let rank = 0;
-  return slices.map((slice) => {
-    const accent = slice.isGroup ? accents.get(slice.name) : undefined;
-    if (accent !== undefined) return { ...slice, colour: accent };
-    const colour = RANK_RAMP[Math.min(rank, RANK_RAMP.length - 1)] ?? RANK_RAMP[0];
-    rank += 1;
-    return { ...slice, colour };
-  });
 }
 
 /**
@@ -211,7 +287,7 @@ function Ranked({ slices }: { slices: readonly PaintedSlice[] }) {
     <ol className="w-full min-w-0 columns-1 gap-x-6 sm:columns-2 lg:columns-3">
       {slices.map((slice) => (
         <li key={slice.key} className="mb-1 break-inside-avoid">
-          {slice.isGroup && slice.parts.length > 0 ? (
+          {slice.parts.length > 0 ? (
             <details className="rounded-md">
               <summary className="flex cursor-pointer items-baseline gap-2 rounded-md px-1.5 py-1 text-[13px] transition-colors hover:bg-sunken">
                 <Row slice={slice} marker />

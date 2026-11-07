@@ -590,6 +590,8 @@ const DONE_MESSAGES: Readonly<Record<string, string>> = {
   watched: "הקטגוריה נוספה למעקב תעריפים. שום סכום לא זז — הפאנל קורא את אותם רישומים.",
   grouped: "השורה סומנה כשייכת לקבוצה. שום סכום לא זז — הקבוצה משנה רק איך שורות נקראות יחד.",
   ungrouped: "השורה הוצאה מהקבוצה. שום סכום לא זז.",
+  saved: "השינויים נשמרו. שמות, קבוצות, שיוכים ותקופות — ואף סכום שנרשם לא זז.",
+  nothing: "לא היה מה לשמור: אף שורה לא השתנתה.",
   unwatched: "הקטגוריה הוסרה ממעקב תעריפים. שום סכום לא זז.",
   "item-created": "נוצר פריט שנתי, יחד עם החידוש הראשון שלו. המאזן שמעל לא השתנה.",
   renewed: "החידוש נרשם. השנה שלו נגזרה מהתאריך, ושום סכום במאזן לא זז.",
@@ -652,9 +654,12 @@ function Notices({
   if (done === undefined) return null;
 
   const separator = done.indexOf(":");
-  const message = DONE_MESSAGES[separator < 0 ? done : done.slice(0, separator)];
+  const kind = separator < 0 ? done : done.slice(0, separator);
+  const message = DONE_MESSAGES[kind];
   if (message === undefined) return null;
-  const subject = separator < 0 ? "" : done.slice(separator + 1);
+  const named = separator < 0 ? "" : done.slice(separator + 1);
+  // A bulk save reports a count; everything else reports the name it acted on.
+  const subject = kind === "saved" ? `${named} שינויים` : named;
 
   return (
     <Notice
