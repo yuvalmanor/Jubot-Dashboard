@@ -335,14 +335,25 @@ export interface FormatOptions {
    * out; showing shekels states the average at the precision it actually holds.
    */
   readonly withMinorUnits?: boolean;
+  /**
+   * Show a `+` on a positive figure as well as the `−` on a negative one, for a
+   * column where the direction is the point — what each row did to a balance.
+   *
+   * The sign is placed by `Intl` rather than written in beside the figure. A `+`
+   * glyph put in front of a Hebrew-formatted amount is a neutral character at the
+   * boundary of an RTL run, and where it lands is then up to the bidi algorithm
+   * rather than up to us. Zero keeps no sign: it went neither way.
+   */
+  readonly withSign?: boolean;
 }
 
 /** Format for reading. Hebrew locale by default: grouped thousands, symbol trailing. */
 export function format(amount: Money, options: FormatOptions = {}): string {
-  const { locale = "he-IL", withSymbol = true, withMinorUnits = true } = options;
+  const { locale = "he-IL", withSymbol = true, withMinorUnits = true, withSign = false } = options;
   const digits = withMinorUnits ? minorUnitDigits(amount.currency) : 0;
   const formatter = new Intl.NumberFormat(locale, {
     ...(withSymbol ? { style: "currency" as const, currency: amount.currency } : {}),
+    ...(withSign ? { signDisplay: "exceptZero" as const } : {}),
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   });

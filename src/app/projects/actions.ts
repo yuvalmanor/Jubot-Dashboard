@@ -7,11 +7,16 @@ import { redirect } from "next/navigation";
 import { findPersonByEmail } from "@/db/people";
 import {
   deleteFundingLeg,
+  deleteProjectDistribution,
   deleteProjectExpense,
+  deleteProjectValuation,
   insertFundingLeg,
   insertProject,
+  insertProjectDistribution,
   insertProjectExpense,
+  insertProjectValuation,
   loadFundingLegs,
+  loadProjectDistributions,
   loadProjectExpenses,
   loadProjects,
   saveDealTerms,
@@ -27,15 +32,22 @@ import {
   parseMoneyInput,
 } from "@/domain/money/money";
 import {
+  type DistributionDestination,
   type Project,
+  DistributionRequiredError,
   FundingLegRequiredError,
   InvalidDealTermsError,
   InvalidFundingLegError,
+  InvalidProjectDistributionError,
   InvalidProjectError,
   InvalidProjectExpenseError,
+  InvalidProjectValuationError,
   PotOverdrawnError,
   UnknownProjectError,
   buildProject,
+  isValuationBasis,
+  rateProblemOf,
+  requireDistributionRemovable,
   requireLegRemovable,
   requireProject,
   requireWithinPot,
@@ -68,6 +80,12 @@ export type ProjectsErrorCode =
   | "bad-rate"
   | "overdrawn"
   | "leg-required"
+  | "bad-distribution"
+  | "distribution-required"
+  | "bad-valuation"
+  | "rate-unwanted"
+  | "rate-missing"
+  | "rate-wrong-pair"
   | "bad-terms"
   | "failed";
 
@@ -98,7 +116,18 @@ function isUniqueViolation(error: unknown): boolean {
   return typeof error === "object" && error !== null && "code" in error && error.code === "23505";
 }
 
+const RATE_CODES = {
+  unwanted: "rate-unwanted",
+  missing: "rate-missing",
+  "wrong-pair": "rate-wrong-pair",
+} as const;
+
 function failureFor(error: unknown): Omit<Outcome, "projectId"> {
+  // Ahead of everything else: a rate against the wrong currency is the failure a
+  // person meets in ordinary use, and the domain says it in English.
+  const rateProblem = rateProblemOf(error);
+  if (rateProblem !== null) return { code: RATE_CODES[rateProblem] };
+
   if (error instanceof PotOverdrawnError) {
     // The one failure a person will meet in ordinary use, so it says the figures
     // in the language the screen is in rather than the domain's own words.
@@ -111,6 +140,15 @@ function failureFor(error: unknown): Omit<Outcome, "projectId"> {
   }
   if (error instanceof FundingLegRequiredError) {
     return { code: "leg-required", detail: `בלעדיה יחסרו בקופה ${format(error.shortfall)}.` };
+  }
+  if (error instanceof DistributionRequiredError) {
+    return { code: "distribution-required", detail: `בלעדיה יחסרו בקופה ${format(error.shortfall)}.` };
+  }
+  if (error instanceof InvalidProjectDistributionError) {
+    return { code: "bad-distribution", detail: error.message };
+  }
+  if (error instanceof InvalidProjectValuationError) {
+    return { code: "bad-valuation", detail: error.message };
   }
   if (error instanceof InvalidProjectError) return { code: "bad-project", detail: error.message };
   if (error instanceof UnknownProjectError) return { code: "unknown-project" };
@@ -186,11 +224,12 @@ async function projectFrom(form: FormData): Promise<Project> {
 async function potFrom(form: FormData) {
   const projects = await loadProjects();
   const project = requireProject(projects, readText(form, "projectId"));
-  const [legs, expenses] = await Promise.all([
+  const [legs, expenses, distributions] = await Promise.all([
     loadFundingLegs(projects),
     loadProjectExpenses(projects),
+    loadProjectDistributions(projects),
   ]);
-  return { project, legs, expenses };
+  return { project, legs, expenses, distributions };
 }
 
 // --- the project -------------------------------------------------------------
@@ -230,33 +269,101 @@ export async function editProject(form: FormData): Promise<void> {
   });
 }
 
-// --- funding legs ------------------------------------------------------------
+// --- one row, whichever of the three it is -----------------------------------
 
-/** Money going in. The only way it does. */
-export async function addFundingLeg(form: FormData): Promise<void> {
+/**
+ * What the one entry row asked for. The destination travels inside the kind
+ * rather than beside it — `distribution:out:<accountId>` — because "a חלוקה" is
+ * not a complete answer: where it went decides whether the balance moves, and a
+ * separate field for it would sit dead on the screen two choices out of three.
+ */
+type Chosen =
+  | { kind: "leg" }
+  | { kind: "expense" }
+  | { kind: "distribution"; destination: DistributionDestination };
+
+function chosenFrom(form: FormData): Chosen {
+  const value = readText(form, "kind");
+  if (value === "leg") return { kind: "leg" };
+  if (value === "expense") return { kind: "expense" };
+  if (value === "distribution:rolled") {
+    return { kind: "distribution", destination: { kind: "rolled" } };
+  }
+
+  const accountId = value.startsWith("distribution:out:")
+    ? value.slice("distribution:out:".length)
+    : "";
+  if (accountId !== "") {
+    return { kind: "distribution", destination: { kind: "out", accountId } };
+  }
+  throw new InvalidProjectError(`סוג תנועה לא מוכר: ${value}`);
+}
+
+/**
+ * Record one movement: a Funding Leg, an expense, or a distribution.
+ *
+ * One action because the screen has one entry row, and the three are the same
+ * four facts — what it was, how much, in which currency, at which rate — pointing
+ * in different directions. Nothing about the three rules is merged with it: an
+ * expense is still checked against the pot before it is written, a leg is still
+ * the only way money enters from outside, and a distribution still writes nothing
+ * into the Account it names.
+ */
+export async function addMovement(form: FormData): Promise<void> {
   await requirePerson();
   const projectId = readText(form, "projectId");
 
   await run(projectId, async () => {
-    const project = await projectFrom(form);
+    const chosen = chosenFrom(form);
+    const { project, legs, expenses, distributions } = await potFrom(form);
     const currency = currencyFrom(form, "currency");
     const amount = parseMoneyInput(readText(form, "amount"), currency);
-    if (amount === null) {
-      throw new InvalidFundingLegError("יש להזין סכום לרגל המימון");
+    const rate = rateFrom(form, "rate");
+    const description = readText(form, "description");
+    const paidOn = tryParseDateKey(readText(form, "paidOn")) ?? dateOf(new Date());
+
+    if (chosen.kind === "leg") {
+      if (amount === null) throw new InvalidFundingLegError("יש להזין סכום לרגל המימון");
+      const leg = await insertFundingLeg(
+        crypto.randomUUID(),
+        { projectId: project.id, source: description, amount, rate, paidOn },
+        project,
+      );
+      return { code: null, done: `leg-added:${leg.source}` };
     }
 
-    const leg = await insertFundingLeg(
+    if (chosen.kind === "expense") {
+      if (amount === null) throw new InvalidProjectExpenseError("יש להזין סכום להוצאה");
+      // Before the insert, so the overdrawn state never exists — not even for the
+      // length of a transaction.
+      requireWithinPot({ project, legs, expenses, distributions, candidate: { amount, rate } });
+      const expense = await insertProjectExpense(
+        crypto.randomUUID(),
+        { projectId: project.id, description, amount, rate, paidOn },
+        project,
+      );
+      return { code: null, done: `expense-added:${expense.description}` };
+    }
+
+    if (amount === null) throw new InvalidProjectDistributionError("יש להזין סכום לחלוקה");
+    // No pot check: a distribution never takes money out of the balance. One that
+    // went out never entered it, and one that was rolled only adds. Nothing is
+    // written to the Account it names either — a Snapshot is taken by hand, and
+    // one form writing a figure into two places is the double count the
+    // destination is recorded to make visible.
+    const distribution = await insertProjectDistribution(
       crypto.randomUUID(),
       {
         projectId: project.id,
-        source: readText(form, "source"),
+        description,
         amount,
-        rate: rateFrom(form, "rate"),
-        paidOn: tryParseDateKey(readText(form, "paidOn")) ?? dateOf(new Date()),
+        rate,
+        destination: chosen.destination,
+        paidOn,
       },
       project,
     );
-    return { code: null, done: `leg-added:${leg.source}` };
+    return { code: null, done: `distribution-added:${distribution.description}` };
   });
 }
 
@@ -270,50 +377,16 @@ export async function removeFundingLeg(form: FormData): Promise<void> {
   const projectId = readText(form, "projectId");
 
   await run(projectId, async () => {
-    const { project, legs, expenses } = await potFrom(form);
+    const { project, legs, expenses, distributions } = await potFrom(form);
 
     const legId = readText(form, "legId");
-    requireLegRemovable({ project, legs, expenses, legId });
+    requireLegRemovable({ project, legs, expenses, distributions, legId });
     await deleteFundingLeg(legId);
     return { code: null, done: "leg-removed:" };
   });
 }
 
 // --- the expense ledger ------------------------------------------------------
-
-/**
- * Money coming out. Checked against the pot before it is written, so the state
- * where more has been spent than was ever put in never exists.
- */
-export async function addExpense(form: FormData): Promise<void> {
-  await requirePerson();
-  const projectId = readText(form, "projectId");
-
-  await run(projectId, async () => {
-    const { project, legs, expenses } = await potFrom(form);
-    const currency = currencyFrom(form, "currency");
-    const amount = parseMoneyInput(readText(form, "amount"), currency);
-    if (amount === null) {
-      throw new InvalidProjectExpenseError("יש להזין סכום להוצאה");
-    }
-    const rate = rateFrom(form, "rate");
-
-    requireWithinPot({ project, legs, expenses, candidate: { amount, rate } });
-
-    const expense = await insertProjectExpense(
-      crypto.randomUUID(),
-      {
-        projectId: project.id,
-        description: readText(form, "description"),
-        amount,
-        rate,
-        paidOn: tryParseDateKey(readText(form, "paidOn")) ?? dateOf(new Date()),
-      },
-      project,
-    );
-    return { code: null, done: `expense-added:${expense.description}` };
-  });
-}
 
 /** Remove an expense. Always safe: taking one out can only leave the pot fuller. */
 export async function removeExpense(form: FormData): Promise<void> {
@@ -323,6 +396,83 @@ export async function removeExpense(form: FormData): Promise<void> {
   await run(projectId, async () => {
     await deleteProjectExpense(readText(form, "expenseId"));
     return { code: null, done: "expense-removed:" };
+  });
+}
+
+// --- distributions -----------------------------------------------------------
+
+/**
+ * Take a distribution back out. Unlike an expense this is not always safe: a
+ * rolled one made room in the balance, and removing it is refused whenever the
+ * pot could not have paid for what it has since spent without it.
+ */
+export async function removeDistribution(form: FormData): Promise<void> {
+  await requirePerson();
+  const projectId = readText(form, "projectId");
+
+  await run(projectId, async () => {
+    const { project, legs, expenses, distributions } = await potFrom(form);
+
+    const distributionId = readText(form, "distributionId");
+    requireDistributionRemovable({ project, legs, expenses, distributions, distributionId });
+    await deleteProjectDistribution(distributionId);
+    return { code: null, done: "distribution-removed:" };
+  });
+}
+
+// --- valuations --------------------------------------------------------------
+
+/**
+ * Record what somebody said this project is worth.
+ *
+ * One figure, one date, one basis, one source. Nothing is converted, so there is
+ * no rate field: a valuation states what the pot is worth and the pot has one
+ * currency. Per ADR 0005 מיפוי reads the latest of these, which is why a blank
+ * source is refused rather than stored — the figure moves other screens, and the
+ * safeguard on that is being able to ask who said so.
+ */
+export async function addValuation(form: FormData): Promise<void> {
+  await requirePerson();
+  const projectId = readText(form, "projectId");
+
+  await run(projectId, async () => {
+    const project = await projectFrom(form);
+    const amount = parseMoneyInput(readText(form, "amount"), project.currency);
+    if (amount === null) {
+      throw new InvalidProjectValuationError("יש להזין את השווי שנקבע");
+    }
+
+    const basis = readText(form, "basis");
+    if (!isValuationBasis(basis)) {
+      throw new InvalidProjectValuationError(`בסיס שווי לא מוכר: ${basis}`);
+    }
+
+    const valuation = await insertProjectValuation(
+      crypto.randomUUID(),
+      {
+        projectId: project.id,
+        amount,
+        basis,
+        source: readText(form, "source"),
+        statedOn: tryParseDateKey(readText(form, "statedOn")) ?? dateOf(new Date()),
+      },
+      project,
+    );
+    return { code: null, done: `valuation-added:${format(valuation.amount)}` };
+  });
+}
+
+/**
+ * Remove a valuation. Always safe: the project falls back to the one stated
+ * before it, or to its cost when that was the only one.
+ */
+export async function removeValuation(form: FormData): Promise<void> {
+  await requirePerson();
+  const projectId = readText(form, "projectId");
+
+  await run(projectId, async () => {
+    await deleteProjectValuation(readText(form, "valuationId"));
+    return { code: null, done: "valuation-removed:" };
   });
 }
 

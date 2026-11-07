@@ -1,46 +1,52 @@
+import type { Route } from "next";
 import Link from "next/link";
 
 import { AppHeader } from "@/components/app-header";
 import { loadAccounts } from "@/db/accounts";
 import { DatabaseNotConfiguredError } from "@/db/client";
-import { type DatedRate, findLatestRate } from "@/db/money-settings";
 import { type Person, findPersonByEmail } from "@/db/people";
 import {
   loadDealTerms,
   loadFundingLegs,
+  loadProjectDistributions,
   loadProjectExpenses,
+  loadProjectValuations,
   loadProjects,
 } from "@/db/projects";
-import { type Currency, format, isZero } from "@/domain/money/money";
-import {
-  type ProjectReading,
-  againstToday,
-  readProjects,
-  statesAnything,
-} from "@/domain/projects/projects";
-import { type Account } from "@/domain/snapshot/snapshot";
+import { type Currency, format, ratio } from "@/domain/money/money";
+import { type ProjectReading, readProjects } from "@/domain/projects/projects";
+import { type Account, VALUE_BASIS_LABELS } from "@/domain/snapshot/snapshot";
 import { dateKey, dateOf, formatDate } from "@/domain/time/calendar-date";
 import { requireHouseholdEmail } from "@/session";
 
 import { createProject } from "./actions";
-import { Field, Notices, RateFigure, Select, UnavailablePanel, readsAsSameRate } from "./panels";
+import { FIELD, Field, Notices, PRIMARY_BUTTON, Select, UnavailablePanel } from "./panels";
 
 export const dynamic = "force-dynamic";
 
 /**
- * נכסים ופרוייקטים — every closed pot at once.
+ * נכסים ופרוייקטים — one line per closed pot.
  *
- * Each row is `Σ(legs) − Σ(expenses)` computed on read. Nothing on this screen is
- * stored, so a project's line here and its own page cannot disagree about what it
- * holds: both come out of the same `readProjects`.
+ * A line and not a card: the question this screen is opened to ask is which
+ * project has capital waiting in it, and five figures in a row answer that where
+ * five stacked cards made it a scroll. Everything else about a project is on the
+ * project's own screen.
+ *
+ * Nothing here is stored. Each line comes out of the same `readProjects` the
+ * project page reads, so the two cannot disagree about what a pot holds.
  */
 
 const CURRENCIES: readonly Currency[] = ["ILS", "USD"];
+
+const PERCENT = new Intl.NumberFormat("he-IL", { style: "percent", maximumFractionDigits: 0 });
+
+const NEW_PROJECT_ID = "new-project";
 
 interface SearchParams {
   error?: string | string[];
   detail?: string | string[];
   done?: string | string[];
+  settings?: string | string[];
 }
 
 function first(value: string | string[] | undefined): string | undefined {
@@ -51,7 +57,7 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
   const email = await requireHouseholdEmail();
   const params = await searchParams;
   const loaded = await loadPage(email);
-  const today = dateOf(new Date());
+  const open = first(params.settings) === "1";
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
@@ -69,78 +75,14 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
         {loaded.kind === "ok" ? (
           <>
             {loaded.readings.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-stone-300 bg-white/60 p-5 text-stone-600">
+              <p className="rounded-card bg-surface shadow-card p-6 text-stone-500">
                 אין עדיין פרוייקטים. פרוייקט נפתח כאן, וכל הכסף שנכנס אליו נרשם כרגל מימון עם מקור.
               </p>
             ) : (
-              <ul className="space-y-4">
-                {loaded.readings.map((reading) => (
-                  <li key={reading.project.id}>
-                    <ProjectCard reading={reading} today={loaded.rate} />
-                  </li>
-                ))}
-              </ul>
+              <ProjectsTable readings={loaded.readings} />
             )}
 
-            <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-              <h2 className="text-sm font-semibold tracking-wide text-stone-500">פרוייקט חדש</h2>
-              <p className="mt-1 text-sm text-stone-600">
-                מטבע הקופה הוא מה שהפרוייקט מתנהל בו, ואינו ניתן לשינוי אחר כך: שינוי שלו היה משנה את
-                המטבע של כל רגל וכל הוצאה שכבר נרשמו בו.
-              </p>
-
-              <form action={createProject} className="mt-4 grid gap-4 sm:grid-cols-2">
-                <Field label="שם הפרוייקט">
-                  <input
-                    name="name"
-                    required
-                    maxLength={60}
-                    placeholder="CGM 3"
-                    className="w-full rounded-md border border-stone-300 px-3 py-2"
-                  />
-                </Field>
-
-                <Field label="מטבע הקופה" note="לא ניתן לשינוי אחר כך">
-                  <Select name="currency" defaultValue="USD">
-                    {CURRENCIES.map((currency) => (
-                      <option key={currency} value={currency}>
-                        {currency}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-
-                <Field label="תאריך פתיחה">
-                  <input
-                    type="date"
-                    name="startedOn"
-                    defaultValue={dateKey(today)}
-                    required
-                    className="w-full rounded-md border border-stone-300 px-3 py-2"
-                  />
-                </Field>
-
-                <Field label="החשבון במיפוי" note="איזה חשבון נושא את שווי הפרוייקט. אפשר גם אחר כך">
-                  <Select name="accountId" defaultValue="">
-                    <option value="">— לא נבחר —</option>
-                    {loaded.accounts.map((account) => (
-                      <option key={account.id} value={account.id}>
-                        {account.name}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-
-                <div className="sm:col-span-2">
-                  <button
-                    type="submit"
-                    className="rounded-md border border-stone-900 bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
-                  >
-                    יצירת פרוייקט
-                  </button>
-                </div>
-              </form>
-            </section>
+            <NewProjectSection accounts={loaded.accounts} open={open} />
           </>
         ) : (
           <UnavailablePanel reason={loaded.reason} />
@@ -158,30 +100,29 @@ type Loaded =
       person: Person | null;
       readings: readonly ProjectReading[];
       accounts: readonly Account[];
-      rate: DatedRate | null;
     }
   | { kind: "unavailable"; reason: string };
 
 async function loadPage(email: string): Promise<Loaded> {
   try {
-    const [person, projects, terms, accounts, rate] = await Promise.all([
+    const [person, projects, terms, accounts] = await Promise.all([
       findPersonByEmail(email),
       loadProjects(),
       loadDealTerms(),
       loadAccounts(),
-      findLatestRate("USD", "ILS"),
     ]);
-    const [legs, expenses] = await Promise.all([
+    const [legs, expenses, distributions, valuations] = await Promise.all([
       loadFundingLegs(projects),
       loadProjectExpenses(projects),
+      loadProjectDistributions(projects),
+      loadProjectValuations(projects),
     ]);
 
     return {
       kind: "ok",
       person,
-      readings: readProjects({ projects, legs, expenses, terms }),
+      readings: readProjects({ projects, legs, expenses, distributions, valuations, terms }),
       accounts,
-      rate,
     };
   } catch (error) {
     if (error instanceof DatabaseNotConfiguredError) {
@@ -191,96 +132,175 @@ async function loadPage(email: string): Promise<Loaded> {
   }
 }
 
-// --- one card ----------------------------------------------------------------
+// --- the table ---------------------------------------------------------------
 
-function ProjectCard({ reading, today }: { reading: ProjectReading; today: DatedRate | null }) {
-  const { project, pot, effective, terms } = reading;
-  const standing = today === null ? null : againstToday(effective, today);
-
+/**
+ * One row per project, and no total row: the pots are denominated in different
+ * currencies and a column of mixed money has no sum. What the household holds
+ * across all of them is a question for מיפוי, which converts at a snapshot's own
+ * rate and says so.
+ */
+function ProjectsTable({ readings }: { readings: readonly ProjectReading[] }) {
   return (
-    <article className="rounded-lg border border-stone-300 bg-white p-5">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h2 className="text-lg font-semibold">
-          <Link href={`/projects/${project.id}`} className="underline-offset-4 hover:underline">
-            <bdi>{project.name}</bdi>
-          </Link>
-        </h2>
-        <p className="text-sm text-stone-500">
-          נפתח ב־{formatDate(project.startedOn)} · קופה ב־<bdi>{project.currency}</bdi>
-        </p>
-      </div>
-
-      <dl className="mt-4 grid gap-4 sm:grid-cols-3">
-        <Figure label="סך רגלי המימון" amount={format(pot.funded)} note={counted(pot.legCount, "רגל מימון אחת", "רגליים")} />
-        <Figure label="סך ההוצאות" amount={format(pot.spent)} note={counted(pot.expenseCount, "הוצאה אחת", "הוצאות")} />
-        <Figure
-          label="יתרה — הון שטרם הושקע"
-          amount={format(pot.balance)}
-          note="רגלי מימון פחות הוצאות"
-          emphasis
-        />
-      </dl>
-
-      <p className="mt-4 text-sm text-stone-600">
-        {effective.rate === null ? (
-          <>לא בוצעה בפרוייקט הזה שום המרת מטבע, ולכן אין לו שער אפקטיבי.</>
-        ) : standing === null ? (
-          <>
-            שער אפקטיבי <RateFigure rate={effective.rate} /> — אין שער שמור להיום להשוואה.
-          </>
-        ) : (
-          <>
-            שער אפקטיבי <RateFigure rate={standing.effective} />, מול{" "}
-            <RateFigure rate={standing.today.rate} /> היום
-            {standing.standing === "same" || readsAsSameRate(standing.difference) ? (
-              <> — זהה.</>
-            ) : (
-              <>
-                {" "}
-                — <span className="font-medium">{standing.standing === "above" ? "גבוה" : "נמוך"}</span>{" "}
-                בכ־
-                <RateFigure rate={Math.abs(standing.difference)} />.
-              </>
-            )}
-          </>
-        )}
-      </p>
-
-      <p className="mt-1 text-xs text-stone-500">
-        {terms === null || !statesAnything(terms)
-          ? "לא נרשמו תנאי עסקה."
-          : "תנאי העסקה נרשמו מהמסמכים של היזם."}
-        {isZero(pot.balance) ? " כל ההון הופעל." : null}
-      </p>
-    </article>
+    <div className="rounded-card bg-surface shadow-card overflow-x-auto p-2 sm:p-3">
+      <table className="w-full min-w-[46rem] text-sm">
+        <thead>
+          <tr className="text-xs text-stone-400">
+            <th className="px-4 py-2.5 text-start font-normal">פרוייקט</th>
+            <th className="px-4 py-2.5 text-start font-normal">הושקע</th>
+            <th className="px-4 py-2.5 text-end font-normal">גויס</th>
+            <th className="px-4 py-2.5 text-end font-normal">יתרה</th>
+            <th className="px-4 py-2.5 text-end font-normal">חולק החוצה</th>
+            <th className="px-4 py-2.5 text-end font-normal">שווי אחרון</th>
+          </tr>
+        </thead>
+        <tbody className="divide-line divide-y">
+          {readings.map((reading) => (
+            <ProjectRow key={reading.project.id} reading={reading} />
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
-/** Hebrew counts one thing differently from several. `0` reads as none, not as a plural of nothing. */
-function counted(count: number, one: string, many: string): string {
-  if (count === 0) return `אין ${many}`;
-  if (count === 1) return one;
-  return `${count} ${many}`;
+function ProjectRow({ reading }: { reading: ProjectReading }) {
+  const { project, pot, value } = reading;
+  const deployed = ratio(pot.spent, value.cost);
+
+  return (
+    <tr className="transition-colors hover:bg-stone-900/[0.02]">
+      <td className="rounded-s-lg px-4 py-3">
+        <Link href={`/projects/${project.id}` as Route} className="font-medium">
+          <bdi>{project.name}</bdi>
+        </Link>
+        <p className="text-xs text-stone-400">
+          <bdi>{project.currency}</bdi> · {formatDate(project.startedOn)}
+        </p>
+      </td>
+
+      <td className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          <div className="h-1.5 w-20 overflow-hidden rounded-full bg-stone-900/8">
+            <div
+              className="h-full rounded-full bg-stone-900"
+              style={{ inlineSize: `${Math.min(100, Math.max(0, (deployed ?? 0) * 100))}%` }}
+            />
+          </div>
+          <span className="tabular text-xs text-stone-500">
+            {deployed === null ? "—" : PERCENT.format(deployed)}
+          </span>
+        </div>
+      </td>
+
+      <td className="tabular px-4 py-3 text-end text-stone-600">
+        <bdi>{format(pot.funded)}</bdi>
+      </td>
+      <td className="figure px-4 py-3 text-end font-medium">
+        <bdi>{format(pot.balance)}</bdi>
+      </td>
+      <td className="tabular px-4 py-3 text-end text-stone-600">
+        <bdi>{format(pot.paidOut)}</bdi>
+      </td>
+      <td className="px-4 py-3 text-end">
+        <bdi className="tabular">{format(value.amount)}</bdi>
+        <p className="text-xs text-stone-400">
+          {value.valuation === null ? "בעלות" : VALUE_BASIS_LABELS[value.basis]}
+        </p>
+      </td>
+    </tr>
+  );
 }
 
-function Figure({
-  label,
-  amount,
-  note,
-  emphasis = false,
-}: {
-  label: string;
-  amount: string;
-  note: string;
-  emphasis?: boolean;
-}) {
+// --- a new project -----------------------------------------------------------
+
+/**
+ * Behind a toggle, as the project screen's own settings are. A project is opened
+ * once in a while and the list is read often, so the form is a link until it is
+ * wanted.
+ */
+function NewProjectSection({ accounts, open }: { accounts: readonly Account[]; open: boolean }) {
+  if (!open) {
+    return (
+      <p className="text-sm text-stone-600" id={NEW_PROJECT_ID}>
+        <Link
+          href={`/projects?settings=1#${NEW_PROJECT_ID}` as Route}
+          className="underline underline-offset-4"
+        >
+          פתיחת פרוייקט חדש
+        </Link>{" "}
+        — שם, מטבע הקופה, תאריך פתיחה והחשבון במיפוי.
+      </p>
+    );
+  }
+
   return (
-    <div>
-      <dt className="text-xs text-stone-500">{label}</dt>
-      <dd className={`tabular mt-1 ${emphasis ? "text-xl font-semibold" : "text-lg"}`}>
-        <bdi>{amount}</bdi>
-      </dd>
-      <p className="text-xs text-stone-500">{note}</p>
-    </div>
+    <section
+      className="rounded-card bg-surface shadow-card p-5 sm:p-6"
+      id={NEW_PROJECT_ID}
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4">
+        <h2 className="text-[13px] font-medium text-stone-500">פרוייקט חדש</h2>
+        <Link href="/projects" className="text-sm text-stone-600 underline underline-offset-4">
+          סגירה
+        </Link>
+      </div>
+      <p className="mt-1 text-sm text-stone-600">
+        מטבע הקופה אינו ניתן לשינוי אחר כך: שינוי שלו היה משנה את המטבע של כל רגל וכל הוצאה שכבר
+        נרשמו בו.
+      </p>
+
+      <form action={createProject} className="mt-4 grid gap-4 sm:grid-cols-2">
+        <Field label="שם הפרוייקט">
+          <input
+            name="name"
+            required
+            maxLength={60}
+            placeholder="CGM 3"
+            className={FIELD}
+          />
+        </Field>
+
+        <Field label="מטבע הקופה" note="לא ניתן לשינוי אחר כך">
+          <Select name="currency" defaultValue="USD">
+            {CURRENCIES.map((currency) => (
+              <option key={currency} value={currency}>
+                {currency}
+              </option>
+            ))}
+          </Select>
+        </Field>
+
+        <Field label="תאריך פתיחה">
+          <input
+            type="date"
+            name="startedOn"
+            defaultValue={dateKey(dateOf(new Date()))}
+            required
+            className={FIELD}
+          />
+        </Field>
+
+        <Field label="החשבון במיפוי" note="איזה חשבון נושא את שווי הפרוייקט. אפשר גם אחר כך">
+          <Select name="accountId" defaultValue="">
+            <option value="">— לא נבחר —</option>
+            {accounts.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+
+        <div className="sm:col-span-2">
+          <button
+            type="submit"
+            className={PRIMARY_BUTTON}
+          >
+            יצירת פרוייקט
+          </button>
+        </div>
+      </form>
+    </section>
   );
 }

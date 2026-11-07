@@ -116,8 +116,11 @@ Basis, which is what separates an appraisal from the sponsor's word.
 _Avoid_: growth, appreciation, mark-to-market
 
 **Distribution** (חלוקה):
-Money a Project pays back. It leaves the Pot and lands in an Account, so it never changes
-`יתרה` — that figure answers what is left to deploy, never what has been earned.
+Money a Project pays back, and the row says what became of it. **Taken**, it lands in an
+Account מיפוי already counts, so `יתרה` does not move — that money is no longer this
+Project's to deploy. **Rolled** (מגולגלת), it stays in and can be deployed again, so
+`יתרה` rises by it. A rolled one is never a Funding Leg: a Leg is capital from outside and
+sets the effective rate, and profit the Project made is neither.
 _Avoid_: income, return, profit, dividend
 
 **Position** (החזקה):

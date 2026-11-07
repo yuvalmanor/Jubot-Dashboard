@@ -1,15 +1,80 @@
 @import "tailwindcss";
 
-/* System fonts only — a webfont would be a network dependency for two people. */
+/*
+ * The chrome, in as little ink as it can be written in.
+ *
+ * Two ideas carry the whole look, both borrowed rather than invented:
+ *
+ * **Deference** (Apple's HIG) — the interface supports the figures and never
+ * competes with them. Hierarchy is made of size, weight and space, so a screen of
+ * bordered boxes becomes a surface with things on it.
+ *
+ * **Default to no ink** (Matthew Ström on data tables) — a table earns each rule,
+ * each shade and each colour, and most of them do not. Alignment and tabular
+ * figures do the work that gridlines were doing.
+ */
+
 @theme {
+  /* System fonts only — a webfont would be a network dependency for two people. */
   --font-sans: system-ui, "Segoe UI", "Noto Sans Hebrew", "Arial Hebrew", Arial, sans-serif;
+
+  /*
+   * Two surfaces and two hairlines is the entire palette of the chrome.
+   * Separation comes from the tint step and from space; a border is used only
+   * where one thing must be told from another and space cannot say it.
+   *
+   * Warm rather than neutral, and never pure white on pure black: a page of
+   * figures is read for a long time, and the warmth is what makes that bearable.
+   */
+  --color-canvas: #f7f6f4;
+  --color-surface: #ffffff;
+  --color-sunken: #f4f3f1;
+  --color-line: rgba(28, 25, 23, 0.07);
+  --color-line-strong: rgba(28, 25, 23, 0.14);
+
+  --radius-card: 0.875rem;
+
+  /* Barely there. A card is lifted off the canvas by light, not outlined on it. */
+  --shadow-card: 0 1px 2px rgba(28, 25, 23, 0.04), 0 6px 20px -10px rgba(28, 25, 23, 0.08);
 }
 
 html {
   font-family: var(--font-sans);
 }
 
-/* Figures read as figures in either direction. */
+/* Figures read as figures in either direction, and line up down a column. */
 .tabular {
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/*
+ * A figure big enough to be read as a headline. System faces are spaced for
+ * running text, so at this size the tracking has to be pulled back in or the
+ * number reads as loose.
+ */
+.figure {
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: -0.022em;
+}
+
+/* Titles, for the same reason and to a smaller degree. */
+.title {
+  letter-spacing: -0.018em;
+}
+
+/*
+ * One focus ring for the whole app. The keyboard path has to be obvious, and
+ * every control having its own idea of obvious is how it stops being quiet.
+ */
+:where(a, button, input, select, textarea, summary):focus-visible {
+  outline: 2px solid rgba(28, 25, 23, 0.5);
+  outline-offset: 2px;
+}
+
+/* The disclosure marker is chrome, and the summary line already says it opens. */
+summary {
+  list-style: none;
+}
+summary::-webkit-details-marker {
+  display: none;
 }

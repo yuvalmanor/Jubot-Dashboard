@@ -6,6 +6,9 @@ import { signOut } from "@/auth";
 /**
  * The signed-in shell. Every screen carries the same header, so which of the two
  * People is signed in is never a question.
+ *
+ * No rule under it: the gap to the first card is what separates them, and a line
+ * drawn where space already says the same thing is ink for nothing.
  */
 
 export interface HeaderPerson {
@@ -26,19 +29,22 @@ export function AppHeader({
   back?: { href: Route; label: string };
 }) {
   return (
-    <header className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-3 border-b border-stone-300 pb-5">
-      <div>
+    <header className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-3">
+      <div className="min-w-0">
         {back === undefined ? null : (
-          <Link href={back.href} className="text-sm text-stone-500 underline-offset-4 hover:underline">
+          <Link
+            href={back.href}
+            className="text-[13px] text-stone-500 transition-colors hover:text-stone-900"
+          >
             <span aria-hidden="true">→ </span>
             {back.label}
           </Link>
         )}
-        <h1 className="text-2xl font-bold sm:text-3xl">{title}</h1>
-        <p className="text-sm text-stone-600">{subtitle}</p>
+        <h1 className="title mt-0.5 text-[26px] font-semibold sm:text-[32px]">{title}</h1>
+        <p className="mt-0.5 text-sm text-stone-500">{subtitle}</p>
       </div>
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="text-sm text-stone-600">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[13px] text-stone-500">
           {person === null ? <bdi className="break-all">{email}</bdi> : person.displayName}
         </span>
         <form
@@ -49,7 +55,7 @@ export function AppHeader({
         >
           <button
             type="submit"
-            className="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-stone-50"
+            className="rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
           >
             התנתקות
           </button>

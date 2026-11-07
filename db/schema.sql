@@ -439,10 +439,10 @@ create table if not exists funding_legs (
 
 create index if not exists funding_legs_project_idx on funding_legs (project_id);
 
--- הוצאת פרוייקט — money drawn *out of* the pot. There is no shape in which one of
--- these adds to what is available: `יתרה = Σ(legs) − Σ(expenses)` is computed on
--- read and stored nowhere, and an expense that would overdraw the pot is refused
--- by the domain before it reaches here.
+-- הוצאת פרוייקט — money drawn *out of* the קופה. There is no shape in which one of
+-- these adds to what is available: `יתרה = Σ(legs) + Σ(rolled) − Σ(expenses)` is
+-- computed on read and stored nowhere, and an expense that would overdraw the
+-- קופה is refused by the domain before it reaches here.
 create table if not exists project_expenses (
   id           uuid   primary key default gen_random_uuid(),
   project_id   uuid   not null references projects (id) on delete cascade,
@@ -454,6 +454,38 @@ create table if not exists project_expenses (
 );
 
 create index if not exists project_expenses_project_idx on project_expenses (project_id);
+
+-- חלוקה — the project paying money back, and where that money went.
+--
+-- `account_id` is the Account it landed in, and is null exactly when the
+-- distribution was rolled back into the קופה instead. The check below is what
+-- holds that: a row that left the project without saying where it went is a
+-- shekel nobody can find, and a rolled row naming an account would be claiming
+-- the money is in two places.
+--
+-- Naming an account credits nothing. A Snapshot is taken by hand, and one entry
+-- writing a figure into two places is the double-count this column exists to
+-- make visible rather than to perform.
+--
+-- A rolled row raises what the קופה can deploy — `יתרה = Σ(legs) + Σ(rolled) −
+-- Σ(expenses)` — and is still not a funding leg: a leg is capital from outside
+-- and sets the effective rate, and profit the project made is neither.
+create table if not exists project_distributions (
+  id           uuid   primary key default gen_random_uuid(),
+  project_id   uuid   not null references projects (id) on delete cascade,
+  description  text   not null,
+  amount_minor bigint not null check (amount_minor > 0),
+  currency     text   not null check (char_length(currency) = 3),
+  usd_ils_rate numeric(18, 6) check (usd_ils_rate > 0),
+  rolled       boolean not null,
+  account_id   uuid references accounts (id),
+  paid_on      date   not null,
+  constraint project_distribution_destination_is_one_of_two
+    check (rolled = (account_id is null))
+);
+
+create index if not exists project_distributions_project_idx
+  on project_distributions (project_id);
 
 -- A rate is recorded where a conversion happened and nowhere else. The rule needs
 -- the project's own currency, which a column check cannot reach, so it is a
@@ -490,6 +522,76 @@ begin
     create constraint trigger project_expense_rate_must_agree
       after insert or update on project_expenses
       for each row execute function jubot_pot_movement_rate_agrees();
+  end if;
+
+  if not exists (select 1 from pg_trigger where tgname = 'project_distribution_rate_must_agree') then
+    create constraint trigger project_distribution_rate_must_agree
+      after insert or update on project_distributions
+      for each row execute function jubot_pot_movement_rate_agrees();
+  end if;
+end;
+$do$;
+
+-- עדכון שווי — one figure somebody stated about a project, on a date, from a
+-- source. Per ADR 0005, which supersedes 0003's "held at cost, full stop".
+--
+-- An event and never a rate: nothing interpolates between two rows and nothing
+-- projects one forward. A sponsor reporting 20% growth over the last year is one
+-- row dated to that report.
+--
+-- `source` is `not null` and non-blank on purpose. מיפוי moves when a row lands
+-- here, so the safeguard is provenance rather than refusal — whatever moved can
+-- be traced to who said so. `basis` carries two of the three Value Bases and not
+-- the third: עלות is what a project reads when this table says nothing about it,
+-- which is not a statement anybody made.
+--
+-- Related, and deliberately not the same table: `annual_review_valuations` holds
+-- what somebody judged a project to be worth at a year's close, keyed by year.
+-- Once valuations are dated events the year-close figure is derivable from this
+-- table as at 31 December, so that one is a candidate for folding in — a decision
+-- about סיכום שנתי, not about this screen.
+create table if not exists project_valuations (
+  id           uuid   primary key default gen_random_uuid(),
+  project_id   uuid   not null references projects (id) on delete cascade,
+  amount_minor bigint not null check (amount_minor >= 0),
+  currency     text   not null check (char_length(currency) = 3),
+  basis        text   not null check (basis in ('market', 'estimate')),
+  source       text   not null check (btrim(source) <> ''),
+  stated_on    date   not null
+);
+
+create index if not exists project_valuations_project_idx
+  on project_valuations (project_id, stated_on desc);
+
+comment on column project_valuations.basis is
+  'market — a re-appraisal, an exact figure. estimate — a sponsor''s own report of '
+  'its own performance. Never averaged together, and the weaker one is never '
+  'printed as the stronger.';
+
+-- A valuation carries no rate because nothing was converted: it states what the
+-- pot is worth, and the pot is denominated in one currency. The rule needs the
+-- project's currency, which a column check cannot reach, so it is a trigger.
+create or replace function jubot_valuation_is_in_pot_currency() returns trigger as $fn$
+declare
+  pot_currency text;
+begin
+  select currency into pot_currency from projects where id = new.project_id;
+
+  if new.currency <> pot_currency then
+    raise exception 'valuation % is stated in % against a % pot', new.id, new.currency, pot_currency
+      using errcode = 'integrity_constraint_violation';
+  end if;
+
+  return null;
+end;
+$fn$ language plpgsql;
+
+do $do$
+begin
+  if not exists (select 1 from pg_trigger where tgname = 'valuation_currency_must_be_the_pot_s') then
+    create constraint trigger valuation_currency_must_be_the_pot_s
+      after insert or update on project_valuations
+      for each row execute function jubot_valuation_is_in_pot_currency();
   end if;
 end;
 $do$;
@@ -815,3 +917,9 @@ create table if not exists annual_review_valuations (
   currency     text     not null check (char_length(currency) = 3),
   primary key (year, project_id)
 );
+
+comment on table annual_review_valuations is
+  'What somebody judged a project to be worth at a year''s close. Predates ADR 0005 '
+  'and `project_valuations`, which records the same kind of judgement as a dated, '
+  'sourced event that מיפוי reads; this one is keyed by year and read only by '
+  'סיכום שנתי. Folding the two together is an open decision about that screen.';

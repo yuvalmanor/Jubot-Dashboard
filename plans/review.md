@@ -114,6 +114,12 @@ And two things he asked for **do not exist in the model at all**:
 
 The design is in `plans/project-dashboard.md`, with the two decisions those gaps force.
 
+**Rebuilt 2026-11-07** (phases 27, 28א and 29). All five complaints are answered: חלוקות
+and עדכוני שווי exist as bands, the page is a head and four bands with the rules in one
+legend, every add-row is the table's own last row, and `/projects` is one line per
+project. The verdict above is left as he gave it — it is his to change, and only his
+re-reading of the screen can change it.
+
 ### מחשבון RSU — `/rsu`
 
 Position, lots, the 24-month clock, tax under both treatments, lot selection.

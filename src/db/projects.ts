@@ -6,25 +6,33 @@ import {
   type FundingLegDefinition,
   type Project,
   type ProjectDefinition,
+  type ProjectDistribution,
+  type ProjectDistributionDefinition,
   type ProjectExpense,
   type ProjectExpenseDefinition,
+  type ProjectValuation,
+  type ProjectValuationDefinition,
   buildDealTerms,
   buildFundingLeg,
   buildProject,
+  buildProjectDistribution,
   buildProjectExpense,
+  buildProjectValuation,
+  isValuationBasis,
 } from "@/domain/projects/projects";
 import { dateKey, parseDateKey } from "@/domain/time/calendar-date";
 
 import { type TransactionQuery, query } from "./client";
 
 /**
- * Reading and writing Projects, their Funding Legs, their expense ledger and their
- * Deal Terms. The domain decides what a valid one is (src/domain/projects); this
- * stores it.
+ * Reading and writing Projects: their Funding Legs, their expense ledger, their
+ * distributions, the valuations stated about them and their Deal Terms. The domain
+ * decides what a valid one is (src/domain/projects); this stores it.
  *
- * Nothing here stores a total. `יתרה` is `Σ(legs) − Σ(expenses)` computed on read,
- * and the effective rate is derived from the rows — a stored total is a total that
- * can disagree with what it is made of, which is the failure this replaces.
+ * Nothing here stores a total. `יתרה` is `Σ(legs) + Σ(rolled) − Σ(expenses)`
+ * computed on read, the cost is derived from the same rows, and the effective rate
+ * from the legs — a stored total is a total that can disagree with what it is made
+ * of, which is the failure this replaces.
  */
 
 interface ProjectRow extends Record<string, unknown> {
@@ -35,11 +43,15 @@ interface ProjectRow extends Record<string, unknown> {
   started_on: string;
 }
 
-interface MovementRow extends Record<string, unknown> {
+/** A figure with its currency. The three ledgers and a valuation share this much. */
+interface AmountRow extends Record<string, unknown> {
   id: string;
   project_id: string;
   amount_minor: string;
   currency: string;
+}
+
+interface MovementRow extends AmountRow {
   usd_ils_rate: string | null;
   paid_on: string;
 }
@@ -50,6 +62,18 @@ interface FundingLegRow extends MovementRow {
 
 interface ProjectExpenseRow extends MovementRow {
   description: string;
+}
+
+interface ProjectDistributionRow extends MovementRow {
+  description: string;
+  rolled: boolean;
+  account_id: string | null;
+}
+
+interface ProjectValuationRow extends AmountRow {
+  basis: string;
+  source: string;
+  stated_on: string;
 }
 
 interface DealTermsRow extends Record<string, unknown> {
@@ -75,7 +99,7 @@ function currencyOf(id: string, value: string): Currency {
   return value;
 }
 
-function amountOf(row: MovementRow) {
+function amountOf(row: AmountRow) {
   const minorUnits = Number(row.amount_minor);
   if (!Number.isSafeInteger(minorUnits)) {
     throw new MalformedProjectRowError(row.id, `amount_minor ${row.amount_minor} is not an integer`);
@@ -256,6 +280,152 @@ export async function insertProjectExpense(
 /** Remove an expense. Always safe: taking one out can only leave the pot fuller. */
 export async function deleteProjectExpense(id: string): Promise<void> {
   await query(`delete from project_expenses where id = $1`, [id]);
+}
+
+// --- distributions -----------------------------------------------------------
+
+function toProjectDistribution(
+  row: ProjectDistributionRow,
+  projects: readonly Project[],
+): ProjectDistribution {
+  const project = projects.find((candidate) => candidate.id === row.project_id);
+  if (project === undefined) {
+    throw new MalformedProjectRowError(row.id, `no project ${row.project_id}`);
+  }
+  // The column check holds these two in step, so a row that reaches here with
+  // neither a destination nor the rolled flag is a schema that has drifted.
+  if (!row.rolled && row.account_id === null) {
+    throw new MalformedProjectRowError(row.id, "left the project without naming where it landed");
+  }
+  return buildProjectDistribution(
+    row.id,
+    {
+      projectId: row.project_id,
+      description: row.description,
+      amount: amountOf(row),
+      rate: rateOf(row),
+      destination:
+        row.account_id === null
+          ? { kind: "rolled" }
+          : { kind: "out", accountId: row.account_id },
+      paidOn: parseDateKey(row.paid_on),
+    },
+    project,
+  );
+}
+
+export async function loadProjectDistributions(
+  projects: readonly Project[],
+): Promise<readonly ProjectDistribution[]> {
+  const rows = await query<ProjectDistributionRow>(
+    `select id, project_id, description, amount_minor, currency, usd_ils_rate,
+            rolled, account_id, to_char(paid_on, 'YYYY-MM-DD') as paid_on
+       from project_distributions`,
+  );
+  return rows.map((row) => toProjectDistribution(row, projects));
+}
+
+export async function insertProjectDistribution(
+  id: string,
+  definition: ProjectDistributionDefinition,
+  project: Project,
+): Promise<ProjectDistribution> {
+  const distribution = buildProjectDistribution(id, definition, project);
+  await query(
+    `insert into project_distributions
+       (id, project_id, description, amount_minor, currency, usd_ils_rate, rolled, account_id, paid_on)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9::date)`,
+    [
+      distribution.id,
+      distribution.projectId,
+      distribution.description,
+      distribution.amount.minorUnits,
+      distribution.amount.currency,
+      distribution.rate === null ? null : distribution.rate.rate,
+      distribution.destination.kind === "rolled",
+      distribution.destination.kind === "out" ? distribution.destination.accountId : null,
+      dateKey(distribution.paidOn),
+    ],
+  );
+  return distribution;
+}
+
+/**
+ * Remove a distribution. Unlike an expense this is not always safe: a rolled one
+ * made room in the balance, so `requireDistributionRemovable` is asked first by
+ * the action that calls this.
+ */
+export async function deleteProjectDistribution(id: string): Promise<void> {
+  await query(`delete from project_distributions where id = $1`, [id]);
+}
+
+// --- valuations --------------------------------------------------------------
+
+function toProjectValuation(
+  row: ProjectValuationRow,
+  projects: readonly Project[],
+): ProjectValuation {
+  const project = projects.find((candidate) => candidate.id === row.project_id);
+  if (project === undefined) {
+    throw new MalformedProjectRowError(row.id, `no project ${row.project_id}`);
+  }
+  if (!isValuationBasis(row.basis)) {
+    throw new MalformedProjectRowError(row.id, `unknown valuation basis ${row.basis}`);
+  }
+  return buildProjectValuation(
+    row.id,
+    {
+      projectId: row.project_id,
+      amount: amountOf(row),
+      basis: row.basis,
+      source: row.source,
+      statedOn: parseDateKey(row.stated_on),
+    },
+    project,
+  );
+}
+
+export async function loadProjectValuations(
+  projects: readonly Project[],
+): Promise<readonly ProjectValuation[]> {
+  const rows = await query<ProjectValuationRow>(
+    `select id, project_id, amount_minor, currency, basis, source,
+            to_char(stated_on, 'YYYY-MM-DD') as stated_on
+       from project_valuations`,
+  );
+  return rows.map((row) => toProjectValuation(row, projects));
+}
+
+/**
+ * Record one statement. Never an update of a previous one: a valuation that is
+ * edited loses the thing that makes it readable — that it was said on a day, by
+ * someone, and that a later figure replaced it rather than erasing it.
+ */
+export async function insertProjectValuation(
+  id: string,
+  definition: ProjectValuationDefinition,
+  project: Project,
+): Promise<ProjectValuation> {
+  const valuation = buildProjectValuation(id, definition, project);
+  await query(
+    `insert into project_valuations (id, project_id, amount_minor, currency, basis, source, stated_on)
+     values ($1, $2, $3, $4, $5, $6, $7::date)`,
+    [
+      valuation.id,
+      valuation.projectId,
+      valuation.amount.minorUnits,
+      valuation.amount.currency,
+      valuation.basis,
+      valuation.source,
+      dateKey(valuation.statedOn),
+    ],
+  );
+  return valuation;
+}
+
+/** Remove a valuation. Always safe: the project falls back to the one before it. */
+export async function deleteProjectValuation(id: string): Promise<void> {
+  await query(`delete from project_valuations where id = $1`, [id]);
 }
 
 // --- deal terms --------------------------------------------------------------
