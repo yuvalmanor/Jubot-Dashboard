@@ -70,6 +70,22 @@ export interface HouseholdCategory {
    * amount, no assignment and no reading of the grid.
    */
   readonly watched: boolean;
+  /**
+   * The **Group** this line is marked as belonging to — הוצאות קבועות, חשבונות —
+   * or `null`, which is the ordinary case.
+   *
+   * A Group is a name and nothing else. It is not a third level of the taxonomy:
+   * it owns no categories, holds no amounts, and a category keeps its own name,
+   * its own row and its own total whether or not it carries one. What it changes
+   * is how the screens *read* a set of lines together — rows that share a Group
+   * are marked alike in the table, and the chart of where the money went draws
+   * them as one wedge.
+   *
+   * Which is exactly why it is not a merge. A merge would make חשמל and ארנונה
+   * one line with one figure and no way back to either; a Group leaves both lines
+   * whole and says only that they are the same kind of thing.
+   */
+  readonly group: string | null;
 }
 
 export interface CategoryAssignment {
@@ -414,7 +430,7 @@ function resolveHousehold(
   // A new line is not watched. מעקב תעריפים is a deliberate act, and a panel that
   // filled itself with every category ever created would be the grid again.
   return {
-    household: { id: newHouseholdId, name, type: request.type, watched: false },
+    household: { id: newHouseholdId, name, type: request.type, watched: false, group: null },
     householdIsNew: true,
   };
 }
@@ -509,6 +525,86 @@ export function applyHouseholdWatch(categories: Categories, change: HouseholdWat
 /** The Household Categories flagged for מעקב תעריפים, alphabetical in Hebrew. */
 export function watchedHouseholdCategories(categories: Categories): readonly HouseholdCategory[] {
   return sortByName(categories.household.filter((category) => category.watched));
+}
+
+// --- marking a household category as part of a group -------------------------
+
+export interface HouseholdGroupChange {
+  readonly householdCategoryId: string;
+  /** `null` takes the line out of whatever Group it was in. */
+  readonly group: string | null;
+}
+
+export class InvalidGroupError extends Error {
+  constructor(detail: string) {
+    super(`Invalid group: ${detail}`);
+    this.name = "InvalidGroupError";
+  }
+}
+
+const MAX_GROUP_LENGTH = 60;
+
+/**
+ * Put a Household Category into a Group, or take it out of one.
+ *
+ * One nullable column on one row. Like `planHouseholdWatch` it reaches no
+ * Personal Category, no assignment and no Entry, so every figure in the table
+ * reads identically before and after — a Group decides how lines are *drawn
+ * together*, never what any of them is worth.
+ *
+ * A blank name means no Group rather than a Group called "". The two are the
+ * same intent typed two ways, and a Group whose name is nothing would show up in
+ * the chart as a nameless wedge.
+ */
+export function planHouseholdGroup(
+  categories: Categories,
+  householdCategoryId: string,
+  group: string,
+): HouseholdGroupChange {
+  const target = findHouseholdCategory(categories, householdCategoryId);
+  if (target === undefined) {
+    throw new UnknownCategoryError(householdCategoryId);
+  }
+
+  const trimmed = group.trim();
+  if (trimmed.length > MAX_GROUP_LENGTH) {
+    throw new InvalidGroupError(`longer than ${MAX_GROUP_LENGTH} characters`);
+  }
+
+  return { householdCategoryId: target.id, group: trimmed.length === 0 ? null : trimmed };
+}
+
+export function applyHouseholdGroup(categories: Categories, change: HouseholdGroupChange): Categories {
+  return buildCategories({
+    ...categories,
+    household: categories.household.map((category) =>
+      category.id === change.householdCategoryId ? { ...category, group: change.group } : category,
+    ),
+  });
+}
+
+/**
+ * Every Group in use, alphabetical in Hebrew.
+ *
+ * There is no table of Groups and deliberately so: a Group exists exactly as long
+ * as a line is marked with it, so taking the last line out of one removes it with
+ * no second place to tidy up. These are the names the admin panel offers, which
+ * is what keeps a second חשבונות from being typed in beside the first.
+ */
+export function householdGroups(categories: Categories): readonly string[] {
+  const names = new Set<string>();
+  for (const category of categories.household) {
+    if (category.group !== null) names.add(category.group);
+  }
+  return [...names].sort((left, right) => left.localeCompare(right, "he"));
+}
+
+/** The Household Categories in one Group, alphabetical in Hebrew. */
+export function householdCategoriesInGroup(
+  categories: Categories,
+  group: string,
+): readonly HouseholdCategory[] {
+  return sortByName(categories.household.filter((category) => category.group === group));
 }
 
 // --- renaming a personal category --------------------------------------------
@@ -673,7 +769,7 @@ function resolveMergeTarget(
   }
 
   return {
-    household: { id: newHouseholdId, name, type: first.type, watched: false },
+    household: { id: newHouseholdId, name, type: first.type, watched: false, group: null },
     householdIsNew: true,
   };
 }

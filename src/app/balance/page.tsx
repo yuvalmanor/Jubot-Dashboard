@@ -27,11 +27,12 @@ import { type CategoryErrorCode } from "./category-actions";
 import { CATEGORY_PANEL_ID, CategoryAdminPanel } from "./category-panels";
 import { OverflowMenu, PrimaryAction, Segmented, type SegmentedOption } from "./chrome";
 import { type GridLinks, OPEN_CELL_ID, cellKey } from "./grid-links";
-import { ClosingPanel, YearGridTable } from "./grid-panels";
+import { YearGridTable } from "./grid-panels";
 import { YearHeadline } from "./headline";
 import { MonthStrip } from "./month-strip";
 import { type RateErrorCode } from "./rate-actions";
 import { RATE_PANEL_ID, RateWatchPanel } from "./rate-watch-panel";
+import { ExpenseShares, groupColours } from "./shares";
 
 export const dynamic = "force-dynamic";
 
@@ -44,8 +45,8 @@ export const dynamic = "force-dynamic";
  * household figure derived from the personal ones on each read, and a blank that
  * means *not recorded* rather than *nought*.
  *
- * It is laid out as the four questions a person opens it with, in the order they
- * ask them, and nothing else is given a band of its own:
+ * It is laid out as the questions a person opens it with, in the order they ask
+ * them, and nothing else is given a band of its own:
  *
  * 1. **Which year, whose money, and what now** — one bar of chrome, sticky, every
  *    control on it a link. It used to be four separate cards, two of which cost a
@@ -54,11 +55,14 @@ export const dynamic = "force-dynamic";
  *    carrying the total, the same months a year earlier, twelve bars and the
  *    monthly average. The trend used to be a screen away; a year's shape is not
  *    an advanced question.
- * 3. **What is left to record** — the twelve months as twelve tiles, each saying
- *    what it saved and what it is missing, and each a way into that month. Filling
- *    a hole in מאי no longer means opening the current month and walking back.
- * 4. **Where the money went** — the grid, unchanged in substance: pinned headings,
- *    pinned totals, and a cell that opens where it sits.
+ * 3. **Where it went** — the year's הוצאות as parts of one whole, with the lines
+ *    the household marked as one kind drawn as one wedge.
+ * 4. **Which months to record** — the twelve months as twelve tiles, each saying
+ *    what it saved and each a way into that month. Filling a hole in מאי no
+ *    longer means opening the current month and walking back.
+ * 5. **Every category, month by month** — the grid: pinned headings, pinned
+ *    totals, and a cell that opens where it sits. A month nobody typed a figure
+ *    into reads as nought here, greyed, rather than as a blank to be chased.
  *
  * Beneath the table sits מעקב תעריפים, which answers the question the grid does
  * not: whether a price somebody set has moved. It is always on screen — both of
@@ -95,13 +99,8 @@ interface SearchParams {
   rateItem?: string | string[];
   /** Which cell is open for entry, as `${personalCategoryId}@${YYYY-MM}`. */
   cell?: string | string[];
-  /** Which month's closing is being confirmed, as `YYYY-MM`. */
-  close?: string | string[];
   error?: string | string[];
   detail?: string | string[];
-  /** The month a closing just wrote into, and how many zeros it wrote. */
-  closed?: string | string[];
-  zeros?: string | string[];
   /** What the category panel just did, as `<kind>:<subject>`. */
   done?: string | string[];
 }
@@ -157,13 +156,10 @@ export default async function BalancePage({ searchParams }: { searchParams: Prom
             rateEdit={first(params.rateEdit) === "1"}
             rateItem={first(params.rateItem) ?? null}
             openCell={first(params.cell) ?? null}
-            closing={tryParseMonthKey(first(params.close))}
             notices={
               <Notices
                 error={first(params.error)}
                 detail={first(params.detail)}
-                closed={first(params.closed)}
-                zeros={first(params.zeros)}
                 done={first(params.done)}
               />
             }
@@ -236,7 +232,6 @@ function BalanceYear({
   rateEdit,
   rateItem,
   openCell,
-  closing,
   notices,
 }: {
   year: number;
@@ -252,7 +247,6 @@ function BalanceYear({
   rateEdit: boolean;
   rateItem: string | null;
   openCell: string | null;
-  closing: CalendarMonth | null;
   notices: React.ReactNode;
 }) {
   const scope = resolveScope(view, people);
@@ -265,14 +259,9 @@ function BalanceYear({
   const state: GridState = { year, view, sort, expanded, admin, rateEdit, rateItem };
   const links = linksFor(state);
   const peopleNames = new Map(people.map((person) => [person.id, person.displayName]));
-
-  // The month whose closing is being confirmed, read off the grid itself rather
-  // than computed again: the panel and the tile that led to it must be describing
-  // the same blanks.
-  const closingMonth =
-    closing === null
-      ? undefined
-      : grid.months.find((column) => monthKey(column.month) === monthKey(closing));
+  // Decided once: the chart draws its wedges in these colours and the table marks
+  // its rows with them, so a Group is one colour everywhere on the screen.
+  const colours = groupColours(grid);
 
   return (
     <>
@@ -282,11 +271,9 @@ function BalanceYear({
 
       <YearHeadline grid={grid} />
 
-      <MonthStrip grid={grid} links={links} />
+      <ExpenseShares grid={grid} />
 
-      {closingMonth === undefined ? null : (
-        <ClosingPanel column={closingMonth} links={links} peopleNames={peopleNames} />
-      )}
+      <MonthStrip grid={grid} links={links} />
 
       <YearGridTable
         grid={grid}
@@ -297,6 +284,7 @@ function BalanceYear({
         // At person level a row is already personal — there is nothing underneath
         // it to open, so the toggle is absent rather than present and inert.
         controls={<TableControls state={state} expandable={scope.kind === "household"} />}
+        groupColours={colours}
       />
 
       {/* Directly beneath the table and never behind a link. Both of the sheet's
@@ -382,9 +370,9 @@ function gridParams(state: GridState): URLSearchParams {
 }
 
 /**
- * The same grid with one thing opened on top of it: a cell, or a month's closing.
+ * The same grid with one cell opened on top of it.
  *
- * Both are transient rather than part of the view, so they are not carried by the
+ * That is transient rather than part of the view, so it is not carried by the
  * ordinary controls — choosing an order or a year puts the table back to being a
  * table. Everything else about the view *is* carried, through every link and
  * through every write, so nothing a person chose is lost to a save.
@@ -408,7 +396,6 @@ function linksFor(state: GridState): GridLinks {
     // no-script path takes it: with scripts the cell opens where it sits.
     openCell: (categoryId, month) =>
       `${withParam("cell", cellKey(categoryId, month))}#${OPEN_CELL_ID}` as Route,
-    closing: (month) => withParam("close", monthKey(month)),
     cancel: base,
     openAdmin: adminHref(state),
     closeAdmin: gridHref(state, { admin: false }),
@@ -576,6 +563,7 @@ const ERROR_MESSAGES: Record<GridErrorCode | CategoryErrorCode | RateErrorCode, 
   "type-mismatch": "לא ניתן לשייך הכנסה לקטגוריה משותפת של הוצאה, או להפך.",
   "bad-lifespan": "לא ניתן להוציא קטגוריה משימוש לפני החודש שבו היא מתחילה.",
   "bad-merge": "אין מה למזג — לקטגוריה המשותפת הזו אין קטגוריות אישיות.",
+  "bad-group": "שם הקבוצה ארוך מדי. שדה ריק מוציא את השורה מהקבוצה שהייתה בה.",
   "bad-item-name": "שם הפריט השנתי ריק או ארוך מדי.",
   "duplicate-item": "כבר קיים פריט שנתי בשם הזה.",
   "bad-date": "תאריך החידוש חסר או אינו תקין. השנה נגזרת ממנו, ולכן בלעדיו אין מה לרשום.",
@@ -600,6 +588,8 @@ const DONE_MESSAGES: Readonly<Record<string, string>> = {
   merged: "השיוך עודכן. כל הרישומים נשמרו כפי שהיו — אותו כסף תחת כותרת אחרת.",
   lifespan: "תקופת הפעילות עודכנה. חודשים שכבר נרשמו ממשיכים להיקרא כרגיל.",
   watched: "הקטגוריה נוספה למעקב תעריפים. שום סכום לא זז — הפאנל קורא את אותם רישומים.",
+  grouped: "השורה סומנה כשייכת לקבוצה. שום סכום לא זז — הקבוצה משנה רק איך שורות נקראות יחד.",
+  ungrouped: "השורה הוצאה מהקבוצה. שום סכום לא זז.",
   unwatched: "הקטגוריה הוסרה ממעקב תעריפים. שום סכום לא זז.",
   "item-created": "נוצר פריט שנתי, יחד עם החידוש הראשון שלו. המאזן שמעל לא השתנה.",
   renewed: "החידוש נרשם. השנה שלו נגזרה מהתאריך, ושום סכום במאזן לא זז.",
@@ -642,14 +632,10 @@ function Notice({
 function Notices({
   error,
   detail,
-  closed,
-  zeros,
   done,
 }: {
   error: string | undefined;
   detail: string | undefined;
-  closed: string | undefined;
-  zeros: string | undefined;
   done: string | undefined;
 }) {
   if (isErrorCode(error)) {
@@ -659,23 +645,6 @@ function Notices({
         role="alert"
         title={ERROR_MESSAGES[error]}
         detail={detail === undefined ? undefined : <bdi>{detail}</bdi>}
-      />
-    );
-  }
-
-  const month = tryParseMonthKey(closed);
-  if (month !== null) {
-    return (
-      <Notice
-        tone="good"
-        role="status"
-        title={
-          <>
-            {formatMonth(month)}: נרשמו <bdi className="tabular">{zeros ?? "0"}</bdi> קטגוריות כאפס,
-            והחודש סגור.
-          </>
-        }
-        detail="כל סכום שכבר היה רשום נשאר כפי שהיה."
       />
     );
   }

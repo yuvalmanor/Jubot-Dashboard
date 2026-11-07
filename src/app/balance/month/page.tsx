@@ -23,7 +23,7 @@ import {
 import { requireHouseholdEmail } from "@/session";
 
 import { type BalanceErrorCode } from "./actions";
-import { BlanksOffer, MonthEntry } from "./month-entry";
+import { MonthEntry } from "./month-entry";
 import { HouseholdReadingTable, SummaryPanel } from "./month-panels";
 
 export const dynamic = "force-dynamic";
@@ -55,10 +55,6 @@ interface SearchParams {
   created?: string | string[];
   error?: string | string[];
   detail?: string | string[];
-  /** How many blanks the last closing wrote as zero. */
-  zeros?: string | string[];
-  /** The offer was declined: the blanks were left unrecorded, deliberately. */
-  left?: string | string[];
 }
 
 function first(value: string | string[] | undefined): string | undefined {
@@ -90,17 +86,10 @@ export default async function BalancePage({ searchParams }: { searchParams: Prom
           created={first(params.created)}
           error={first(params.error)}
           detail={first(params.detail)}
-          zeros={first(params.zeros)}
         />
 
         {loaded.kind === "ok" ? (
-          <MonthBody
-            month={month}
-            loaded={loaded}
-            requested={first(params.view)}
-            saved={first(params.saved) === "1"}
-            declined={first(params.left) === "1"}
-          />
+          <MonthBody month={month} loaded={loaded} requested={first(params.view)} />
         ) : (
           <UnavailablePanel reason={loaded.reason} />
         )}
@@ -152,23 +141,15 @@ function resolveView(
   return { kind: "person", person: person ?? signedIn };
 }
 
-/**
- * The tabs, what a save left unfinished, and the month itself. The view is
- * resolved once here so the offer and the form can never be about two different
- * people's columns.
- */
+/** The tabs and the month itself, with the view resolved once for both. */
 function MonthBody({
   month,
   loaded,
   requested,
-  saved,
-  declined,
 }: {
   month: CalendarMonth;
   loaded: Extract<LoadedBalance, { kind: "ok" }>;
   requested: string | undefined;
-  saved: boolean;
-  declined: boolean;
 }) {
   const view = resolveView(requested, loaded.person, loaded.people);
 
@@ -180,17 +161,6 @@ function MonthBody({
         signedInPersonId={loaded.person.id}
         selected={requested}
       />
-
-      {view.kind === "person" ? (
-        <BlanksOffer
-          month={month}
-          person={view.person}
-          categories={loaded.categories}
-          ledger={loaded.ledger}
-          saved={saved}
-          declined={declined}
-        />
-      ) : null}
 
       <MonthView
         month={month}
@@ -430,13 +400,11 @@ function Notices({
   created,
   error,
   detail,
-  zeros,
 }: {
   saved: boolean;
   created: string | undefined;
   error: string | undefined;
   detail: string | undefined;
-  zeros: string | undefined;
 }) {
   if (isBalanceErrorCode(error)) {
     return (
@@ -458,19 +426,6 @@ function Notices({
           נוצרה קטגוריה חדשה: <bdi>{created}</bdi>
         </p>
         <p className="mt-1 text-sm text-emerald-800">הסכומים שכבר הוקלדו נשמרו.</p>
-      </div>
-    );
-  }
-
-  if (zeros !== undefined) {
-    return (
-      <div className="rounded-lg bg-emerald-50 p-4" role="status">
-        <p className="font-medium text-emerald-900">
-          נרשמו <bdi className="tabular">{zeros}</bdi> קטגוריות כאפס. החודש סגור.
-        </p>
-        <p className="mt-1 text-sm text-emerald-800">
-          כל סכום שכבר היה רשום נשאר כפי שהיה.
-        </p>
       </div>
     );
   }

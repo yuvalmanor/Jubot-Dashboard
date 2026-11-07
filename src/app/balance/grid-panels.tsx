@@ -11,7 +11,7 @@ import {
 import { format, toDecimalString } from "@/domain/money/money";
 import { formatMonth, formatMonthName, monthKey } from "@/domain/time/calendar-month";
 
-import { closeMonthFromGrid, saveCell } from "./actions";
+import { saveCell } from "./actions";
 import { CellEditor } from "./cell-editor";
 import { monthsPhrase } from "./denominator";
 import { type GridLinks, OPEN_CELL_ID, cellKey } from "./grid-links";
@@ -159,6 +159,7 @@ export function YearGridTable({
   openCell,
   links,
   controls,
+  groupColours,
 }: {
   grid: YearGrid;
   expanded: boolean;
@@ -168,6 +169,8 @@ export function YearGridTable({
   links: GridLinks;
   /** How the rows are ordered and whether they are opened — the page owns the URLs. */
   controls?: React.ReactNode;
+  /** The accent each Group carries, shared with the chart above the table. */
+  groupColours: ReadonlyMap<string, string>;
 }) {
   const empty = grid.income.rows.length + grid.expenses.rows.length === 0;
 
@@ -196,10 +199,12 @@ export function YearGridTable({
             <span aria-hidden="true">?</span> מקרא
           </summary>
           <p id={TABLE_LEGEND_ID} className="mt-2 max-w-3xl text-start text-[13px] text-stone-500">
-            כל הסכומים בשקלים. <span className="text-stone-400">—</span> פירושו שהחודש לא נרשם; 0
-            פירושו שנרשם אפס. סימון בתא פירושו חריגה מהממוצע של אותה שורה. לחיצה על תא פותחת אותו
-            לרישום במקום, או מובילה לחודש עצמו כששורה משותפת מסכמת את שני בני הבית. שלוש שורות
-            הסיכום נעוצות לתחתית החלון; חיסכון הוא הכנסות פחות הוצאות, מחושב בקריאה.
+            כל הסכומים בשקלים. חודש שלא נרשם בו דבר נקרא כאפס ומוצג כ
+            <span className="tabular text-stone-300">0</span> אפור;{" "}
+            <span className="text-stone-300">—</span> פירושו חודש שטרם הגיע. סימון בתא פירושו חריגה
+            מהממוצע של אותה שורה. לחיצה על תא פותחת אותו לרישום במקום, או מובילה לחודש עצמו כששורה
+            משותפת מסכמת את שני בני הבית. שלוש שורות הסיכום נעוצות לתחתית החלון; חיסכון הוא הכנסות
+            פחות הוצאות, מחושב בקריאה.
           </p>
         </details>
       </div>
@@ -261,6 +266,7 @@ export function YearGridTable({
             peopleNames={peopleNames}
             openCell={openCell}
             links={links}
+            groupColours={groupColours}
           />
           <Band
             band={grid.expenses}
@@ -269,6 +275,7 @@ export function YearGridTable({
             peopleNames={peopleNames}
             openCell={openCell}
             links={links}
+            groupColours={groupColours}
           />
 
           {/* All three pinned to the foot, stacked. חיסכון is the line the year is
@@ -343,43 +350,10 @@ function MonthHeader({ column, links }: { column: GridMonth; links: GridLinks })
   return (
     <th scope="col" className={`${PINNED_TOP} ${CELL_PADDING} border-b border-line-strong bg-white py-2 text-end font-medium`}>
       {heading}
-      {column.counted ? (
-        <ClosingNote column={column} links={links} />
-      ) : (
+      {column.counted ? null : (
         <span className="block text-xs font-normal text-stone-400">מחוץ להיסטוריה</span>
       )}
     </th>
-  );
-}
-
-/**
- * Whether a closed calendar month is also a *closed* month — one where every
- * category active in it holds a figure.
- *
- * Both answers are printed, not only the unhappy one. A mark that appears only
- * when something is wrong teaches nobody that it is being checked, and a blank
- * column heading would leave "nothing missing" and "nothing checked" looking
- * identical. It is stated for the months the aggregates count and no others: a
- * month the history does not reach has no blanks to fill, and the month being
- * lived is not over.
- */
-function ClosingNote({ column, links }: { column: GridMonth; links: GridLinks }) {
-  const { closure } = column;
-
-  if (closure.state === "empty") return null;
-
-  if (closure.state === "closed") {
-    return <span className="block text-xs font-normal text-stone-400">מלא</span>;
-  }
-
-  return (
-    <Link
-      href={links.closing(column.month)}
-      prefetch={false}
-      className="block text-xs font-normal text-amber-700 underline-offset-2 hover:underline"
-    >
-      חסרים <bdi className="tabular">{closure.blanks.length}</bdi>
-    </Link>
   );
 }
 
@@ -390,6 +364,7 @@ function Band({
   peopleNames,
   openCell,
   links,
+  groupColours,
 }: {
   band: GridBand;
   title: string;
@@ -397,6 +372,7 @@ function Band({
   peopleNames: ReadonlyMap<string, string>;
   openCell: string | null;
   links: GridLinks;
+  groupColours: ReadonlyMap<string, string>;
 }) {
   return (
     <tbody>
@@ -420,6 +396,7 @@ function Band({
           peopleNames={peopleNames}
           openCell={openCell}
           links={links}
+          groupColours={groupColours}
         />
       ))}
     </tbody>
@@ -466,12 +443,14 @@ function CategoryRow({
   peopleNames,
   openCell,
   links,
+  groupColours,
 }: {
   line: GridRow;
   expanded: boolean;
   peopleNames: ReadonlyMap<string, string>;
   openCell: string | null;
   links: GridLinks;
+  groupColours: ReadonlyMap<string, string>;
 }) {
   const showContributions = expanded && line.contributions.length > 0;
 
@@ -482,6 +461,7 @@ function CategoryRow({
           scope="row"
           className={`${PINNED_START} ${CATEGORY_PADDING} border-t border-stone-100 bg-white py-2 text-start font-normal`}
         >
+          <GroupMark group={line.group} colours={groupColours} />
           <bdi>{line.name}</bdi>
           {line.retired ? (
             /* Its own line on a phone, where the category column is 5rem wide and
@@ -516,6 +496,37 @@ function CategoryRow({
           ))
         : null}
     </>
+  );
+}
+
+/**
+ * That this row is one of a kind the household named.
+ *
+ * A dot and nothing else. The table is read for its figures, so a Group cannot
+ * be allowed to tint a row — the backgrounds in here already carry meaning (the
+ * month being lived, a pinned column, a drill-down) and a fourth tint competing
+ * with those would cost more than it says. The dot is the same colour the Group's
+ * wedge is drawn in above, so "the amber rows" and "the amber wedge" are one
+ * sentence, and the name is on the dot for anyone who cannot use the colour.
+ */
+function GroupMark({
+  group,
+  colours,
+}: {
+  group: string | null;
+  colours: ReadonlyMap<string, string>;
+}) {
+  if (group === null) return null;
+  const colour = colours.get(group);
+
+  return (
+    <span
+      className="me-1.5 inline-block h-2 w-2 shrink-0 rounded-[2px] align-middle"
+      style={{ backgroundColor: colour ?? "var(--color-line-strong)" }}
+      title={group}
+    >
+      <span className="sr-only">{group}</span>
+    </span>
   );
 }
 
@@ -732,9 +743,21 @@ function Cell({
 
   const figure =
     cell.amount === null ? (
-      <span className="text-stone-300" aria-label={cell.standing === "future" ? "טרם הגיע" : "לא נרשם"}>
-        —
-      </span>
+      cell.standing === "future" ? (
+        <span className="text-stone-300" aria-label="טרם הגיע">
+          —
+        </span>
+      ) : (
+        /* A month nobody typed a figure into reads as nought. Every total and
+           every average on this screen already counted it as one — the dash only
+           ever said "and nobody wrote it down", which turned out to be a question
+           nobody was asking. It stays grey, so a nought somebody meant and a
+           nought nobody typed are still told apart by anyone looking for the
+           difference, and by nobody who is not. */
+        <bdi className="tabular text-stone-300" title="לא נרשם — נקרא כאפס">
+          0
+        </bdi>
+      )
     ) : (
       <>
         {mark === null ? null : (
@@ -855,95 +878,5 @@ export function ReturnToFields({ links }: { links: GridLinks }) {
         <input key={name} type="hidden" name={name} value={value} />
       ))}
     </>
-  );
-}
-
-/**
- * Closing one month, with its blanks listed before anything is written.
- *
- * The list is the point. Imported history is full of the same ambiguity a fresh
- * month has — a blank might be an unfinished entry or a month in which the thing
- * did not happen — and the only thing that can resolve it is a person looking at
- * the names. So this is a month at a time and there is deliberately no bulk path:
- * rewriting two years of history in one click is the sort of irreversible mass
- * edit that should not have a button.
- */
-export function ClosingPanel({
-  column,
-  links,
-  peopleNames,
-}: {
-  column: GridMonth;
-  links: GridLinks;
-  peopleNames: ReadonlyMap<string, string>;
-}) {
-  const { closure } = column;
-
-  if (closure.state !== "open") {
-    return (
-      <section className="rounded-card bg-surface shadow-card p-5" role="status">
-        <p className="font-medium">{formatMonth(column.month)}</p>
-        <p className="mt-1 text-sm text-stone-600">
-          {closure.state === "closed"
-            ? "לכל קטגוריה שהייתה פעילה בחודש הזה יש רישום. החודש סגור."
-            : "אף קטגוריה לא הייתה פעילה בחודש הזה, ואין מה לסגור."}
-        </p>
-        <Link
-          href={links.cancel}
-          className="mt-3 inline-block rounded-lg bg-stone-900 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-stone-700"
-        >
-          חזרה לטבלה
-        </Link>
-      </section>
-    );
-  }
-
-  return (
-    <section className="rounded-card bg-amber-50 p-5">
-      <h2 className="font-semibold text-amber-900">סגירת {formatMonth(column.month)}</h2>
-
-      <p className="mt-1 text-sm text-amber-900">
-        <bdi className="tabular">{closure.blanks.length}</bdi> קטגוריות פעילות ללא רישום. סגירת החודש
-        תרשום בהן אפס — ולא תיגע בשום סכום שכבר נרשם.
-      </p>
-
-      <ul className="mt-3 flex flex-wrap gap-x-2 gap-y-1 text-sm text-amber-900">
-        {closure.blanks.map((category) => (
-          <li key={category.id} className="rounded-sm bg-white/70 px-2 py-0.5">
-            <bdi>{category.name}</bdi>
-            <span className="text-amber-700">
-              {" · "}
-              <bdi>{peopleNames.get(category.personId) ?? category.personId}</bdi>
-            </span>
-          </li>
-        ))}
-      </ul>
-
-      <form action={closeMonthFromGrid} className="mt-4 flex flex-wrap items-center gap-3">
-        <ReturnToFields links={links} />
-        <input type="hidden" name="month" value={monthKey(column.month)} />
-        {closure.blanks.map((category) => (
-          <input key={category.id} type="hidden" name="blank" value={category.id} />
-        ))}
-
-        <button
-          type="submit"
-          className="rounded-lg bg-stone-900 px-4 py-2 font-medium text-white hover:bg-stone-700"
-        >
-          רישום <bdi className="tabular">{closure.blanks.length}</bdi> הקטגוריות כאפס
-        </button>
-
-        <Link
-          href={links.cancel}
-          className="rounded-lg px-4 py-2 font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
-        >
-          ביטול
-        </Link>
-      </form>
-
-      <p className="mt-3 text-xs text-amber-800">
-        חודש אחד בכל פעם. אין בשום מקום פעולה שסוגרת יותר מחודש אחד.
-      </p>
-    </section>
   );
 }

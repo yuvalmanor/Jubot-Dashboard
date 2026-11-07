@@ -7,6 +7,7 @@ import {
   type PersonalCategory,
   householdCategoriesFor,
   householdCategoryOf,
+  householdGroups,
   isRetired,
   personalCategoriesFor,
   personalCategoriesOf,
@@ -19,9 +20,11 @@ import {
   reassignPersonalCategory,
   renameHousehold,
   renamePersonal,
+  setGroup,
   setLifespan,
   setWatched,
 } from "./category-actions";
+import { SaveButton } from "./chrome";
 import { type GridLinks } from "./grid-links";
 import { ReturnToFields } from "./grid-panels";
 
@@ -47,6 +50,19 @@ import { ReturnToFields } from "./grid-panels";
  */
 
 const TYPE_LABELS: Record<CategoryType, string> = { income: "הכנסות", expense: "הוצאות" };
+
+/**
+ * The one list of Group names the panel offers.
+ *
+ * It is a `<datalist>` and not a `<select>`, so a name that does not exist yet
+ * can simply be typed — a Group has no table behind it and is created by being
+ * written on a line. The two below are seeded because they are the two the
+ * household asked for; every other name in the list is one already in use, which
+ * is what stops a second חשבונות appearing beside the first through a typo. The
+ * ledger already carries הלוואות and הלווואות, so this is not a hypothetical.
+ */
+const GROUP_LIST_ID = "household-groups";
+const SUGGESTED_GROUPS = ["הוצאות קבועות", "חשבונות"] as const;
 
 /** The anchor the "ניהול קטגוריות" link lands on, so opening the panel scrolls to it. */
 export const CATEGORY_PANEL_ID = "categories";
@@ -78,6 +94,12 @@ export function CategoryAdminPanel({
           כאן אינו מוחק: הוצאה משימוש היא תקופת פעילות, וכל חודש שכבר נרשם ממשיך להיקרא בדיוק כפי שנקרא.
         </p>
       </div>
+
+      <datalist id={GROUP_LIST_ID}>
+        {[...new Set([...SUGGESTED_GROUPS, ...householdGroups(categories)])].map((group) => (
+          <option key={group} value={group} />
+        ))}
+      </datalist>
 
       <NewCategorySection categories={categories} people={people} links={links} today={today} />
       <HouseholdSection categories={categories} people={people} links={links} />
@@ -313,6 +335,11 @@ function HouseholdCard({
               במעקב תעריפים
             </span>
           ) : null}
+          {category.group === null ? null : (
+            <span className="ms-2 rounded bg-stone-100 px-2 py-0.5 text-xs font-normal text-stone-700">
+              <bdi>{category.group}</bdi>
+            </span>
+          )}
         </h4>
         <span className="text-xs font-medium tracking-wide text-stone-500">
           {TYPE_LABELS[category.type]}
@@ -320,6 +347,7 @@ function HouseholdCard({
       </div>
 
       <WatchToggle category={category} links={links} />
+      <GroupField category={category} links={links} />
 
       <p className="mt-2 text-sm text-stone-600">
         מוזנת מ־
@@ -355,12 +383,7 @@ function HouseholdCard({
               className="mt-1 w-full rounded-lg bg-sunken px-3 py-1.5"
             />
           </div>
-          <button
-            type="submit"
-            className="rounded-lg px-3 py-1.5 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
-          >
-            שינוי שם
-          </button>
+          <SaveButton>שינוי שם</SaveButton>
         </form>
 
         {mergeTargets.length === 0 ? null : (
@@ -383,12 +406,7 @@ function HouseholdCard({
                 ))}
               </select>
             </div>
-            <button
-              type="submit"
-              className="rounded-lg px-3 py-1.5 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
-            >
-              מיזוג
-            </button>
+            <SaveButton>מיזוג</SaveButton>
           </form>
         )}
       </div>
@@ -424,14 +442,48 @@ function WatchToggle({ category, links }: { category: HouseholdCategory; links: 
       <label htmlFor={`watched-${category.id}`} className="-ms-1.5 text-sm">
         מעקב תעריפים
       </label>
-      <button
-        type="submit"
-        className="rounded-lg px-3 py-1 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
-      >
-        שמירת המעקב
-      </button>
+      <SaveButton>שמירת המעקב</SaveButton>
       <span className="text-xs text-stone-500">
         מוסיף את השורה לפאנל שמתחת לטבלה. אינו מזיז שום סכום.
+      </span>
+    </form>
+  );
+}
+
+/**
+ * Which Group this line is marked as belonging to.
+ *
+ * A free field over a list of names, not a picker over a table, because a Group
+ * is a name and nothing else: typing one that nobody has used yet creates it,
+ * and clearing the field is how a line leaves the one it was in. No amount moves
+ * either way — the Group decides which rows are marked alike in the table above
+ * and which wedges are drawn as one in the chart, and nothing else reads it.
+ */
+function GroupField({ category, links }: { category: HouseholdCategory; links: GridLinks }) {
+  return (
+    <form action={setGroup} className="mt-3 flex flex-wrap items-end gap-2">
+      <ReturnToFields links={links} />
+      <input type="hidden" name="householdCategoryId" value={category.id} />
+      <div className="min-w-40 flex-1">
+        <label htmlFor={`group-${category.id}`} className="block text-sm font-medium">
+          קבוצה
+        </label>
+        <input
+          id={`group-${category.id}`}
+          name="group"
+          type="text"
+          list={GROUP_LIST_ID}
+          defaultValue={category.group ?? ""}
+          maxLength={60}
+          autoComplete="off"
+          placeholder="ללא קבוצה"
+          className="mt-1 w-full rounded-lg bg-sunken px-3 py-1.5"
+        />
+      </div>
+      <SaveButton>שמירת הקבוצה</SaveButton>
+      <span className="w-full text-xs text-stone-500">
+        שורות באותה קבוצה מסומנות יחד בטבלה ונקראות כפרוסה אחת בתרשים. שדה ריק מוציא את השורה
+        מהקבוצה. שום סכום אינו זז.
       </span>
     </form>
   );
@@ -526,12 +578,7 @@ function PersonalCard({
               className="mt-1 w-full rounded-lg bg-sunken px-3 py-1.5"
             />
           </div>
-          <button
-            type="submit"
-            className="rounded-lg px-3 py-1.5 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
-          >
-            שינוי שם
-          </button>
+          <SaveButton>שינוי שם</SaveButton>
         </form>
 
         <form action={setLifespan} className="flex flex-wrap items-end gap-2">
@@ -565,12 +612,7 @@ function PersonalCard({
               className="mt-1 rounded-lg bg-sunken px-2 py-1.5 text-sm"
             />
           </div>
-          <button
-            type="submit"
-            className="rounded-lg px-3 py-1.5 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
-          >
-            שמירת תקופה
-          </button>
+          <SaveButton>שמירת תקופה</SaveButton>
         </form>
 
         <form action={reassignPersonalCategory} className="flex flex-wrap items-end gap-2 lg:col-span-2">
@@ -610,12 +652,7 @@ function PersonalCard({
               className="mt-1 w-40 rounded-lg bg-sunken px-3 py-1.5"
             />
           </div>
-          <button
-            type="submit"
-            className="rounded-lg px-3 py-1.5 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
-          >
-            שיוך
-          </button>
+          <SaveButton>שיוך</SaveButton>
         </form>
       </div>
     </article>

@@ -5,6 +5,7 @@ import {
   type CategoryMerge,
   type HouseholdCategory,
   type HouseholdCategoryRename,
+  type HouseholdGroupChange,
   type HouseholdWatchChange,
   type PersonalCategory,
   type PersonalCategoryCreation,
@@ -39,6 +40,7 @@ interface HouseholdCategoryRow extends Record<string, unknown> {
   name: string;
   type: string;
   watched: boolean;
+  group: string | null;
 }
 
 interface AssignmentRow extends Record<string, unknown> {
@@ -71,7 +73,7 @@ function toHouseholdCategory(row: HouseholdCategoryRow): HouseholdCategory {
   if (!isCategoryType(row.type)) {
     throw new MalformedCategoryRowError(row.id, `unknown category type ${row.type}`);
   }
-  return { id: row.id, name: row.name, type: row.type, watched: row.watched };
+  return { id: row.id, name: row.name, type: row.type, watched: row.watched, group: row.group };
 }
 
 function toAssignment(row: AssignmentRow): CategoryAssignment {
@@ -91,7 +93,7 @@ export async function loadCategories(): Promise<Categories> {
               to_char(active_until, 'YYYY-MM') as active_until
          from personal_categories`,
     ),
-    query<HouseholdCategoryRow>(`select id, name, type, watched from household_categories`),
+    query<HouseholdCategoryRow>(`select id, name, type, watched, "group" from household_categories`),
     query<AssignmentRow>(`select personal_category_id, household_category_id from category_assignments`),
   ]);
 
@@ -160,6 +162,18 @@ export async function setHouseholdCategoryWatched(change: HouseholdWatchChange):
   await query(`update household_categories set watched = $2 where id = $1`, [
     change.householdCategoryId,
     change.watched,
+  ]);
+}
+
+/**
+ * Mark a household line as part of a Group, or take it out of one. One nullable
+ * column on one row; `entries` is not mentioned here, and no figure anywhere
+ * reads differently afterwards.
+ */
+export async function setHouseholdCategoryGroup(change: HouseholdGroupChange): Promise<void> {
+  await query(`update household_categories set "group" = $2 where id = $1`, [
+    change.householdCategoryId,
+    change.group,
   ]);
 }
 

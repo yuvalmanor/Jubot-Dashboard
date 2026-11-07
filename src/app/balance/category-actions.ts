@@ -8,6 +8,7 @@ import {
   loadCategories,
   renameHouseholdCategory,
   renamePersonalCategory,
+  setHouseholdCategoryGroup,
   setHouseholdCategoryWatched,
   setPersonalCategoryLifespan,
 } from "@/db/categories";
@@ -17,6 +18,7 @@ import {
   CategoryTypeMismatchError,
   DuplicateCategoryNameError,
   InvalidCategoryNameError,
+  InvalidGroupError,
   InvalidLifespanError,
   InvalidMergeError,
   UnknownCategoryError,
@@ -25,6 +27,7 @@ import {
   isCategoryType,
   personalCategoriesOf,
   planCategoryMerge,
+  planHouseholdGroup,
   planHouseholdRename,
   planHouseholdWatch,
   planLifespanChange,
@@ -65,6 +68,7 @@ export type CategoryErrorCode =
   | "unknown-category"
   | "bad-lifespan"
   | "bad-merge"
+  | "bad-group"
   | "failed";
 
 interface Outcome {
@@ -94,6 +98,7 @@ function failureFor(error: unknown): Outcome {
   if (error instanceof UnknownCategoryError) return { code: "unknown-category" };
   if (error instanceof InvalidLifespanError) return { code: "bad-lifespan" };
   if (error instanceof InvalidMergeError) return { code: "bad-merge" };
+  if (error instanceof InvalidGroupError) return { code: "bad-group" };
   return { code: "failed" };
 }
 
@@ -226,6 +231,31 @@ export async function setWatched(form: FormData): Promise<void> {
     const category = findHouseholdCategory(categories, change.householdCategoryId);
     await setHouseholdCategoryWatched(change);
     return { code: null, done: `${watched ? "watched" : "unwatched"}:${category?.name ?? ""}` };
+  });
+}
+
+/**
+ * Mark a household line as part of a Group, or take it out of one.
+ *
+ * One nullable column on one row, and the same shape as `setWatched` because it
+ * is the same kind of thing: a flag over the taxonomy that no total reads. A
+ * blank field is how a line leaves its Group — there is no separate "remove"
+ * action, because "no group" is a value and not an absence of one.
+ */
+export async function setGroup(form: FormData): Promise<void> {
+  await run(form, async () => {
+    const categories = await loadCategories();
+    const change = planHouseholdGroup(
+      categories,
+      readText(form, "householdCategoryId"),
+      readText(form, "group"),
+    );
+    const category = findHouseholdCategory(categories, change.householdCategoryId);
+    await setHouseholdCategoryGroup(change);
+    return {
+      code: null,
+      done: `${change.group === null ? "ungrouped" : "grouped"}:${category?.name ?? ""}`,
+    };
   });
 }
 

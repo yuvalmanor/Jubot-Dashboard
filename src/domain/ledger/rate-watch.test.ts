@@ -701,7 +701,7 @@ describe("calibrated against the real subscription history", () => {
       id: household.key,
       name: household.name,
       type: household.type,
-      watched: true,
+      watched: true, group: null,
     })),
     assignments: PLAN.categories.map((category) => ({
       personalCategoryId: category.key,

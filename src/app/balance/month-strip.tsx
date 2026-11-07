@@ -9,21 +9,17 @@ import { type GridLinks } from "./grid-links";
 /**
  * The year as twelve months, and the way into each of them.
  *
- * The grid says where the holes are — a column heading reading "חסרים 3" — but a
- * column heading is five hundred pixels of table away from the reader's eye and
- * only readable once they have found the column. Recording a month, which is the
- * one thing this screen exists to make possible, was a single link called "רישום
- * חודשי" that always opened the month being lived: to fill a hole in מאי you had
- * to go there and then walk backwards.
+ * Recording a month, which is the one thing this screen exists to make possible,
+ * was a single link called "רישום חודשי" that always opened the month being
+ * lived: to fill a hole in מאי you had to go there and then walk backwards. So
+ * the twelve months are a row of their own, above the table, each saying what it
+ * saved and each a way into itself.
  *
- * So the twelve months are a row of their own, above the table, each saying three
- * things at once: **what the month saved**, **whether it is finished**, and
- * **that it can be opened**. A month that is short of figures says how many, and
- * that figure is the link to closing it — which is the other half of finishing a
- * month and used to be reachable only from the table's own heading.
- *
- * Every state is printed, not only the unhappy one. A strip that marked only what
- * was wrong would leave "nothing missing" and "nothing checked" looking the same.
+ * It used to count what each month was missing, and so did the table's own
+ * column headings. That is gone: a month nobody typed a figure into reads as
+ * nought now, so there is nothing to be missing and nothing to nag about. A tile
+ * says what the month came to and opens it — which is the whole of what a strip
+ * of months is for.
  */
 
 export function MonthStrip({
@@ -76,66 +72,25 @@ function MonthTile({
 
   return (
     <li
-      className={`rounded-tile px-2.5 py-2 transition-colors ${
+      className={`rounded-tile transition-colors ${
         current ? "bg-amber-50 ring-1 ring-amber-200" : "bg-sunken hover:bg-stone-200/70"
       }`}
     >
-      <Link href={links.month(column.month, null)} prefetch={false} className="block">
+      <Link href={links.month(column.month, null)} prefetch={false} className="block px-2.5 py-2">
         <span className={`block text-[13px] font-medium ${current ? "text-amber-900" : ""}`}>
           {name}
         </span>
         <bdi className="figure block text-[15px] font-semibold">
-          {saving === undefined || saving.amount === null ? (
-            <span className="text-stone-300">—</span>
-          ) : (
-            format(saving.amount, { withSymbol: false, withMinorUnits: false })
-          )}
+          {saving === undefined || saving.amount === null
+            ? "0"
+            : format(saving.amount, { withSymbol: false, withMinorUnits: false })}
         </bdi>
+        {current ? (
+          <span className="block text-xs text-amber-800">בתהליך</span>
+        ) : column.counted ? null : (
+          <span className="block text-xs text-stone-400">מחוץ להיסטוריה</span>
+        )}
       </Link>
-
-      <Standing column={column} links={links} />
     </li>
-  );
-}
-
-/**
- * What is left to do to this month, and the way to do it.
- *
- * The blank count is the link to the closing confirmation — the panel that names
- * the categories before it writes a single nought — rather than a second button
- * beside it. One tile, one thing to read, and the thing to read is the thing to
- * press.
- */
-function Standing({ column, links }: { column: GridMonth; links: GridLinks }) {
-  const { closure } = column;
-
-  if (closure.state === "empty") {
-    return <span className="block text-xs text-stone-400">אין קטגוריות</span>;
-  }
-
-  if (closure.state === "closed") {
-    return (
-      <span className="block text-xs text-stone-400">
-        <span aria-hidden="true">✓ </span>מלא
-      </span>
-    );
-  }
-
-  if (column.standing === "current") {
-    return (
-      <span className="block text-xs text-amber-800">
-        בתהליך · חסרים <bdi className="tabular">{closure.blanks.length}</bdi>
-      </span>
-    );
-  }
-
-  return (
-    <Link
-      href={links.closing(column.month)}
-      prefetch={false}
-      className="block text-xs font-medium text-amber-700 underline-offset-2 hover:underline"
-    >
-      חסרים <bdi className="tabular">{closure.blanks.length}</bdi>
-    </Link>
   );
 }

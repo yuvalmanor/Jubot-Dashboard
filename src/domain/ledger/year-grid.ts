@@ -62,7 +62,7 @@ import {
 } from "@/domain/ledger/ledger-analytics";
 import { type Ledger, isRecorded, recordedSpan } from "@/domain/ledger/ledger";
 import { type MonthClosure, monthClosure } from "@/domain/ledger/month-closure";
-import { type Currency, type Money, subtract, sum, zero } from "@/domain/money/money";
+import { type Currency, type Money, ratio, subtract, sum, zero } from "@/domain/money/money";
 import {
   type CalendarMonth,
   addMonths,
@@ -128,6 +128,8 @@ export interface GridRow {
   readonly type: CategoryType;
   /** `null` at household level: a Household Category belongs to no one Person. */
   readonly personId: string | null;
+  /** The Group its Household Category is marked with, or `null`. See `ShareSlice`. */
+  readonly group: string | null;
   /** A retired category keeps every month it was recorded in; the badge says which it is. */
   readonly retired: boolean;
   /** Twelve, ascending — one per calendar month, whether or not the month arrived. */
@@ -188,6 +190,41 @@ export interface YearBefore {
   readonly saving: Money;
 }
 
+/**
+ * One wedge of "where the money went": a Household Category on its own, or every
+ * line marked with one Group read as a single part.
+ *
+ * A Group is drawn as one wedge because that is the whole point of marking lines
+ * with one — חשמל, ארנונה, גז, מים, שכ"ד and אינטרנט are six rows in the table
+ * and one question in the chart. The rows underneath travel with the wedge in
+ * `parts`, so the chart can name what a Group is made of without the screen
+ * going back to the taxonomy and adding it up a second way.
+ *
+ * A line whose year came to nought or less is left out. A share of a total is
+ * only meaningful for a part that is some of it, and a category that was
+ * refunded more than it was charged has no wedge to draw — it is still in the
+ * table above, where a negative figure reads as the fact it is.
+ */
+export interface ShareSlice {
+  readonly key: string;
+  readonly name: string;
+  /** Whether this wedge is a Group rather than one Household Category. */
+  readonly isGroup: boolean;
+  readonly total: Money;
+  /** Of the band's own total. `null` when that total is nought — not 0%. */
+  readonly share: number | null;
+  /** What a Group is made of, largest first. Empty for a single line. */
+  readonly parts: readonly SharePart[];
+}
+
+export interface SharePart {
+  readonly key: string;
+  readonly name: string;
+  readonly total: Money;
+  /** Of the whole band, so a part and its wedge are read on one scale. */
+  readonly share: number | null;
+}
+
 export interface YearGrid {
   readonly year: number;
   readonly scope: AnalyticsScope;
@@ -202,6 +239,8 @@ export interface YearGrid {
   readonly saving: GridSummaryRow;
   /** The same months a year earlier, for the three figures the year is read for. */
   readonly before: YearBefore;
+  /** Where the year's הוצאות went, as parts of one whole, largest first. */
+  readonly expenseShares: readonly ShareSlice[];
 }
 
 const MONTHS_IN_YEAR = 12;
@@ -490,6 +529,69 @@ function yearBefore(
 }
 
 /**
+ * The band as parts of one whole, largest first.
+ *
+ * Nothing is read off the ledger here: every figure is the `aggregate.total` the
+ * rows already carry, so a wedge and the row it was drawn from cannot come to
+ * two different numbers. The order is total, tie-broken on the key, so the same
+ * data always draws the same chart.
+ */
+function sharesOf(band: GridBand, currency: Currency): readonly ShareSlice[] {
+  const whole = band.total.aggregate.total;
+  const positive = band.rows.filter((row) => row.aggregate.total.minorUnits > 0);
+
+  const grouped = new Map<string, GridRow[]>();
+  for (const row of positive) {
+    if (row.group === null) continue;
+    grouped.set(row.group, [...(grouped.get(row.group) ?? []), row]);
+  }
+
+  const partOf = (row: GridRow): SharePart => ({
+    key: row.key,
+    name: row.name,
+    total: row.aggregate.total,
+    share: ratio(row.aggregate.total, whole),
+  });
+
+  const slices: ShareSlice[] = [];
+
+  for (const [group, rows] of grouped) {
+    const total = sum(rows.map((row) => row.aggregate.total), currency);
+    slices.push({
+      key: `group:${group}`,
+      name: group,
+      isGroup: true,
+      total,
+      share: ratio(total, whole),
+      parts: [...rows].map(partOf).sort(bySlice),
+    });
+  }
+
+  for (const row of positive) {
+    if (row.group !== null) continue;
+    slices.push({
+      key: row.key,
+      name: row.name,
+      isGroup: false,
+      total: row.aggregate.total,
+      share: ratio(row.aggregate.total, whole),
+      parts: [],
+    });
+  }
+
+  return slices.sort(bySlice);
+}
+
+function bySlice(
+  left: { readonly key: string; readonly total: Money },
+  right: { readonly key: string; readonly total: Money },
+): number {
+  const bySize = right.total.minorUnits - left.total.minorUnits;
+  if (bySize !== 0) return bySize;
+  return left.key < right.key ? -1 : left.key > right.key ? 1 : 0;
+}
+
+/**
  * One year of the מאזן at household or person level.
  *
  * `today` and the currency are parameters: a function that asks the system for
@@ -548,5 +650,6 @@ export function yearGrid(
     expenses,
     saving: savingOf(income.total, expenses.total, months, counted, currency),
     before: yearBefore(ledger, categories, scope, counted, currency, year),
+    expenseShares: sharesOf(expenses, currency),
   };
 }

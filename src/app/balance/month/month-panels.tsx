@@ -1,9 +1,5 @@
 import type { Person } from "@/db/people";
-import {
-  type HouseholdCategoryLine,
-  type MonthSummary,
-  completenessOf,
-} from "@/domain/ledger/ledger";
+import { type HouseholdCategoryLine, type MonthSummary } from "@/domain/ledger/ledger";
 import { type Money, format } from "@/domain/money/money";
 
 /**
@@ -26,10 +22,7 @@ export function SummaryPanel({ summary, note }: { summary: MonthSummary; note: s
         <Figure label="חיסכון" value={format(summary.saving)} emphasis />
       </div>
 
-      <div className="mt-4 space-y-2">
-        <CompletenessNotice summary={summary} />
-        <p className="text-sm text-stone-500">{note}</p>
-      </div>
+      <p className="mt-4 text-sm text-stone-500">{note}</p>
     </section>
   );
 }
@@ -40,41 +33,6 @@ function Figure({ label, value, emphasis = false }: { label: string; value: stri
       <p className="text-[13px] font-medium text-stone-500">{label}</p>
       <bdi className={`tabular block ${emphasis ? "text-3xl font-semibold" : "text-2xl"}`}>{value}</bdi>
     </div>
-  );
-}
-
-/**
- * A half-entered month must never be mistaken for a cheap one, so the state is
- * stated on the figures themselves rather than left to be inferred from a blank
- * field further down the page.
- */
-export function CompletenessNotice({ summary }: { summary: MonthSummary }) {
-  const completeness = completenessOf(summary);
-  const counts = (
-    <>
-      נרשמו <bdi className="tabular">{summary.recordedCount}</bdi> מתוך{" "}
-      <bdi className="tabular">{summary.categoryCount}</bdi> קטגוריות
-    </>
-  );
-
-  if (completeness === "complete") {
-    return (
-      <p className="inline-flex flex-wrap items-center gap-x-2 rounded-lg bg-emerald-50 px-3 py-1.5 text-sm text-emerald-900">
-        <span className="font-medium">חודש מלא</span>
-        <span>· {counts}</span>
-      </p>
-    );
-  }
-
-  return (
-    <p
-      className="inline-flex flex-wrap items-center gap-x-2 rounded-lg bg-amber-50 px-3 py-1.5 text-sm text-amber-900"
-      role="status"
-    >
-      <span className="font-medium">{completeness === "empty" ? "חודש ריק" : "חודש חלקי"}</span>
-      <span>· {counts}</span>
-      <span className="text-amber-800">— הסכומים למטה אינם התמונה המלאה</span>
-    </p>
   );
 }
 

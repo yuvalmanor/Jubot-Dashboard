@@ -416,7 +416,7 @@ describe("what the import hands to the מאזן screens", () => {
         id: household.key,
         name: household.name,
         type: household.type,
-        watched: false,
+        watched: false, group: null,
       })),
       assignments: plan.categories.map((category) => ({
         personalCategoryId: category.key,

@@ -20,7 +20,7 @@ import { monthClosure } from "@/domain/ledger/month-closure";
 import { toDecimalString } from "@/domain/money/money";
 import { type CalendarMonth, formatMonth, monthKey } from "@/domain/time/calendar-month";
 
-import { createCategoryAndSaveMonth, recordBlanksAsZero, saveMonth } from "./actions";
+import { createCategoryAndSaveMonth, saveMonth } from "./actions";
 import { SummaryPanel } from "./month-panels";
 
 /**
@@ -90,106 +90,15 @@ export function MonthEntry({
             >
               שמירת החודש
             </button>
-            <p className="text-sm text-stone-500">שדה ריק פירושו שהחודש לא נרשם — אין זה אותו דבר כמו 0.</p>
+            <p className="text-sm text-stone-500">
+              שדה שנשאר ריק נקרא במאזן כאפס. אין צורך להקליד 0 בכל שורה שלא קרה בה כלום.
+            </p>
           </div>
         </>
       )}
 
       <NewCategoryPanel categories={categories} owner={person} isSelf={isSelf} />
     </form>
-  );
-}
-
-/**
- * What a save left blank, named — and the offer to record those months as nought.
- *
- * This is where the ambiguity in a blank cell is resolved, and it is resolved by a
- * person rather than by arithmetic. A blank might be an unfinished month or a
- * month in which the thing simply did not happen, and nothing in the ledger can
- * tell those apart. So the categories are listed by name, with the list in view,
- * and accepting writes real zeros — which is exactly the deliberate act the
- * null/zero distinction exists to permit.
- *
- * Nothing here is pre-accepted and nothing is implicit: the offer is a button that
- * has to be pressed, declining is a button too, and doing neither leaves the month
- * exactly as the save left it.
- */
-export function BlanksOffer({
-  month,
-  person,
-  categories,
-  ledger,
-  saved,
-  declined,
-}: {
-  month: CalendarMonth;
-  person: { readonly id: string; readonly displayName: string };
-  categories: Categories;
-  ledger: Ledger;
-  saved: boolean;
-  declined: boolean;
-}) {
-  const closure = monthClosure(ledger, categories, personScope(person.id), month);
-  if (closure.state !== "open" || !(saved || declined)) return null;
-
-  const count = closure.blanks.length;
-  const back = `/balance/month?month=${monthKey(month)}&view=${person.id}&left=1`;
-
-  if (declined) {
-    return (
-      <section className="rounded-card bg-surface shadow-card p-5" role="status">
-        <p className="font-medium">
-          <bdi className="tabular">{count}</bdi> קטגוריות נותרו ללא רישום ב{formatMonth(month)}.
-        </p>
-        <p className="mt-1 text-sm text-stone-500">
-          לא נכתב דבר. חודש שלא נרשם אינו חודש של אפס, והמאזן ימשיך להציג אותו כחסר.
-        </p>
-      </section>
-    );
-  }
-
-  return (
-    <section className="rounded-card bg-amber-50 p-5" role="status">
-      <p className="font-medium text-amber-900">
-        נותרו <bdi className="tabular">{count}</bdi> קטגוריות ללא רישום ב{formatMonth(month)}:
-      </p>
-
-      <ul className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-sm text-amber-900">
-        {closure.blanks.map((category) => (
-          <li key={category.id} className="rounded-sm bg-white/70 px-2 py-0.5">
-            <bdi>{category.name}</bdi>
-          </li>
-        ))}
-      </ul>
-
-      <p className="mt-3 text-sm text-amber-800">
-        אם באמת לא היה בהן כלום החודש — אפשר לרשום אותן כאפס, וזה יסגור את החודש. אפס שנרשם כך זהה
-        לחלוטין לאפס שהוקלד ביד, כי זה בדיוק מה שהוא.
-      </p>
-
-      <form className="mt-4 flex flex-wrap items-center gap-3">
-        <input type="hidden" name="month" value={monthKey(month)} />
-        <input type="hidden" name="view" value={person.id} />
-        {closure.blanks.map((category) => (
-          <input key={category.id} type="hidden" name="blank" value={category.id} />
-        ))}
-
-        <button
-          type="submit"
-          formAction={recordBlanksAsZero}
-          className="rounded-lg bg-stone-900 px-4 py-2 font-medium text-white hover:bg-stone-700"
-        >
-          רישום <bdi className="tabular">{count}</bdi> הקטגוריות כאפס
-        </button>
-
-        <Link
-          href={back as Route}
-          className="rounded-lg px-4 py-2 font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
-        >
-          השארה ריקה
-        </Link>
-      </form>
-    </section>
   );
 }
 

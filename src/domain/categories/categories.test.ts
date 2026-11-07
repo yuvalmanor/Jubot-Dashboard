@@ -234,7 +234,7 @@ describe("no personal category is ever unassigned", () => {
             activeUntil: null,
           },
         ],
-        household: [{ id: "h-1", name: "חשמל", type: "expense", watched: false }],
+        household: [{ id: "h-1", name: "חשמל", type: "expense", watched: false, group: null }],
         assignments: [],
       }),
     ).toThrow(UnassignedPersonalCategoryError);
@@ -272,7 +272,7 @@ describe("no personal category is ever unassigned", () => {
             activeUntil: null,
           },
         ],
-        household: [{ id: "h-1", name: "משכורת", type: "income", watched: false }],
+        household: [{ id: "h-1", name: "משכורת", type: "income", watched: false, group: null }],
         assignments: [{ personalCategoryId: "p-1", householdCategoryId: "h-1" }],
       }),
     ).toThrow(CategoryTypeMismatchError);
@@ -292,8 +292,8 @@ describe("no personal category is ever unassigned", () => {
           },
         ],
         household: [
-          { id: "h-1", name: "חשמל", type: "expense", watched: false },
-          { id: "h-2", name: "בית", type: "expense", watched: false },
+          { id: "h-1", name: "חשמל", type: "expense", watched: false, group: null },
+          { id: "h-2", name: "בית", type: "expense", watched: false, group: null },
         ],
         assignments: [
           { personalCategoryId: "p-1", householdCategoryId: "h-1" },
@@ -316,7 +316,7 @@ describe("no personal category is ever unassigned", () => {
             activeUntil: calendarMonth(2025, 5),
           },
         ],
-        household: [{ id: "h-1", name: "חשמל", type: "expense", watched: false }],
+        household: [{ id: "h-1", name: "חשמל", type: "expense", watched: false, group: null }],
         assignments: [{ personalCategoryId: "p-1", householdCategoryId: "h-1" }],
       }),
     ).toThrow(MalformedCategoriesError);

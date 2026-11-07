@@ -42,6 +42,13 @@ export const dynamic = "force-dynamic";
  * the trend is the twelve months ending there, the year-over-year is that
  * month's year, and the deviations are that month against the six before it.
  *
+ * It reads **year first, month last**. It used to open on two readings of a
+ * single month — what is free to move, and what that month did against its own
+ * history — which put the smallest question at the top of the screen and left
+ * "is the year going better than the last one" below two panels and a chart.
+ * The annual readings lead now, and the month-by-month detail sits under a
+ * heading of its own at the foot.
+ *
  * It answers one question: **is this figure normal?** Where the money went is the
  * grid's question, and the grid answers it a category at a time across a whole
  * year, which is more than a breakdown panel ever did. So the breakdown is gone
@@ -199,6 +206,27 @@ function Insights({
         </p>
       ) : null}
 
+      {/* The year first. This screen opened on two readings of one month — what
+          is free to move, and what that month did against its own history — and
+          a person arriving at it almost always wants the larger question first:
+          how the year stands against the one before it, and whether the saving
+          rate is actually improving. The month is still here, underneath, where
+          the detail belongs. */}
+      <YearOverYearPanel comparison={comparison} title={`מול אותה תקופה ב־${comparison.comparisonYear}`} />
+
+      <Panel
+        title="שיעור חיסכון לאורך זמן"
+        note="חיסכון כאחוז מההכנסות — האם באמת משתפרים, או רק מרוויחים יותר."
+      >
+        <div className="px-5 py-4">
+          <SavingRateChart points={trend} label={`שיעור החיסכון של ${scopeName} לפי חודש`} />
+        </div>
+      </Panel>
+
+      <h2 className="title px-1 pt-2 text-[15px] font-semibold">
+        חודש אחר חודש — {formatMonth(focus)}
+      </h2>
+
       <AvailablePanel
         available={available}
         note={
@@ -223,17 +251,6 @@ function Insights({
         </div>
         <TrendTable points={trend} />
       </Panel>
-
-      <Panel
-        title="שיעור חיסכון לאורך זמן"
-        note="חיסכון כאחוז מההכנסות — האם באמת משתפרים, או רק מרוויחים יותר."
-      >
-        <div className="px-5 py-4">
-          <SavingRateChart points={trend} label={`שיעור החיסכון של ${scopeName} לפי חודש`} />
-        </div>
-      </Panel>
-
-      <YearOverYearPanel comparison={comparison} title={`מול אותה תקופה ב־${comparison.comparisonYear}`} />
 
       <p className="text-sm text-stone-500">
         פילוח הקטגוריות עבר ל

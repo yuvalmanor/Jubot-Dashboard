@@ -70,6 +70,14 @@ create table if not exists household_categories (
 -- counted there.
 alter table household_categories add column if not exists watched boolean not null default false;
 
+-- The Group a household line is marked as belonging to — הוצאות קבועות, חשבונות.
+-- A name and nothing else: there is no table of groups, because a group exists
+-- exactly as long as a line carries its name. Like `watched` it is a flag over
+-- the taxonomy and not over the money — it decides which rows are drawn together
+-- in the table and which wedges are drawn as one in the chart, and no total
+-- anywhere reads differently because of it.
+alter table household_categories add column if not exists "group" text;
+
 -- Owned by exactly one Person, using that Person's own naming. Retirement is a
 -- lifespan (active_until), never a delete — history must keep resolving.
 create table if not exists personal_categories (

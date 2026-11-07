@@ -129,3 +129,25 @@ export function OverflowMenu({
     </details>
   );
 }
+
+/**
+ * A form's own submit, in the admin panel and anywhere else a screen holds many
+ * small forms side by side.
+ *
+ * These used to be bare text in `text-stone-600`, which is the same ink as the
+ * help line beside them: the panel read as a page of fields with no way to save
+ * any of them, and the first person to use it reported exactly that. Deference
+ * means the chrome does not compete with the figures — it does not mean a
+ * control may be indistinguishable from prose. A filled surface and a hairline
+ * are the least that still says *press me*.
+ */
+export function SaveButton({ children }: { children: React.ReactNode }) {
+  return (
+    <button
+      type="submit"
+      className="rounded-lg bg-sunken px-3.5 py-1.5 text-sm font-medium text-stone-700 ring-1 ring-line-strong transition-colors hover:bg-stone-900 hover:text-white hover:ring-stone-900"
+    >
+      {children}
+    </button>
+  );
+}

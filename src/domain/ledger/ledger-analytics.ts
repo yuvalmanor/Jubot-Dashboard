@@ -49,6 +49,7 @@ import {
   type CategoryType,
   type PersonalCategory,
   householdCategoriesFor,
+  householdCategoryOf,
   isActiveIn,
   personalCategoriesFor,
   personalCategoriesOf,
@@ -101,6 +102,14 @@ export interface CategoryGroup {
   readonly type: CategoryType;
   /** `null` at household level: a Household Category belongs to no one Person. */
   readonly personId: string | null;
+  /**
+   * The Group its Household Category is marked with, or `null`. It is carried
+   * here so a reading can draw lines of one kind together without looking the
+   * taxonomy up again — and at person level it is still the *household* line's
+   * Group, because a Group is a statement about the kind of spend and not about
+   * whose wallet it left.
+   */
+  readonly group: string | null;
   readonly members: readonly PersonalCategory[];
 }
 
@@ -119,6 +128,7 @@ export function categoryGroups(
           name: household.name,
           type: household.type,
           personId: null,
+          group: household.group,
           members,
         },
       ];
@@ -130,6 +140,7 @@ export function categoryGroups(
     name: category.name,
     type: category.type,
     personId: category.personId,
+    group: householdCategoryOf(categories, category.id).group,
     members: [category],
   }));
 }
@@ -141,6 +152,9 @@ export function membersAsGroups(group: CategoryGroup): readonly CategoryGroup[] 
     name: member.name,
     type: member.type,
     personId: member.personId,
+    // The household line's Group, not one of its own: a Personal Category is
+    // never marked, and a drill-down row belongs to whatever its parent does.
+    group: group.group,
     members: [member],
   }));
 }
@@ -403,11 +417,7 @@ export const DEFAULT_TRAILING_WINDOW = 6;
  */
 export type DeviationBasis = "compared" | "no-history" | "not-recorded";
 
-export interface CategoryDeviation {
-  readonly key: string;
-  readonly name: string;
-  readonly type: CategoryType;
-  readonly personId: string | null;
+export interface CategoryDeviation extends GroupIdentity {
   /** This month's figure, or `null` when nothing was recorded for it. */
   readonly current: Money | null;
   /** The category's own trailing average, carrying the months it divided by. */
@@ -492,11 +502,28 @@ export function rankCategoryDeviations(
   return [...deviations].sort(compareDeviations);
 }
 
-/** A group's identity, carried onto every row read out of it. */
-export function identifyGroup(
-  group: CategoryGroup,
-): Pick<CategoryDeviation, "key" | "name" | "type" | "personId"> {
-  return { key: group.key, name: group.name, type: group.type, personId: group.personId };
+/**
+ * A group's identity, carried onto every row read out of it — including the
+ * Group it is marked with, so a reading can draw lines of one kind together
+ * without going back to the taxonomy for it.
+ */
+export interface GroupIdentity {
+  readonly key: string;
+  readonly name: string;
+  readonly type: CategoryType;
+  readonly personId: string | null;
+  readonly group: string | null;
+}
+
+
+export function identifyGroup(group: CategoryGroup): GroupIdentity {
+  return {
+    key: group.key,
+    name: group.name,
+    type: group.type,
+    personId: group.personId,
+    group: group.group,
+  };
 }
 
 function compareDeviations(left: CategoryDeviation, right: CategoryDeviation): number {
@@ -516,11 +543,7 @@ function compareDeviations(left: CategoryDeviation, right: CategoryDeviation): n
 
 // --- where the money went, for a month or a year -----------------------------
 
-export interface BreakdownLine {
-  readonly key: string;
-  readonly name: string;
-  readonly type: CategoryType;
-  readonly personId: string | null;
+export interface BreakdownLine extends GroupIdentity {
   readonly average: Average;
   /** Share of the period's total for this type. `null` when that total is zero. */
   readonly share: number | null;

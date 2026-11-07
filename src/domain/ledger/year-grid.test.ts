@@ -5,10 +5,12 @@ import {
   EMPTY_CATEGORIES,
   applyCreation,
   applyHouseholdRename,
+  applyHouseholdGroup,
   applyLifespan,
   applyMerge,
   applyPersonalCategoryRename,
   planCategoryMerge,
+  planHouseholdGroup,
   planHouseholdRename,
   planLifespanChange,
   planPersonalCategoryCreation,
@@ -787,5 +789,83 @@ describe("yearGrid — the same months one year earlier", () => {
     expect(before.months).toEqual([]);
     expect(before.recordedMonths).toBe(0);
     expect(before.income).toEqual(ils(0));
+  });
+});
+
+describe("yearGrid — where the year's הוצאות went", () => {
+  /** Mark two household lines as one Group, the way the admin panel does. */
+  function grouped(name: string, ids: readonly string[]): Categories {
+    return ids.reduce<Categories>(
+      (model, id) => applyHouseholdGroup(model, planHouseholdGroup(model, id, name)),
+      CATEGORIES,
+    );
+  }
+
+  function sharesOf(model: Categories, year = 2025) {
+    return yearGrid(LEDGER, model, HOUSEHOLD_SCOPE, year, ILS, TODAY).expenseShares;
+  }
+
+  it("gives every household expense line a wedge, largest first", () => {
+    const slices = sharesOf(CATEGORIES);
+    expect(slices.map((slice) => slice.key)).toEqual(["h-travel", "h-health", "h-power"]);
+    expect(slices.every((slice) => slice.isGroup === false)).toBe(true);
+  });
+
+  it("totals each wedge to the same figure the row above it carries", () => {
+    const { expenses, expenseShares } = yearGrid(LEDGER, CATEGORIES, HOUSEHOLD_SCOPE, 2025, ILS, TODAY);
+    for (const slice of expenseShares) {
+      expect(slice.total).toEqual(row(expenses.rows, slice.key).aggregate.total);
+    }
+  });
+
+  it("adds the wedges up to the band's own total", () => {
+    const { expenses, expenseShares } = yearGrid(LEDGER, CATEGORIES, HOUSEHOLD_SCOPE, 2025, ILS, TODAY);
+    expect(sum(expenseShares.map((slice) => slice.total), ILS)).toEqual(expenses.total.aggregate.total);
+    const shares = expenseShares.map((slice) => slice.share ?? 0);
+    expect(shares.reduce((total, share) => total + share, 0)).toBeCloseTo(1, 10);
+  });
+
+  it("draws every line of one Group as a single wedge, with its parts underneath", () => {
+    const slices = sharesOf(grouped("חשבונות", ["h-health", "h-power"]));
+    const bills = slices.find((slice) => slice.name === "חשבונות");
+    if (bills === undefined) throw new Error("no חשבונות wedge");
+
+    expect(bills.isGroup).toBe(true);
+    expect(bills.parts.map((part) => part.key)).toEqual(["h-health", "h-power"]);
+    expect(bills.total).toEqual(
+      sum(bills.parts.map((part) => part.total), ILS),
+    );
+    // The two lines are gone from the top level — one wedge, not three — and the
+    // wedge takes its place by size like any other.
+    expect(slices.map((slice) => slice.key)).toEqual(["h-travel", "group:חשבונות"]);
+  });
+
+  it("moves no money: grouping changes the wedges and not the band's total", () => {
+    const plain = yearGrid(LEDGER, CATEGORIES, HOUSEHOLD_SCOPE, 2025, ILS, TODAY);
+    const marked = yearGrid(
+      LEDGER,
+      grouped("חשבונות", ["h-health", "h-power"]),
+      HOUSEHOLD_SCOPE,
+      2025,
+      ILS,
+      TODAY,
+    );
+    expect(marked.expenses.total.aggregate.total).toEqual(plain.expenses.total.aggregate.total);
+    expect(marked.saving.aggregate.total).toEqual(plain.saving.aggregate.total);
+    expect(sum(marked.expenseShares.map((slice) => slice.total), ILS)).toEqual(
+      sum(plain.expenseShares.map((slice) => slice.total), ILS),
+    );
+  });
+
+  it("carries a Group onto the row at person level too, from the household line", () => {
+    const model = grouped("חשבונות", ["h-health", "h-power"]);
+    const rows = yearGrid(LEDGER, model, YUVAL, 2025, ILS, TODAY).expenses.rows;
+    expect(row(rows, "p-health").group).toBe("חשבונות");
+    expect(row(rows, "p-travel").group).toBe(null);
+  });
+
+  it("leaves out a line whose year came to nought or less", () => {
+    // 2027 is empty, so no line has anything to be a share of.
+    expect(sharesOf(CATEGORIES, 2027)).toEqual([]);
   });
 });
