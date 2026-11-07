@@ -280,7 +280,7 @@ function SnapshotView({
       <SummaryPanel snapshot={snapshot} accounts={accounts} convertible={convertible} />
 
       {missing.length === 0 ? null : (
-        <div className="rounded-md border border-amber-300 bg-amber-50 p-4" role="status">
+        <div className="rounded-lg bg-amber-50 p-4" role="status">
           <p className="font-medium text-amber-900">
             <bdi className="tabular">{missing.length}</bdi> חשבונות הוגדרו אחרי שהצילום הזה נלקח, ולכן
             אינם בו
@@ -293,7 +293,7 @@ function SnapshotView({
             <input type="hidden" name="snapshotId" value={snapshot.id} />
             <button
               type="submit"
-              className="rounded-md border border-amber-400 bg-white px-3 py-1.5 text-sm font-medium hover:bg-amber-100"
+              className="rounded-lg px-3 py-1.5 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-50"
             >
               הוספת החשבונות החסרים
             </button>
@@ -326,7 +326,7 @@ function SnapshotView({
           />
         </div>
       ) : (
-        <div className="rounded-md border border-amber-300 bg-amber-50 p-4">
+        <div className="rounded-lg bg-amber-50 p-4">
           <p className="text-sm text-amber-900">
             לצילום הזה אין שער <bdi>USD/ILS</bdi>, ולכן אין דרך לרכז אותו לשקלים. כל סכום נקרא למטה
             במטבע שלו.
@@ -366,10 +366,10 @@ function SummaryPanel({
   const completeness = completenessOf(snapshot);
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
       <div className="grid gap-4 sm:grid-cols-3">
         <div>
-          <p className="text-sm font-semibold tracking-wide text-stone-500">סך הכול</p>
+          <p className="text-[13px] font-medium text-stone-500">סך הכול</p>
           <bdi className="tabular block text-3xl font-semibold">
             {convertible ? format(snapshotTotal(snapshot, accounts, READING_CURRENCY)) : "—"}
           </bdi>
@@ -381,7 +381,7 @@ function SummaryPanel({
           ) : null}
         </div>
         <div>
-          <p className="text-sm font-semibold tracking-wide text-stone-500">
+          <p className="text-[13px] font-medium text-stone-500">
             שער <bdi>USD/ILS</bdi> בצילום
           </p>
           <bdi className="tabular block text-2xl">
@@ -390,7 +390,7 @@ function SummaryPanel({
           </bdi>
         </div>
         <div>
-          <p className="text-sm font-semibold tracking-wide text-stone-500">נמדדו בתאריך הזה</p>
+          <p className="text-[13px] font-medium text-stone-500">נמדדו בתאריך הזה</p>
           <bdi className="tabular block text-2xl">
             {completeness.entered}/{completeness.total}
           </bdi>
@@ -399,12 +399,12 @@ function SummaryPanel({
 
       <div className="mt-4 space-y-2">
         {completeness.carried === 0 ? (
-          <p className="inline-flex flex-wrap items-center gap-x-2 rounded-md bg-emerald-50 px-3 py-1.5 text-sm text-emerald-900">
+          <p className="inline-flex flex-wrap items-center gap-x-2 rounded-lg bg-emerald-50 px-3 py-1.5 text-sm text-emerald-900">
             <span className="font-medium">כל השורות נמדדו בתאריך הצילום</span>
           </p>
         ) : (
           <p
-            className="inline-flex flex-wrap items-center gap-x-2 rounded-md bg-amber-50 px-3 py-1.5 text-sm text-amber-900"
+            className="inline-flex flex-wrap items-center gap-x-2 rounded-lg bg-amber-50 px-3 py-1.5 text-sm text-amber-900"
             role="status"
           >
             <span className="font-medium">
@@ -461,16 +461,16 @@ function CurrencyTablePanel({ table }: { table: CurrencyTable }) {
   const { title, note } = CURRENCY_TITLES[table.currency];
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white">
-      <div className="border-b border-stone-200 px-5 py-3">
-        <h2 className="text-sm font-semibold tracking-wide text-stone-500">{title}</h2>
+    <section className="rounded-card bg-surface shadow-card">
+      <div className="border-b border-line px-5 py-3">
+        <h2 className="text-[13px] font-medium text-stone-500">{title}</h2>
         <p className="text-xs text-stone-500">{note}</p>
       </div>
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="text-xs text-stone-500">
-            <tr className="border-b border-stone-200">
+            <tr className="border-b border-line">
               <th scope="col" className="px-5 py-2 text-start font-medium">
                 חשבון
               </th>
@@ -482,7 +482,7 @@ function CurrencyTablePanel({ table }: { table: CurrencyTable }) {
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-stone-100">
+          <tbody className="divide-y divide-line">
             {table.rows.map((row) => (
               <tr key={row.account.id}>
                 <th scope="row" className="px-5 py-2 text-start font-normal">
@@ -499,7 +499,7 @@ function CurrencyTablePanel({ table }: { table: CurrencyTable }) {
             ))}
           </tbody>
           <tfoot>
-            <tr className="border-t border-stone-200 font-medium">
+            <tr className="border-t border-line font-medium">
               <th scope="row" colSpan={2} className="px-5 py-2 text-start">
                 סך הכול
               </th>
@@ -511,7 +511,7 @@ function CurrencyTablePanel({ table }: { table: CurrencyTable }) {
         </table>
       </div>
 
-      <BasisNote split={table.basis} className="border-t border-stone-200 px-5 py-3" />
+      <BasisNote split={table.basis} className="border-t border-line px-5 py-3" />
     </section>
   );
 }
@@ -539,13 +539,13 @@ function RollupPanel({
   if (lines.length === 0) return null;
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white">
-      <div className="border-b border-stone-200 px-5 py-3">
-        <h2 className="text-sm font-semibold tracking-wide text-stone-500">{title}</h2>
+    <section className="rounded-card bg-surface shadow-card">
+      <div className="border-b border-line px-5 py-3">
+        <h2 className="text-[13px] font-medium text-stone-500">{title}</h2>
         <p className="text-xs text-stone-500">{note}</p>
       </div>
 
-      <ul className="divide-y divide-stone-200">
+      <ul className="divide-y divide-line">
         {lines.map((line) => {
           // The bucket's readings, used for both the drill-down and the split, so
           // a total, its parts and what it is made of cannot disagree.
@@ -575,7 +575,7 @@ function RollupPanel({
                   )}
                 </summary>
 
-                <ul className="divide-y divide-stone-100 border-t border-stone-100 bg-stone-50/60">
+                <ul className="divide-y divide-line border-t border-stone-100 bg-sunken/70">
                   {inBucket.map((reading) => (
                     <li
                       key={reading.account.id}
@@ -630,8 +630,8 @@ function RsuHoldingPanel({ rsu, snapshot }: { rsu: RsuLineReading; snapshot: Sna
   if (rsu.kind === "unnamed") return null;
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <h2 className="text-sm font-semibold tracking-wide text-stone-500">
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+      <h2 className="text-[13px] font-medium text-stone-500">
         החזקת ה־<bdi>RSU</bdi> במיפוי — נגזרת
       </h2>
 
@@ -715,7 +715,7 @@ function RsuHoldingPanel({ rsu, snapshot }: { rsu: RsuLineReading; snapshot: Sna
 const STATUS_STYLES = {
   funded: { box: "border-emerald-300 bg-emerald-50", text: "text-emerald-900", label: "מכוסה" },
   underfunded: { box: "border-red-300 bg-red-50", text: "text-red-900", label: "חסר כיסוי" },
-  unmeasured: { box: "border-stone-300 bg-stone-50", text: "text-stone-700", label: "לא נמדד" },
+  unmeasured: { box: "border-line-strong bg-sunken", text: "text-stone-700", label: "לא נמדד" },
 } as const;
 
 /**
@@ -728,16 +728,16 @@ function EarmarksPanel({ funding }: { funding: readonly AccountEarmarks[] }) {
   if (funding.length === 0) return null;
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white">
-      <div className="border-b border-stone-200 px-5 py-3">
-        <h2 className="text-sm font-semibold tracking-wide text-stone-500">ייעודים</h2>
+    <section className="rounded-card bg-surface shadow-card">
+      <div className="border-b border-line px-5 py-3">
+        <h2 className="text-[13px] font-medium text-stone-500">ייעודים</h2>
         <p className="text-xs text-stone-500">
           כמה מהכסף כבר מובטח, ואם יש מאחוריו כיסוי. ההשוואה נעשית במטבע של החשבון עצמו, כך שאף שער
           לא יכול להפוך חוסר לעודף.
         </p>
       </div>
 
-      <ul className="divide-y divide-stone-200">
+      <ul className="divide-y divide-line">
         {funding.map((entry) => {
           const style = STATUS_STYLES[entry.status];
           return (
@@ -809,8 +809,8 @@ function EarmarksPanel({ funding }: { funding: readonly AccountEarmarks[] }) {
  */
 function FreeLiquidPanel({ free }: { free: FreeLiquid }) {
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <h2 className="text-sm font-semibold tracking-wide text-stone-500">כסף נזיל פנוי</h2>
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+      <h2 className="text-[13px] font-medium text-stone-500">כסף נזיל פנוי</h2>
       <p className="mt-1 text-xs text-stone-500">
         נזילות פחות מה שכבר מובטח מתוכה. ייעוד על חשבון בקטגוריה אחרת נלקח מאותה קטגוריה ואינו מקטין
         את המספר הזה.
@@ -905,12 +905,12 @@ function RestateForm({
         if (inBucket.length === 0) return [];
 
         return (
-        <section key={category} className="rounded-lg border border-stone-300 bg-white">
-          <h2 className="border-b border-stone-200 px-5 py-3 text-sm font-semibold tracking-wide text-stone-500">
+        <section key={category} className="rounded-card bg-surface shadow-card">
+          <h2 className="border-b border-line px-5 py-3 text-[13px] font-medium text-stone-500">
             {ASSET_CATEGORY_LABELS[category]}
           </h2>
 
-          <ul className="divide-y divide-stone-200">
+          <ul className="divide-y divide-line">
             {inBucket.map((reading) => (
               <li key={reading.account.id} className="px-5 py-4">
                 <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
@@ -951,7 +951,7 @@ function RestateForm({
                           defaultValue={toDecimalString(reading.native)}
                           inputMode="decimal"
                           dir="ltr"
-                          className="tabular mt-1 w-40 rounded-md border border-stone-300 px-3 py-2 text-end"
+                          className="tabular mt-1 w-40 rounded-lg bg-sunken px-3 py-2 text-end"
                         />
                       </label>
 
@@ -976,7 +976,7 @@ function RestateForm({
       <div className="flex flex-wrap items-center gap-4">
         <button
           type="submit"
-          className="rounded-md border border-stone-900 bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
+          className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700"
         >
           שמירת הצילום
         </button>
@@ -1001,7 +1001,7 @@ function RsuPriceField({ rsu, takenOn }: { rsu: RsuLineReading; takenOn: Calenda
   const current = rsu.kind === "unpriced" ? null : rsu.holding.price;
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white px-5 py-4">
+    <section className="rounded-card bg-surface shadow-card px-5 py-4">
       <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
         <label className="block">
           <span className="block text-sm font-medium text-stone-700">
@@ -1015,7 +1015,7 @@ function RsuPriceField({ rsu, takenOn }: { rsu: RsuLineReading; takenOn: Calenda
             inputMode="decimal"
             dir="ltr"
             defaultValue={current === null ? "" : sharePriceToDecimalString(current)}
-            className="tabular mt-1 w-40 rounded-md border border-stone-300 px-3 py-2 text-end"
+            className="tabular mt-1 w-40 rounded-lg bg-sunken px-3 py-2 text-end"
           />
         </label>
 

@@ -72,7 +72,7 @@ export function MonthEntry({
       />
 
       {income.length + expenses.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-stone-300 bg-white/60 p-5 text-stone-600">
+        <p className="rounded-card bg-surface shadow-card p-5 text-stone-600">
           {isSelf
             ? "עדיין אין לך קטגוריות בחודש הזה. אפשר ליצור אחת כאן למטה, בלי לצאת מהמסך."
             : `אין ל${person.displayName} קטגוריות בחודש הזה. אפשר ליצור אחת כאן למטה.`}
@@ -86,7 +86,7 @@ export function MonthEntry({
             <button
               type="submit"
               formAction={saveMonth}
-              className="rounded-md bg-stone-900 px-4 py-2.5 font-medium text-white hover:bg-stone-800"
+              className="rounded-lg bg-stone-900 px-4 py-2.5 font-medium text-white hover:bg-stone-700"
             >
               שמירת החודש
             </button>
@@ -137,7 +137,7 @@ export function BlanksOffer({
 
   if (declined) {
     return (
-      <section className="rounded-lg border border-stone-300 bg-white p-5" role="status">
+      <section className="rounded-card bg-surface shadow-card p-5" role="status">
         <p className="font-medium">
           <bdi className="tabular">{count}</bdi> קטגוריות נותרו ללא רישום ב{formatMonth(month)}.
         </p>
@@ -149,7 +149,7 @@ export function BlanksOffer({
   }
 
   return (
-    <section className="rounded-lg border border-amber-300 bg-amber-50 p-5" role="status">
+    <section className="rounded-card bg-amber-50 p-5" role="status">
       <p className="font-medium text-amber-900">
         נותרו <bdi className="tabular">{count}</bdi> קטגוריות ללא רישום ב{formatMonth(month)}:
       </p>
@@ -177,14 +177,14 @@ export function BlanksOffer({
         <button
           type="submit"
           formAction={recordBlanksAsZero}
-          className="rounded-md bg-stone-900 px-4 py-2 font-medium text-white hover:bg-stone-800"
+          className="rounded-lg bg-stone-900 px-4 py-2 font-medium text-white hover:bg-stone-700"
         >
           רישום <bdi className="tabular">{count}</bdi> הקטגוריות כאפס
         </button>
 
         <Link
           href={back as Route}
-          className="rounded-md border border-stone-300 bg-white px-4 py-2 font-medium hover:bg-stone-50"
+          className="rounded-lg px-4 py-2 font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
         >
           השארה ריקה
         </Link>
@@ -205,11 +205,11 @@ function EntryTable({
   if (lines.length === 0) return null;
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white">
-      <h3 className="border-b border-stone-200 px-5 py-3 text-sm font-semibold tracking-wide text-stone-500">
+    <section className="rounded-card bg-surface shadow-card">
+      <h3 className="border-b border-line px-5 py-3 text-[13px] font-medium text-stone-500">
         {title}
       </h3>
-      <ul className="divide-y divide-stone-200">
+      <ul className="divide-y divide-line">
         {lines.map((line) => (
           <li key={line.category.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3">
             <div className="min-w-0 flex-1">
@@ -232,7 +232,7 @@ function EntryTable({
               autoComplete="off"
               placeholder="—"
               defaultValue={line.reading === null ? "" : toDecimalString(line.reading.amount)}
-              className="tabular w-36 rounded-md border border-stone-300 px-3 py-1.5 text-left"
+              className="tabular w-36 rounded-lg bg-sunken px-3 py-1.5 text-left"
             />
           </li>
         ))}
@@ -255,7 +255,7 @@ function NewCategoryPanel({
   const householdOptions: readonly HouseholdCategory[] = householdCategoriesFor(categories);
 
   return (
-    <details className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
+    <details className="rounded-card bg-surface shadow-card p-5 sm:p-6">
       <summary className="cursor-pointer font-medium">
         קטגוריה חדשה{isSelf ? "" : ` ל${owner.displayName}`}
       </summary>
@@ -276,7 +276,7 @@ function NewCategoryPanel({
             type="text"
             autoComplete="off"
             maxLength={60}
-            className="mt-1 w-full rounded-md border border-stone-300 px-3 py-1.5"
+            className="mt-1 w-full rounded-lg bg-sunken px-3 py-1.5"
           />
         </div>
 
@@ -296,7 +296,7 @@ function NewCategoryPanel({
             id="newCategoryHousehold"
             name="newCategoryHousehold"
             defaultValue="new"
-            className="mt-1 w-full rounded-md border border-stone-300 px-3 py-1.5"
+            className="mt-1 w-full rounded-lg bg-sunken px-3 py-1.5"
           >
             <option value="new">חדשה</option>
             {householdOptions.map((household) => (
@@ -318,7 +318,7 @@ function NewCategoryPanel({
             autoComplete="off"
             maxLength={60}
             placeholder="ברירת מחדל: אותו שם"
-            className="mt-1 w-full rounded-md border border-stone-300 px-3 py-1.5"
+            className="mt-1 w-full rounded-lg bg-sunken px-3 py-1.5"
           />
         </div>
       </div>
@@ -326,7 +326,7 @@ function NewCategoryPanel({
       <button
         type="submit"
         formAction={createCategoryAndSaveMonth}
-        className="mt-4 rounded-md border border-stone-900 px-4 py-2 font-medium hover:bg-stone-50"
+        className="mt-4 rounded-lg bg-stone-900 px-4 py-2 font-medium text-white transition-colors hover:bg-stone-700"
       >
         יצירה והמשך רישום
       </button>

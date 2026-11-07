@@ -273,7 +273,7 @@ function Controls({
   ];
 
   return (
-    <section className="space-y-3 rounded-lg border border-stone-300 bg-white p-4">
+    <section className="space-y-3 rounded-card bg-surface shadow-card p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <nav aria-label="רמת קריאה" className="flex flex-wrap gap-2">
           {tabs.map((tab) => {
@@ -283,10 +283,10 @@ function Controls({
                 key={tab.key}
                 href={insightsHref(focus, tab.key)}
                 aria-current={active ? "page" : undefined}
-                className={`rounded-md border px-3 py-1.5 text-sm font-medium ${
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
                   active
-                    ? "border-stone-900 bg-stone-900 text-white"
-                    : "border-stone-300 bg-white hover:bg-stone-50"
+                    ? "bg-stone-900 text-white"
+                    : "text-stone-600 hover:bg-stone-900/5 hover:text-stone-900"
                 }`}
               >
                 {tab.label}
@@ -307,11 +307,11 @@ function Controls({
             defaultValue={monthKey(focus)}
             min="2000-01"
             max="2100-12"
-            className="rounded-md border border-stone-300 px-2 py-1.5 text-sm"
+            className="rounded-lg bg-sunken px-2 py-1.5 text-sm"
           />
           <button
             type="submit"
-            className="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-stone-50"
+            className="rounded-lg px-3 py-1.5 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
           >
             הצגה
           </button>
@@ -323,7 +323,7 @@ function Controls({
 
 function UnavailablePanel({ reason }: { reason: string }) {
   return (
-    <div className="rounded-md border border-amber-300 bg-amber-50 p-4">
+    <div className="rounded-lg bg-amber-50 p-4">
       <p className="font-medium text-amber-900">לא ניתן לקרוא את המגמות</p>
       <p className="mt-1 text-sm text-amber-800">{reason}</p>
     </div>

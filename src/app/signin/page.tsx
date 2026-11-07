@@ -18,7 +18,7 @@ export default async function SignInPage({
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-4 py-10">
-      <main className="rounded-lg border border-stone-300 bg-white p-6 sm:p-8">
+      <main className="rounded-card bg-surface shadow-card p-6 sm:p-8">
         <h1 className="text-2xl font-bold">Jubot</h1>
         <p className="mt-1 text-sm text-stone-600">לוח מחוונים פיננסי של משק הבית</p>
 
@@ -33,7 +33,7 @@ export default async function SignInPage({
         >
           <button
             type="submit"
-            className="w-full rounded-md bg-stone-900 px-4 py-2.5 font-medium text-white hover:bg-stone-800"
+            className="w-full rounded-lg bg-stone-900 px-4 py-2.5 font-medium text-white hover:bg-stone-700"
           >
             כניסה עם חשבון Google
           </button>
@@ -68,7 +68,7 @@ async function DevelopmentSignIn() {
   }));
 
   return (
-    <div className="mt-6 border-t border-dashed border-stone-300 pt-5">
+    <div className="mt-6 border-t border-dashed border-line-strong pt-5">
       <p className="text-sm font-medium text-stone-700">כניסה מקומית לפיתוח</p>
       <p className="mt-1 text-sm text-stone-500">
         זמין רק כשהאפליקציה רצה מקומית, ואינו קיים כלל בגרסה הפרוסה.
@@ -84,7 +84,7 @@ async function DevelopmentSignIn() {
           >
             <button
               type="submit"
-              className="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-medium hover:bg-stone-50"
+              className="rounded-lg px-3 py-2 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
             >
               כניסה כ<bdi>{entry.label}</bdi>
             </button>
@@ -98,7 +98,7 @@ async function DevelopmentSignIn() {
 function RefusalNotice({ code }: { code: string }) {
   const isAccessDenied = code === "AccessDenied";
   return (
-    <div className="mt-5 rounded-md border border-red-300 bg-red-50 p-4" role="alert">
+    <div className="mt-5 rounded-lg bg-red-50 p-4" role="alert">
       <p className="font-medium text-red-900">
         {isAccessDenied ? "הכתובת הזו אינה מורשית" : "ההתחברות נכשלה"}
       </p>

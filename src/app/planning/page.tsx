@@ -75,7 +75,7 @@ export default async function PlanningPage({
             <PacePanel pace={loaded.pace} />
 
             {loaded.readings.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-stone-300 bg-white/60 p-5 text-stone-600">
+              <p className="rounded-card bg-surface shadow-card p-5 text-stone-600">
                 אין עדיין תרחישים. תרחיש הוא מחשבה עם שם — &rdquo;CGM 3 ב־2027&ldquo; — ואפשר להחזיק
                 אותה בלי לגעת בשום דבר שנרשם.
               </p>
@@ -99,8 +99,8 @@ export default async function PlanningPage({
               </>
             )}
 
-            <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-              <h2 className="text-sm font-semibold tracking-wide text-stone-500">תרחיש חדש</h2>
+            <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+              <h2 className="text-[13px] font-medium text-stone-500">תרחיש חדש</h2>
               <p className="mt-1 text-sm text-stone-600">
                 תרחיש חדש נזרע מהמספרים הרשומים: הכסף הנזיל הפנוי מהמיפוי האחרון נכנס אליו כמקור,
                 עם התאריך של אותה קריאה. מה שההשקעה דורשת נרשם אחר כך, בדף התרחיש עצמו.
@@ -113,7 +113,7 @@ export default async function PlanningPage({
                     required
                     maxLength={80}
                     placeholder="CGM 3 ב־2027"
-                    className="w-full rounded-md border border-stone-300 px-3 py-2"
+                    className="w-full rounded-lg bg-sunken px-3 py-2"
                   />
                 </Field>
 
@@ -121,14 +121,14 @@ export default async function PlanningPage({
                   <input
                     name="note"
                     maxLength={400}
-                    className="w-full rounded-md border border-stone-300 px-3 py-2"
+                    className="w-full rounded-lg bg-sunken px-3 py-2"
                   />
                 </Field>
 
                 <div className="sm:col-span-2">
                   <button
                     type="submit"
-                    className="rounded-md border border-stone-900 bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
+                    className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700"
                   >
                     יצירת תרחיש
                   </button>
@@ -190,14 +190,14 @@ function ScenarioCard({ reading, rate }: { reading: ScenarioReading; rate: Dated
   const { scenario, plan, gap, closure } = reading;
 
   return (
-    <article className="rounded-lg border border-stone-300 bg-white p-5">
+    <article className="rounded-card bg-surface shadow-card p-5">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <h2 className="text-lg font-semibold">
           <Link href={`/planning/${scenario.id}`} className="underline-offset-4 hover:underline">
             <bdi>{scenario.name}</bdi>
           </Link>
           {scenario.active ? (
-            <span className="ms-2 rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 align-middle text-xs font-medium text-emerald-900">
+            <span className="ms-2 rounded-full bg-emerald-50 px-2 py-0.5 align-middle text-xs font-medium text-emerald-900">
               התוכנית שאחריה עוקבים
             </span>
           ) : null}

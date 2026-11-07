@@ -19,7 +19,7 @@ import { type Money, format } from "@/domain/money/money";
 
 export function SummaryPanel({ summary, note }: { summary: MonthSummary; note: string }) {
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
       <div className="grid gap-4 sm:grid-cols-3">
         <Figure label="הכנסות" value={format(summary.income)} />
         <Figure label="הוצאות" value={format(summary.expenses)} />
@@ -37,7 +37,7 @@ export function SummaryPanel({ summary, note }: { summary: MonthSummary; note: s
 function Figure({ label, value, emphasis = false }: { label: string; value: string; emphasis?: boolean }) {
   return (
     <div>
-      <p className="text-sm font-semibold tracking-wide text-stone-500">{label}</p>
+      <p className="text-[13px] font-medium text-stone-500">{label}</p>
       <bdi className={`tabular block ${emphasis ? "text-3xl font-semibold" : "text-2xl"}`}>{value}</bdi>
     </div>
   );
@@ -59,7 +59,7 @@ export function CompletenessNotice({ summary }: { summary: MonthSummary }) {
 
   if (completeness === "complete") {
     return (
-      <p className="inline-flex flex-wrap items-center gap-x-2 rounded-md bg-emerald-50 px-3 py-1.5 text-sm text-emerald-900">
+      <p className="inline-flex flex-wrap items-center gap-x-2 rounded-lg bg-emerald-50 px-3 py-1.5 text-sm text-emerald-900">
         <span className="font-medium">חודש מלא</span>
         <span>· {counts}</span>
       </p>
@@ -68,7 +68,7 @@ export function CompletenessNotice({ summary }: { summary: MonthSummary }) {
 
   return (
     <p
-      className="inline-flex flex-wrap items-center gap-x-2 rounded-md bg-amber-50 px-3 py-1.5 text-sm text-amber-900"
+      className="inline-flex flex-wrap items-center gap-x-2 rounded-lg bg-amber-50 px-3 py-1.5 text-sm text-amber-900"
       role="status"
     >
       <span className="font-medium">{completeness === "empty" ? "חודש ריק" : "חודש חלקי"}</span>
@@ -99,12 +99,12 @@ export function HouseholdReadingTable({
     people.find((person) => person.id === personId)?.displayName ?? personId;
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white">
-      <h3 className="border-b border-stone-200 px-5 py-3 text-sm font-semibold tracking-wide text-stone-500">
+    <section className="rounded-card bg-surface shadow-card">
+      <h3 className="border-b border-line px-5 py-3 text-[13px] font-medium text-stone-500">
         {title}
       </h3>
 
-      <ul className="divide-y divide-stone-200">
+      <ul className="divide-y divide-line">
         {lines.map((line) => (
           <li key={line.household.id}>
             <details className="group">
@@ -125,7 +125,7 @@ export function HouseholdReadingTable({
                 </span>
               </summary>
 
-              <ul className="divide-y divide-stone-100 border-t border-stone-100 bg-stone-50/60">
+              <ul className="divide-y divide-line border-t border-stone-100 bg-sunken/70">
                 {line.contributions.map((contribution) => (
                   <li
                     key={contribution.category.id}
@@ -150,7 +150,7 @@ export function HouseholdReadingTable({
         ))}
       </ul>
 
-      <p className="flex items-center justify-between border-t border-stone-200 px-5 py-3 text-sm">
+      <p className="flex items-center justify-between border-t border-line px-5 py-3 text-sm">
         <span className="font-semibold text-stone-500">סה״כ</span>
         <bdi className="tabular font-semibold">{format(total)}</bdi>
       </p>

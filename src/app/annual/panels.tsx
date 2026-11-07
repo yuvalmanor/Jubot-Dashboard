@@ -48,7 +48,7 @@ export function Notices({
 }) {
   if (isErrorCode(error)) {
     return (
-      <div className="rounded-md border border-red-300 bg-red-50 p-4" role="alert">
+      <div className="rounded-lg bg-red-50 p-4" role="alert">
         <p className="font-medium text-red-900">{ERROR_MESSAGES[error]}</p>
         {detail === undefined ? null : (
           <p className="mt-1 text-sm text-red-800">
@@ -65,7 +65,7 @@ export function Notices({
   const text = DONE_MESSAGES[verb] ?? "הסיכום נשמר";
 
   return (
-    <div className="rounded-md border border-emerald-300 bg-emerald-50 p-4" role="status">
+    <div className="rounded-lg bg-emerald-50 p-4" role="status">
       <p className="font-medium text-emerald-900">
         {text}
         {name.length === 0 ? null : (
@@ -80,7 +80,7 @@ export function Notices({
 
 export function UnavailablePanel({ reason }: { reason: string }) {
   return (
-    <div className="rounded-md border border-amber-300 bg-amber-50 p-4">
+    <div className="rounded-lg bg-amber-50 p-4">
       <p className="font-medium text-amber-900">לא ניתן לקרוא את הסיכום השנתי</p>
       <p className="mt-1 text-sm text-amber-800">{reason}</p>
     </div>
@@ -212,9 +212,9 @@ export function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h2 className="text-sm font-semibold tracking-wide text-stone-500">{title}</h2>
+        <h2 className="text-[13px] font-medium text-stone-500">{title}</h2>
         {subtitle === undefined ? null : <p className="text-xs text-stone-500">{subtitle}</p>}
       </div>
       {children}

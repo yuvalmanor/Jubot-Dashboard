@@ -87,8 +87,8 @@ function Rate({ rate }: { rate: SavingRate }) {
 
 export function AvailablePanel({ available, note }: { available: AvailableToMove; note: string }) {
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <h2 className="text-sm font-semibold tracking-wide text-stone-500">
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+      <h2 className="text-[13px] font-medium text-stone-500">
         חיסכון ב{formatMonth(available.month)} — זמין להעברה לפרוייקטים
       </h2>
 
@@ -101,7 +101,7 @@ export function AvailablePanel({ available, note }: { available: AvailableToMove
       </div>
 
       <p
-        className={`mt-4 inline-flex flex-wrap items-center gap-x-2 rounded-md px-3 py-1.5 text-sm ${
+        className={`mt-4 inline-flex flex-wrap items-center gap-x-2 rounded-lg px-3 py-1.5 text-sm ${
           available.completeness === "complete"
             ? "bg-emerald-50 text-emerald-900"
             : "bg-amber-50 text-amber-900"
@@ -154,7 +154,7 @@ export function DeviationsPanel({
       {deviations.length === 0 ? (
         <Empty>אין מה להשוות: אין בחודש הזה קטגוריה עם סכום או עם היסטוריה.</Empty>
       ) : (
-        <ul className="divide-y divide-stone-200">
+        <ul className="divide-y divide-line">
           {deviations.map((deviation) => (
             <li key={deviation.key} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-5 py-3">
               <span className="min-w-0 flex-1 font-medium">
@@ -222,7 +222,7 @@ export function TrendTable({ points }: { points: readonly TrendPoint[] }) {
     <div className="overflow-x-auto">
       <table className="w-full min-w-[36rem] text-sm">
         <thead>
-          <tr className="border-b border-stone-200 text-start text-xs font-semibold tracking-wide text-stone-500">
+          <tr className="border-b border-line text-start text-xs font-semibold tracking-wide text-stone-500">
             <th scope="col" className="px-5 py-2 text-start">
               חודש
             </th>
@@ -243,7 +243,7 @@ export function TrendTable({ points }: { points: readonly TrendPoint[] }) {
             </th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-stone-100">
+        <tbody className="divide-y divide-line">
           {points.map((point) => (
             <tr key={`${point.month.year}-${point.month.month}`}>
               <th scope="row" className="px-5 py-2 text-start font-normal">
@@ -304,7 +304,7 @@ export function YearOverYearPanel({ comparison, title }: { comparison: YearOverY
         <div className="overflow-x-auto">
           <table className="w-full min-w-[34rem] text-sm">
             <thead>
-              <tr className="border-b border-stone-200 text-xs font-semibold tracking-wide text-stone-500">
+              <tr className="border-b border-line text-xs font-semibold tracking-wide text-stone-500">
                 <th scope="col" className="px-5 py-2 text-start">
                   קטגוריה
                 </th>
@@ -319,7 +319,7 @@ export function YearOverYearPanel({ comparison, title }: { comparison: YearOverY
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-stone-100">
+            <tbody className="divide-y divide-line">
               {comparison.lines.map((line) => (
                 <tr key={line.key}>
                   <th scope="row" className="px-5 py-2 text-start font-medium">
@@ -375,9 +375,9 @@ export function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-lg border border-stone-300 bg-white">
-      <div className="border-b border-stone-200 px-5 py-3">
-        <h2 className="text-sm font-semibold tracking-wide text-stone-500">{title}</h2>
+    <section className="rounded-card bg-surface shadow-card">
+      <div className="border-b border-line px-5 py-3">
+        <h2 className="text-[13px] font-medium text-stone-500">{title}</h2>
         {note === undefined ? null : <p className="mt-1 text-sm text-stone-500">{note}</p>}
       </div>
       {children}

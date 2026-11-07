@@ -80,7 +80,7 @@ export default async function SnapshotsPage({ searchParams }: { searchParams: Pr
             />
 
             {loaded.snapshots.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-stone-300 bg-white/60 p-5 text-stone-600">
+              <p className="rounded-card bg-surface shadow-card p-5 text-stone-600">
                 אין עדיין צילומים. הראשון יכלול שורה לכל חשבון פתוח, וכל שורה בו תמתין למדידה.
               </p>
             ) : (
@@ -163,9 +163,9 @@ function TakePanel({
   const openToday = accountsOpenOn(accounts, today);
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <h2 className="text-sm font-semibold tracking-wide text-stone-500">צילום חדש</h2>
+        <h2 className="text-[13px] font-medium text-stone-500">צילום חדש</h2>
         <Link href="/accounts" className="text-sm text-stone-600 underline-offset-4 hover:underline">
           ניהול חשבונות
         </Link>
@@ -209,7 +209,7 @@ function TakePanel({
                 name="takenOn"
                 required
                 defaultValue={dateKey(today)}
-                className="mt-1 w-full rounded-md border border-stone-300 px-3 py-2"
+                className="mt-1 w-full rounded-lg bg-sunken px-3 py-2"
               />
             </label>
 
@@ -225,7 +225,7 @@ function TakePanel({
                 min="0.0001"
                 required
                 defaultValue={defaultRate}
-                className="mt-1 w-full rounded-md border border-stone-300 px-3 py-2"
+                className="mt-1 w-full rounded-lg bg-sunken px-3 py-2"
               />
             </label>
 
@@ -242,7 +242,7 @@ function TakePanel({
                   inputMode="decimal"
                   dir="ltr"
                   defaultValue={knownPrice === null ? "" : sharePriceToDecimalString(knownPrice.price)}
-                  className="tabular mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-end"
+                  className="tabular mt-1 w-full rounded-lg bg-sunken px-3 py-2 text-end"
                 />
               </label>
             )}
@@ -252,14 +252,14 @@ function TakePanel({
               <input
                 name="note"
                 maxLength={200}
-                className="mt-1 w-full rounded-md border border-stone-300 px-3 py-2"
+                className="mt-1 w-full rounded-lg bg-sunken px-3 py-2"
               />
             </label>
 
             <div>
               <button
                 type="submit"
-                className="rounded-md border border-stone-900 bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
+                className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700"
               >
                 לקיחת צילום
               </button>
@@ -281,9 +281,9 @@ function HistoryTable({
   accounts: readonly Account[];
 }) {
   return (
-    <section className="rounded-lg border border-stone-300 bg-white">
-      <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-stone-200 px-5 py-3">
-        <h2 className="text-sm font-semibold tracking-wide text-stone-500">
+    <section className="rounded-card bg-surface shadow-card">
+      <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-line px-5 py-3">
+        <h2 className="text-[13px] font-medium text-stone-500">
           היסטוריית צילומים — <bdi className="tabular">{snapshots.length}</bdi> במלואם, מהחדש לישן
         </h2>
         {snapshots.length < 2 ? null : (
@@ -293,7 +293,7 @@ function HistoryTable({
         )}
       </div>
 
-      <ul className="divide-y divide-stone-200">
+      <ul className="divide-y divide-line">
         {snapshots.map((snapshot, index) => {
           const completeness = completenessOf(snapshot);
           const convertible = canConvertWithin(snapshot, "USD", READING_CURRENCY);
@@ -347,7 +347,7 @@ function HistoryTable({
         })}
       </ul>
 
-      <p className="border-t border-stone-200 px-5 py-3 text-sm text-stone-500">
+      <p className="border-t border-line px-5 py-3 text-sm text-stone-500">
         כל סכום כאן מומר בשער של הצילום שלו. צילום ישן נקרא היום בדיוק כפי שנקרא ביום שנלקח.
       </p>
     </section>

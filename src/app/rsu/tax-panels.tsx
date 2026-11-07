@@ -85,8 +85,8 @@ export function SalePricingPanel({
   const used = salePrice ?? known?.price ?? null;
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <h2 className="text-sm font-semibold tracking-wide text-stone-500">מה יגיע לבנק אם אמכור</h2>
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+      <h2 className="text-[13px] font-medium text-stone-500">מה יגיע לבנק אם אמכור</h2>
       <p className="mt-1 text-sm text-stone-600">
         המניות נמשכות מהמנה הוותיקה ביותר קודם. זו מוסכמה מוצהרת ולא אופטימיזציה — אילו מנות זולות
         יותר למכור היא שאלה נפרדת. כל מנה משלמת לפי השעון שלה, והמכירה נקראת נכון ל־
@@ -101,7 +101,7 @@ export function SalePricingPanel({
             inputMode="numeric"
             dir="ltr"
             defaultValue={String(asked)}
-            className="tabular w-28 rounded-md border border-stone-300 px-3 py-2 text-end"
+            className="tabular w-28 rounded-lg bg-sunken px-3 py-2 text-end"
           />
         </Field>
         <Field label="מחיר למניה" note="דולרים">
@@ -110,7 +110,7 @@ export function SalePricingPanel({
             inputMode="decimal"
             dir="ltr"
             defaultValue={used === null ? "" : sharePriceToDecimalString(used)}
-            className="tabular w-32 rounded-md border border-stone-300 px-3 py-2 text-end"
+            className="tabular w-32 rounded-lg bg-sunken px-3 py-2 text-end"
           />
         </Field>
         <SubmitButton label="חישוב" subtle />
@@ -155,7 +155,7 @@ function PricedSale({
 }) {
   if (priced.kind === "blocked") {
     return (
-      <p className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+      <p className="mt-4 rounded-lg bg-amber-50 p-4 text-sm text-amber-900">
         {priced.reason}
       </p>
     );
@@ -235,7 +235,7 @@ function SaleLines({ lines }: { lines: readonly LotSaleTax[] }) {
     <div className="mt-4 overflow-x-auto">
       <table className="w-full min-w-[42rem] text-sm">
         <thead>
-          <tr className="border-b border-stone-300 text-xs text-stone-500">
+          <tr className="border-b border-line-strong text-xs text-stone-500">
             <th className="py-2 text-start font-medium">מנה</th>
             <th className="py-2 text-start font-medium">מניות</th>
             <th className="py-2 text-start font-medium">מעמד</th>
@@ -246,7 +246,7 @@ function SaleLines({ lines }: { lines: readonly LotSaleTax[] }) {
         </thead>
         <tbody>
           {lines.map((line) => (
-            <tr key={line.lot.vest.id} className="border-b border-stone-200 align-top">
+            <tr key={line.lot.vest.id} className="border-b border-line align-top">
               <td className="py-3">
                 <bdi>{formatDate(line.lot.vest.vestedOn)}</bdi>
                 <span className="block text-xs text-stone-500">
@@ -303,8 +303,8 @@ export function WaitingPanel({
   const used = salePrice ?? known?.price ?? null;
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <h2 className="text-sm font-semibold tracking-wide text-stone-500">מה שווה להמתין</h2>
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+      <h2 className="text-[13px] font-medium text-stone-500">מה שווה להמתין</h2>
       <p className="mt-1 text-sm text-stone-600">
         כל מנה מתומחרת פעמיים באותו מחיר: נמכרת היום, ונמכרת ביום שבו היא עוברת את התקופה. המחיר
         מוחזק קבוע בין שתי הקריאות בכוונה — כך ההפרש הוא מה שהשעון שווה, ולא ניחוש על מחיר המניה.
@@ -328,7 +328,7 @@ function WaitingTable({ rows }: { rows: readonly WaitingValue[] }) {
     <div className="mt-4 overflow-x-auto">
       <table className="w-full min-w-[40rem] text-sm">
         <thead>
-          <tr className="border-b border-stone-300 text-xs text-stone-500">
+          <tr className="border-b border-line-strong text-xs text-stone-500">
             <th className="py-2 text-start font-medium">מנה</th>
             <th className="py-2 text-start font-medium">מניות</th>
             <th className="py-2 text-start font-medium">נטו היום</th>
@@ -338,7 +338,7 @@ function WaitingTable({ rows }: { rows: readonly WaitingValue[] }) {
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={row.lot.vest.id} className="border-b border-stone-200 align-top">
+            <tr key={row.lot.vest.id} className="border-b border-line align-top">
               <td className="py-3">
                 <bdi>{formatDate(row.lot.vest.vestedOn)}</bdi>
                 <span className="block text-xs text-stone-500">
@@ -385,11 +385,11 @@ function Difference({ amount }: { amount: Money }) {
 
 function TreatmentBadge({ treatment }: { treatment: Treatment }) {
   return treatment === "qualified" ? (
-    <span className="rounded-sm border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-xs font-medium text-emerald-900">
+    <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-xs font-medium text-emerald-900">
       {TREATMENT_LABELS_HE.qualified}
     </span>
   ) : (
-    <span className="rounded-sm border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-900">
+    <span className="rounded bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-900">
       {TREATMENT_LABELS_HE.unqualified}
     </span>
   );

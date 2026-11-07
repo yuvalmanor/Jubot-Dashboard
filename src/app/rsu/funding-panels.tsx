@@ -74,8 +74,8 @@ export function FundingPanel({
   const used = salePrice ?? known?.price ?? null;
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <h2 className="text-sm font-semibold tracking-wide text-stone-500">אילו מנות למכור</h2>
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+      <h2 className="text-[13px] font-medium text-stone-500">אילו מנות למכור</h2>
       <p className="mt-1 text-sm text-stone-600">
         כמה כסף צריך, ועד מתי. הבחירה היא של המנות שהמס עליהן הנמוך ביותר — לא הוותיקות ביותר, שזו
         מוסכמת המסך שלמעלה. היעד נמדד על <span className="font-medium">הנטו</span>: מכירה עד גובה
@@ -89,7 +89,7 @@ export function FundingPanel({
             inputMode="decimal"
             dir="ltr"
             defaultValue={target === null ? "" : String(target.minorUnits / 100)}
-            className="tabular w-32 rounded-md border border-stone-300 px-3 py-2 text-end"
+            className="tabular w-32 rounded-lg bg-sunken px-3 py-2 text-end"
           />
         </Field>
         <Field label="עד מתי" note="מנה שטרם הבשילה עד אז אינה נספרת">
@@ -97,7 +97,7 @@ export function FundingPanel({
             type="date"
             name="targetDate"
             defaultValue={dateKey(targetDate)}
-            className="rounded-md border border-stone-300 px-3 py-2"
+            className="rounded-lg bg-sunken px-3 py-2"
           />
         </Field>
         <Field label="מחיר למניה" note="דולרים">
@@ -106,7 +106,7 @@ export function FundingPanel({
             inputMode="decimal"
             dir="ltr"
             defaultValue={used === null ? "" : sharePriceToDecimalString(used)}
-            className="tabular w-32 rounded-md border border-stone-300 px-3 py-2 text-end"
+            className="tabular w-32 rounded-lg bg-sunken px-3 py-2 text-end"
           />
         </Field>
         <SubmitButton label="בחירת מנות" subtle />
@@ -162,13 +162,13 @@ function Selected({
   } catch (error) {
     if (error instanceof MissingGrantPriceError) {
       return (
-        <p className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+        <p className="mt-4 rounded-lg bg-amber-50 p-4 text-sm text-amber-900">
           אחת המנות עברה את התקופה ולא נרשם GP להקצאה שלה, ולכן אין לתמחר אותה.
         </p>
       );
     }
     return (
-      <p className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+      <p className="mt-4 rounded-lg bg-amber-50 p-4 text-sm text-amber-900">
         {error instanceof Error ? error.message : String(error)}
       </p>
     );
@@ -237,7 +237,7 @@ function SelectionLines({ selection }: { selection: LotSelection }) {
     <div className="mt-4 overflow-x-auto">
       <table className="w-full min-w-[40rem] text-sm">
         <thead>
-          <tr className="border-b border-stone-300 text-xs text-stone-500">
+          <tr className="border-b border-line-strong text-xs text-stone-500">
             <th className="py-2 text-start font-medium">מנה</th>
             <th className="py-2 text-start font-medium">מניות</th>
             <th className="py-2 text-start font-medium">מעמד</th>
@@ -247,7 +247,7 @@ function SelectionLines({ selection }: { selection: LotSelection }) {
         </thead>
         <tbody>
           {selection.sale.lines.map((line) => (
-            <tr key={line.lot.vest.id} className="border-b border-stone-200 align-top">
+            <tr key={line.lot.vest.id} className="border-b border-line align-top">
               <td className="py-3">
                 <bdi>{formatDate(line.lot.vest.vestedOn)}</bdi>
                 <span className="block text-xs text-stone-500">
@@ -264,8 +264,8 @@ function SelectionLines({ selection }: { selection: LotSelection }) {
                 <span
                   className={
                     line.treatment === "qualified"
-                      ? "rounded-sm border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-xs font-medium text-emerald-900"
-                      : "rounded-sm border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-900"
+                      ? "rounded bg-emerald-50 px-1.5 py-0.5 text-xs font-medium text-emerald-900"
+                      : "rounded bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-900"
                   }
                 >
                   {TREATMENT_LABELS_HE[line.treatment]}
@@ -305,7 +305,7 @@ function ExcludedLots({
   if (excluded.length === 0) return null;
 
   return (
-    <div className="mt-4 rounded-md border border-stone-200 bg-stone-50/60 p-4">
+    <div className="mt-4 rounded-lg bg-sunken/70 p-4">
       <p className="text-xs font-semibold tracking-wide text-stone-500">
         מנות שלא נשקלו לתאריך {formatDate(targetDate)}
       </p>
@@ -340,8 +340,8 @@ export function SchedulePanel({
   const used = salePrice ?? known?.price ?? null;
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <h2 className="text-sm font-semibold tracking-wide text-stone-500">הבשלות עתידיות</h2>
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+      <h2 className="text-[13px] font-medium text-stone-500">הבשלות עתידיות</h2>
       <p className="mt-1 text-sm text-stone-600">
         מה שכבר מובטח, ומתי. כל שורה מוערכת ב<span className="font-medium">אותו מחיר</span> — המחיר
         של היום — ובלי שום הנחת צמיחה בין השורות. תחזית שמניחה עלייה עונה על שאלה אחרת: כמה תהיה
@@ -377,7 +377,7 @@ function ScheduleTable({ schedule }: { schedule: VestSchedule }) {
       <div className="mt-3 overflow-x-auto">
         <table className="w-full min-w-[36rem] text-sm">
           <thead>
-            <tr className="border-b border-stone-300 text-xs text-stone-500">
+            <tr className="border-b border-line-strong text-xs text-stone-500">
               <th className="py-2 text-start font-medium">תאריך</th>
               <th className="py-2 text-start font-medium">הקצאה</th>
               <th className="py-2 text-start font-medium">מניות</th>
@@ -387,7 +387,7 @@ function ScheduleTable({ schedule }: { schedule: VestSchedule }) {
           </thead>
           <tbody>
             {schedule.rows.map((row) => (
-              <tr key={row.vest.id} className="border-b border-stone-200 align-top">
+              <tr key={row.vest.id} className="border-b border-line align-top">
                 <td className="py-3">
                   <bdi>{formatDate(row.vest.vestedOn)}</bdi>
                   <span className="block text-xs text-stone-500">

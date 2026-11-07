@@ -428,10 +428,10 @@ function ViewTabs({ state, people }: { state: GridState; people: readonly Person
             key={tab.key}
             href={gridHref(state, { view: tab.key })}
             aria-current={active ? "page" : undefined}
-            className={`rounded-md border px-3 py-1.5 text-sm font-medium ${
+            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
               active
-                ? "border-stone-900 bg-stone-900 text-white"
-                : "border-stone-300 bg-white hover:bg-stone-50"
+                ? "bg-stone-900 text-white"
+                : "text-stone-600 hover:bg-stone-900/5 hover:text-stone-900"
             }`}
           >
             {tab.label}
@@ -450,7 +450,7 @@ function TableControls({ state, expandable }: { state: GridState; expandable: bo
   ];
 
   return (
-    <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-300 bg-white px-4 py-3">
+    <section className="flex flex-wrap items-center justify-between gap-3 rounded-card bg-surface shadow-card px-4 py-3">
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm text-stone-600">סדר השורות</span>
         {orders.map((order) => {
@@ -460,10 +460,10 @@ function TableControls({ state, expandable }: { state: GridState; expandable: bo
               key={order.key}
               href={gridHref(state, { sort: order.key })}
               aria-current={active ? "true" : undefined}
-              className={`rounded-md border px-3 py-1 text-sm ${
+              className={`rounded-lg px-3 py-1 text-sm transition-colors ${
                 active
-                  ? "border-stone-900 bg-stone-900 text-white"
-                  : "border-stone-300 bg-white hover:bg-stone-50"
+                  ? "bg-stone-900 text-white"
+                  : "text-stone-600 hover:bg-stone-900/5 hover:text-stone-900"
               }`}
             >
               {order.label}
@@ -480,7 +480,7 @@ function TableControls({ state, expandable }: { state: GridState; expandable: bo
       {expandable ? (
         <Link
           href={gridHref(state, { expanded: !state.expanded })}
-          className="rounded-md border border-stone-300 bg-white px-3 py-1 text-sm font-medium hover:bg-stone-50"
+          className="rounded-lg px-3 py-1 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
         >
           {state.expanded ? "סגירת הפירוט האישי" : "פתיחת הפירוט האישי"}
         </Link>
@@ -506,7 +506,7 @@ function YearNavigator({
   const options = years.includes(year) ? years : [...years, year].sort((left, right) => left - right);
 
   return (
-    <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-300 bg-white p-4">
+    <section className="flex flex-wrap items-center justify-between gap-3 rounded-card bg-surface shadow-card p-4">
       <form className="flex items-center gap-2" action="/balance" method="get">
         {/* A GET form submits only its own fields, so the rest of the view has to
             travel with it or changing the year would quietly reset the order. */}
@@ -527,7 +527,7 @@ function YearNavigator({
           id="year-picker"
           name="year"
           defaultValue={String(year)}
-          className="tabular rounded-md border border-stone-300 px-2 py-1.5 text-sm"
+          className="tabular rounded-lg bg-sunken px-2 py-1.5 text-sm"
         >
           {options.map((option) => (
             <option key={option} value={String(option)}>
@@ -538,7 +538,7 @@ function YearNavigator({
         </select>
         <button
           type="submit"
-          className="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-stone-50"
+          className="rounded-lg px-3 py-1.5 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
         >
           הצגה
         </button>
@@ -547,7 +547,7 @@ function YearNavigator({
       <div className="flex flex-wrap items-center gap-4">
         <Link
           href={`/balance/month?month=${monthKey(today)}` as Route}
-          className="rounded-md bg-stone-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-stone-800"
+          className="rounded-lg bg-stone-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-stone-700"
         >
           רישום חודשי
         </Link>
@@ -631,7 +631,7 @@ function Notices({
 }) {
   if (isErrorCode(error)) {
     return (
-      <div className="rounded-md border border-red-300 bg-red-50 p-4" role="alert">
+      <div className="rounded-lg bg-red-50 p-4" role="alert">
         <p className="font-medium text-red-900">{ERROR_MESSAGES[error]}</p>
         {detail === undefined ? null : (
           <p className="mt-1 text-sm text-red-800">
@@ -645,7 +645,7 @@ function Notices({
   const month = tryParseMonthKey(closed);
   if (month !== null) {
     return (
-      <div className="rounded-md border border-emerald-300 bg-emerald-50 p-4" role="status">
+      <div className="rounded-lg bg-emerald-50 p-4" role="status">
         <p className="font-medium text-emerald-900">
           {formatMonth(month)}: נרשמו <bdi className="tabular">{zeros ?? "0"}</bdi> קטגוריות כאפס, והחודש
           סגור.
@@ -663,7 +663,7 @@ function Notices({
   const subject = separator < 0 ? "" : done.slice(separator + 1);
 
   return (
-    <div className="rounded-md border border-emerald-300 bg-emerald-50 p-4" role="status">
+    <div className="rounded-lg bg-emerald-50 p-4" role="status">
       <p className="font-medium text-emerald-900">{message}</p>
       {subject.length === 0 ? null : (
         <p className="mt-1 text-sm text-emerald-800">
@@ -676,7 +676,7 @@ function Notices({
 
 function UnavailablePanel({ reason }: { reason: string }) {
   return (
-    <div className="rounded-md border border-amber-300 bg-amber-50 p-4">
+    <div className="rounded-lg bg-amber-50 p-4">
       <p className="font-medium text-amber-900">לא ניתן לקרוא את המאזן</p>
       <p className="mt-1 text-sm text-amber-800">{reason}</p>
     </div>

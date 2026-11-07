@@ -73,8 +73,8 @@ export default async function AnnualPage({
 
         {loaded.kind === "ok" ? (
           <>
-            <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-              <h2 className="text-sm font-semibold tracking-wide text-stone-500">
+            <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+              <h2 className="text-[13px] font-medium text-stone-500">
                 מה נשמר ומה מחושב מחדש
               </h2>
               <p className="mt-2 text-sm text-stone-600">
@@ -86,7 +86,7 @@ export default async function AnnualPage({
             </section>
 
             {loaded.readings.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-stone-300 bg-white/60 p-5 text-stone-600">
+              <p className="rounded-card bg-surface shadow-card p-5 text-stone-600">
                 עדיין אין סיכום שנתי. סיכום נפתח לשנה שהסתיימה, ומרכז במקום אחד את מה שחמישה מסכים
                 אומרים בנפרד.
               </p>
@@ -110,8 +110,8 @@ export default async function AnnualPage({
               </>
             )}
 
-            <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-              <h2 className="text-sm font-semibold tracking-wide text-stone-500">סיכום שנתי חדש</h2>
+            <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+              <h2 className="text-[13px] font-medium text-stone-500">סיכום שנתי חדש</h2>
               <p className="mt-1 text-sm text-stone-600">
                 העובדות שהוקפאו נזרעות מהמיפוי האחרון שנלקח עד 31 בדצמבר של אותה שנה — השער ומחיר
                 המניה של אותה קריאה. כולן ניתנות לתיקון אחר כך, ומה שלא נמצא נשאר ריק ומסומן כחסר
@@ -127,7 +127,7 @@ export default async function AnnualPage({
                     min={2000}
                     max={2100}
                     defaultValue={lastClosedYear}
-                    className="tabular w-full rounded-md border border-stone-300 px-3 py-2"
+                    className="tabular w-full rounded-lg bg-sunken px-3 py-2"
                   />
                 </Field>
 
@@ -135,14 +135,14 @@ export default async function AnnualPage({
                   <input
                     name="note"
                     maxLength={400}
-                    className="w-full rounded-md border border-stone-300 px-3 py-2"
+                    className="w-full rounded-lg bg-sunken px-3 py-2"
                   />
                 </Field>
 
                 <div className="sm:col-span-2">
                   <button
                     type="submit"
-                    className="rounded-md border border-stone-900 bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
+                    className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700"
                   >
                     יצירת סיכום
                   </button>
@@ -201,7 +201,7 @@ function ReviewCard({ reading }: { reading: AnnualReviewReading }) {
   const span = monthsCounted(balance.months);
 
   return (
-    <article className="rounded-lg border border-stone-300 bg-white p-5">
+    <article className="rounded-card bg-surface shadow-card p-5">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <h2 className="text-lg font-semibold">
           <Link href={`/annual/${review.year}`} className="underline-offset-4 hover:underline">

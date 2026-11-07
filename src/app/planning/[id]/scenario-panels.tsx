@@ -39,11 +39,11 @@ const CURRENCIES: readonly Currency[] = ["ILS", "USD"];
 /** Long enough to reach a household's targets, short enough to read. Stated on screen. */
 export const ALLOCATION_HORIZON_MONTHS = 36;
 
-const INPUT = "w-full rounded-md border border-stone-300 px-3 py-2";
+const INPUT = "w-full rounded-lg bg-sunken px-3 py-2";
 const NUMBER = `tabular ${INPUT} text-end`;
-const BUTTON = "rounded-md border border-stone-300 bg-white px-4 py-2 text-sm font-medium hover:bg-stone-50";
+const BUTTON = "rounded-lg px-4 py-2 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900";
 const PRIMARY =
-  "rounded-md border border-stone-900 bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800";
+  "rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700";
 
 // --- the monthly saving allocations -------------------------------------------
 
@@ -68,8 +68,8 @@ export function AllocationsPanel({
         );
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <h2 className="text-sm font-semibold tracking-wide text-stone-500">הקצאות חיסכון חודשיות</h2>
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+      <h2 className="text-[13px] font-medium text-stone-500">הקצאות חיסכון חודשיות</h2>
       <p className="mt-1 text-sm text-stone-600">
         לאן הולך החיסכון של כל חודש — 5,000 לקרן חירום ו־10,000 לנדל&quot;ן. כל ייעוד נצבר מהיום
         והלאה, בלי מה שכבר נצבר בו: מה שכבר יש נמדד במיפוי, וכאן נרשמת רק הכוונה קדימה.
@@ -84,7 +84,7 @@ export function AllocationsPanel({
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[40rem] text-sm">
               <thead>
-                <tr className="border-b border-stone-200 text-xs text-stone-500">
+                <tr className="border-b border-line text-xs text-stone-500">
                   <th className="py-2 text-start font-medium">ייעוד</th>
                   <th className="py-2 text-end font-medium">לחודש</th>
                   <th className="py-2 text-end font-medium">יעד</th>
@@ -94,7 +94,7 @@ export function AllocationsPanel({
                   <th className="py-2" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-stone-100">
+              <tbody className="divide-y divide-line">
                 {(plan?.goals ?? []).map((outcome) => (
                   <tr key={outcome.allocation.id}>
                     <td className="py-2">
@@ -131,7 +131,7 @@ export function AllocationsPanel({
                       <form action={removeAllocation}>
                         <input type="hidden" name="scenarioId" value={scenario.id} />
                         <input type="hidden" name="allocationId" value={outcome.allocation.id} />
-                        <button type="submit" className="rounded-md border border-stone-300 bg-white px-2 py-1 text-xs hover:bg-stone-50">
+                        <button type="submit" className="rounded-lg px-2 py-1 text-xs text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900">
                           הסרה
                         </button>
                       </form>
@@ -143,13 +143,13 @@ export function AllocationsPanel({
           </div>
 
           {milestones.length === 0 ? null : (
-            <div className="mt-4 border-t border-stone-200 pt-4">
+            <div className="mt-4 border-t border-line pt-4">
               <h3 className="text-xs font-semibold tracking-wide text-stone-500">
                 נצבר לאורך הזמן, בציוני דרך של חצי שנה
               </h3>
               <ul className="mt-2 grid gap-2 sm:grid-cols-3">
                 {milestones.map((month) => (
-                  <li key={formatMonth(month.month)} className="rounded-md border border-stone-200 p-2">
+                  <li key={formatMonth(month.month)} className="rounded-lg bg-sunken p-2">
                     <p className="text-xs text-stone-500">{formatMonth(month.month)}</p>
                     <p className="tabular text-base font-medium">
                       <bdi>{format(month.cumulative)}</bdi>
@@ -162,7 +162,7 @@ export function AllocationsPanel({
         </>
       )}
 
-      <form action={addAllocation} className="mt-4 grid gap-3 border-t border-stone-200 pt-4 sm:grid-cols-5">
+      <form action={addAllocation} className="mt-4 grid gap-3 border-t border-line pt-4 sm:grid-cols-5">
         <input type="hidden" name="scenarioId" value={scenario.id} />
 
         <Field label="ייעוד">
@@ -205,7 +205,7 @@ export function AllocationsPanel({
 function CommitmentAgainstPace({ plan }: { plan: AllocationPlan }) {
   if (plan.paceStanding !== "computed" || plan.pace === null) {
     return (
-      <p className="mt-3 rounded-md border border-stone-200 bg-stone-50 p-3 text-sm text-stone-700">
+      <p className="mt-3 rounded-lg bg-sunken p-3 text-sm text-stone-700">
         {plan.paceStanding === "no-pace"
           ? "אין חודש רשום במאזן שממנו למדוד קצב חיסכון, ולכן ההקצאות למטה אינן נמדדות מול כלום."
           : "ההקצאות והחיסכון במטבעות שונים ואין שער שמור להמיר ביניהם, ולכן אין מה להשוות."}
@@ -215,7 +215,7 @@ function CommitmentAgainstPace({ plan }: { plan: AllocationPlan }) {
 
   if (plan.over !== null) {
     return (
-      <p className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900" role="alert">
+      <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900" role="alert">
         ההקצאות מבטיחות <bdi className="tabular">{format(plan.committed)}</bdi> בחודש, והמאזן אומר
         שנחסכים <bdi className="tabular">{format(plan.pace)}</bdi> —{" "}
         <bdi className="tabular font-medium">{format(plan.over)}</bdi> יותר ממה שיש. הטבלה למטה
@@ -225,7 +225,7 @@ function CommitmentAgainstPace({ plan }: { plan: AllocationPlan }) {
   }
 
   return (
-    <p className="mt-3 rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">
+    <p className="mt-3 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900">
       ההקצאות מבטיחות <bdi className="tabular">{format(plan.committed)}</bdi> בחודש מתוך{" "}
       <bdi className="tabular">{format(plan.pace)}</bdi> שנחסכים
       {plan.unallocated === null ? (
@@ -257,8 +257,8 @@ export function PatternPanel({
   monthly: Money | null;
 }) {
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <h2 className="text-sm font-semibold tracking-wide text-stone-500">דפוס חוזר</h2>
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+      <h2 className="text-[13px] font-medium text-stone-500">דפוס חוזר</h2>
       <p className="mt-1 text-sm text-stone-600">
         אסטרטגיה שאפשר לומר במשפט אחד — &rdquo;CGM כל שנה, עשר שנים&ldquo; — נרשמת כאן כנתון, ומשוחקת
         קדימה: החיסכון נצבר, כל השקעה משולמת ממה שנצבר, ומה שחוזר מהשקעה קודמת עוזר לממן את הבאה.
@@ -276,7 +276,7 @@ export function PatternPanel({
         />
       )}
 
-      <form action={saveInvestmentPattern} className="mt-4 grid gap-3 border-t border-stone-200 pt-4 sm:grid-cols-3">
+      <form action={saveInvestmentPattern} className="mt-4 grid gap-3 border-t border-line pt-4 sm:grid-cols-3">
         <input type="hidden" name="scenarioId" value={scenario.id} />
 
         <Field label="כל השקעה דורשת">
@@ -353,7 +353,7 @@ export function PatternPanel({
       {pattern === null ? null : (
         <form action={removeInvestmentPattern} className="mt-3">
           <input type="hidden" name="scenarioId" value={scenario.id} />
-          <button type="submit" className="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium hover:bg-stone-50">
+          <button type="submit" className="rounded-lg px-3 py-1.5 text-xs font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900">
             הסרת הדפוס
           </button>
         </form>
@@ -410,11 +410,11 @@ function PatternReading({
       </p>
 
       {projection.firstMissed === null ? (
-        <p className="mt-3 rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">
+        <p className="mt-3 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900">
           בקצב הזה כל {pattern.occurrences} ההשקעות בדפוס ממומנות.
         </p>
       ) : (
-        <p className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900" role="alert">
+        <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900" role="alert">
           ההשקעה ה־{projection.firstMissed} בדפוס היא המקום שבו הכסף נגמר.
         </p>
       )}
@@ -422,7 +422,7 @@ function PatternReading({
       <div className="mt-4 overflow-x-auto">
         <table className="w-full min-w-[44rem] text-sm">
           <thead>
-            <tr className="border-b border-stone-200 text-xs text-stone-500">
+            <tr className="border-b border-line text-xs text-stone-500">
               <th className="py-2 text-start font-medium">#</th>
               <th className="py-2 text-start font-medium">מתי</th>
               <th className="py-2 text-end font-medium">דורשת</th>
@@ -431,7 +431,7 @@ function PatternReading({
               <th className="py-2 text-start font-medium">חוזר</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-stone-100">
+          <tbody className="divide-y divide-line">
             {projection.investments.map((investment) => (
               <tr key={investment.index}>
                 <td className="tabular py-2">{investment.index}</td>
@@ -485,7 +485,7 @@ function TermsInForce({
 }) {
   if (terms === null) {
     return (
-      <p className="mt-3 rounded-md border border-stone-200 bg-stone-50 p-3 text-sm text-stone-700">
+      <p className="mt-3 rounded-lg bg-sunken p-3 text-sm text-stone-700">
         הדפוס אינו מודל על אף פרוייקט, ולכן לא חוזר ממנו כלום — התחזית היא הוצאות בלבד. זו עמדה
         לגיטימית, ולא נתון חסר.
       </p>
@@ -494,10 +494,10 @@ function TermsInForce({
 
   return (
     <p
-      className={`mt-3 rounded-md border p-3 text-sm ${
+      className={`mt-3 rounded-lg p-3 text-sm ${
         terms.basis === "overridden"
           ? "border-sky-300 bg-sky-50 text-sky-900"
-          : "border-stone-200 bg-stone-50 text-stone-700"
+          : "border-line bg-sunken text-stone-700"
       }`}
     >
       {terms.basis === "none" ? (
@@ -561,8 +561,8 @@ export function TermsOverridePanel({
   projectName: string;
 }) {
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <h2 className="text-sm font-semibold tracking-wide text-stone-500">
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+      <h2 className="text-[13px] font-medium text-stone-500">
         תנאי העסקה בתוך התרחיש
       </h2>
       <p className="mt-1 text-sm text-stone-600">
@@ -669,8 +669,8 @@ export function ExecutionPanel({
     executed === null ? null : projects.find((candidate) => candidate.id === executed.projectId);
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <h2 className="text-sm font-semibold tracking-wide text-stone-500">ביצוע תוכנית המימון</h2>
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+      <h2 className="text-[13px] font-medium text-stone-500">ביצוע תוכנית המימון</h2>
       <p className="mt-1 text-sm text-stone-600">
         הרגע שבו התוכנית מפסיקה להיות מחשבה: כל מקור מתוכנן הופך לרגל מימון בפרוייקט, בשער שבו הכסף
         באמת הומר. זו הפעולה היחידה בלוח התכנון שכותבת משהו שנרשם — ולכן היא נשאלת פעמיים, ומה
@@ -678,7 +678,7 @@ export function ExecutionPanel({
       </p>
 
       {executed !== null ? (
-        <div className="mt-4 rounded-md border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">
+        <div className="mt-4 rounded-lg bg-emerald-50 p-4 text-sm text-emerald-900">
           <p className="font-medium">התוכנית בוצעה ב־{formatDate(executed.executedOn)}.</p>
           <p className="mt-1">
             נרשמו {executed.legCount === 1 ? "רגל מימון אחת" : `${executed.legCount} רגלי מימון`}{" "}
@@ -708,7 +708,7 @@ export function ExecutionPanel({
         <>
           {preview === null ? null : <ExecutionPreviewPanel scenario={scenario} preview={preview} />}
 
-          <form method="get" className="mt-4 grid gap-3 border-t border-stone-200 pt-4 sm:grid-cols-4">
+          <form method="get" className="mt-4 grid gap-3 border-t border-line pt-4 sm:grid-cols-4">
             <input type="hidden" name="execute" value="1" />
 
             <Field label="לתוך הפרוייקט">
@@ -773,7 +773,7 @@ function ExecutionPreviewPanel({
 }) {
   if (!preview.executable) {
     return (
-      <div className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900" role="alert">
+      <div className="mt-4 rounded-lg bg-amber-50 p-4 text-sm text-amber-900" role="alert">
         <p className="font-medium">לא ניתן לבצע את התוכנית, ולכן לא נכתב דבר.</p>
         <p className="mt-1">
           <bdi>{preview.refusal?.detail ?? ""}</bdi>
@@ -787,7 +787,7 @@ function ExecutionPreviewPanel({
   }
 
   return (
-    <div className="mt-4 rounded-md border border-stone-300 bg-stone-50 p-4">
+    <div className="mt-4 rounded-lg bg-sunken p-4">
       <h3 className="text-sm font-semibold text-stone-700">
         מה ייכתב לפרוייקט <bdi>{preview.project.name}</bdi>
       </h3>
@@ -795,14 +795,14 @@ function ExecutionPreviewPanel({
       <div className="mt-3 overflow-x-auto">
         <table className="w-full min-w-[36rem] text-sm">
           <thead>
-            <tr className="border-b border-stone-200 text-xs text-stone-500">
+            <tr className="border-b border-line text-xs text-stone-500">
               <th className="py-2 text-start font-medium">מקור</th>
               <th className="py-2 text-end font-medium">סכום</th>
               <th className="py-2 text-start font-medium">שער</th>
               <th className="py-2 text-end font-medium">בקופה</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-stone-100">
+          <tbody className="divide-y divide-line">
             {preview.lines.map((line) => (
               <tr key={line.source.id}>
                 <td className="py-2">

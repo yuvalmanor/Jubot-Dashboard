@@ -83,8 +83,8 @@ const PINNED_START = "sticky start-0 z-20";
 const PINNED_TOP = "sticky top-0 z-30";
 const PINNED_TOP_START = "sticky start-0 top-0 z-40";
 
-const FIELD = "mt-1 w-full rounded-md border border-stone-300 px-3 py-1.5";
-const BUTTON = "rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-stone-50";
+const FIELD = "mt-1 w-full rounded-lg bg-sunken px-3 py-1.5";
+const BUTTON = "rounded-lg px-3 py-1.5 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900";
 
 /** How a row that moved far enough is marked, and told. */
 const RATE_MARK = {
@@ -155,7 +155,7 @@ function AnnualBand({
   const { annual: band, year, previousYear } = watch;
 
   return (
-    <section className="overflow-hidden rounded-lg border border-stone-300 bg-white">
+    <section className="overflow-hidden rounded-card bg-surface shadow-card">
       <div className="flex flex-wrap items-baseline justify-between gap-2 px-4 py-3">
         <h3 className="text-base font-semibold">פריטים שנתיים</h3>
         <p className="text-xs text-stone-500">
@@ -165,7 +165,7 @@ function AnnualBand({
       </div>
 
       {band.rows.length === 0 ? (
-        <p className="border-t border-stone-200 px-4 py-5 text-sm text-stone-600">
+        <p className="border-t border-line px-4 py-5 text-sm text-stone-600">
           עוד לא נרשם אף פריט שנתי — ביטוח רכב, רו״ח, רישוי. אלה החיובים שהמאזן סופר אבל אינו יודע
           לפרט, וכאן נרשם מה כל אחד מהם עלה בכל חידוש.
         </p>
@@ -187,7 +187,7 @@ function AnnualBand({
               <tr>
                 <th
                   scope="col"
-                  className={`${PINNED_TOP_START} ${NAME_PADDING} border-y border-stone-300 bg-white py-2 text-start font-semibold`}
+                  className={`${PINNED_TOP_START} ${NAME_PADDING} border-y border-line-strong bg-white py-2 text-start font-semibold`}
                 >
                   פריט
                 </th>
@@ -214,12 +214,12 @@ function AnnualBand({
               <tr>
                 <th
                   scope="row"
-                  className={`${PINNED_START} ${NAME_PADDING} border-t-2 border-stone-300 bg-stone-50 py-2 text-start font-semibold`}
+                  className={`${PINNED_START} ${NAME_PADDING} border-t-2 border-line-strong bg-sunken py-2 text-start font-semibold`}
                 >
                   סכום התעריפים
                 </th>
                 <td
-                  className={`${FIGURE_PADDING} border-t-2 border-stone-300 bg-stone-50 py-2 text-end font-semibold`}
+                  className={`${FIGURE_PADDING} border-t-2 border-line-strong bg-sunken py-2 text-end font-semibold`}
                 >
                   <bdi className="tabular">{format(band.subtotal, { withSymbol: false })}</bdi>
                 </td>
@@ -227,7 +227,7 @@ function AnnualBand({
                     adds this line to the one at the foot of the band below it. */}
                 <td
                   colSpan={3}
-                  className="border-t-2 border-stone-300 bg-stone-50 px-2 py-2 text-start text-xs text-stone-500"
+                  className="border-t-2 border-line-strong bg-sunken px-2 py-2 text-start text-xs text-stone-500"
                 >
                   {band.unratedRows === 0 ? (
                     <>סכום החידושים האחרונים לחודש. שייך ללהקה הזו בלבד.</>
@@ -245,7 +245,7 @@ function AnnualBand({
         </div>
       )}
 
-      <div className="border-t border-stone-200 px-4 py-3">
+      <div className="border-t border-line px-4 py-3">
         {editing ? (
           <AnnualForms items={items} links={links} openItem={openItem} />
         ) : (
@@ -454,7 +454,7 @@ function ItemEditor({
   open: boolean;
 }) {
   return (
-    <article className="rounded-lg border border-stone-200 bg-stone-50/60 p-4">
+    <article className="rounded-card bg-sunken/70 p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h5 className="text-sm font-semibold">
           <bdi>{name}</bdi>
@@ -517,14 +517,14 @@ function RenewalHistory({
 }) {
   if (history.length === 0) {
     return (
-      <p className="mt-3 border-t border-stone-200 pt-3 text-xs text-stone-500">
+      <p className="mt-3 border-t border-line pt-3 text-xs text-stone-500">
         לא נותר אף מחיר רשום לפריט הזה. הפריט עצמו נשאר — אין כאן מחיקה של פריטים.
       </p>
     );
   }
 
   return (
-    <ul className="mt-3 space-y-2 border-t border-stone-200 pt-3">
+    <ul className="mt-3 space-y-2 border-t border-line pt-3">
       {history.map((renewal) => {
         const key = dateKey(renewal.renewedOn);
         return (
@@ -571,7 +571,7 @@ function RenewalHistory({
               <input type="hidden" name="renewedOn" value={key} />
               <button
                 type="submit"
-                className="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm text-stone-600 hover:bg-stone-50"
+                className="rounded-lg px-3 py-1.5 text-sm text-stone-600 text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
               >
                 הסרה
               </button>
@@ -591,7 +591,7 @@ function RenewalHistory({
  */
 function EmptyMonthlyBand({ links }: { links: GridLinks }) {
   return (
-    <p className="rounded-lg border border-dashed border-stone-300 bg-white/60 p-5 text-sm text-stone-600">
+    <p className="rounded-card bg-surface shadow-card p-5 text-sm text-stone-600">
       אף קטגוריה משותפת אינה מסומנת במעקב.{" "}
       <Link href={links.openAdmin} className="underline underline-offset-4">
         בניהול הקטגוריות
@@ -605,7 +605,7 @@ function MonthlyBand({ watch }: { watch: RateWatch }) {
   const { monthly: band, year, previousYear } = watch;
 
   return (
-    <section className="overflow-hidden rounded-lg border border-stone-300 bg-white">
+    <section className="overflow-hidden rounded-card bg-surface shadow-card">
       <div className="flex flex-wrap items-baseline justify-between gap-2 px-4 py-3">
         <h3 className="text-base font-semibold">חיובים חודשיים</h3>
         <p className="text-xs text-stone-500">
@@ -631,7 +631,7 @@ function MonthlyBand({ watch }: { watch: RateWatch }) {
             <tr>
               <th
                 scope="col"
-                className={`${PINNED_TOP_START} ${NAME_PADDING} border-y border-stone-300 bg-white py-2 text-start font-semibold`}
+                className={`${PINNED_TOP_START} ${NAME_PADDING} border-y border-line-strong bg-white py-2 text-start font-semibold`}
               >
                 קטגוריה
               </th>
@@ -658,12 +658,12 @@ function MonthlyBand({ watch }: { watch: RateWatch }) {
             <tr>
               <th
                 scope="row"
-                className={`${PINNED_START} ${NAME_PADDING} border-t-2 border-stone-300 bg-stone-50 py-2 text-start font-semibold`}
+                className={`${PINNED_START} ${NAME_PADDING} border-t-2 border-line-strong bg-sunken py-2 text-start font-semibold`}
               >
                 סכום התעריפים
               </th>
               <td
-                className={`${FIGURE_PADDING} border-t-2 border-stone-300 bg-stone-50 py-2 text-end font-semibold`}
+                className={`${FIGURE_PADDING} border-t-2 border-line-strong bg-sunken py-2 text-end font-semibold`}
               >
                 <bdi className="tabular">{format(band.subtotal, { withSymbol: false })}</bdi>
               </td>
@@ -671,7 +671,7 @@ function MonthlyBand({ watch }: { watch: RateWatch }) {
                   rate, and this column is a column of rates. */}
               <td
                 colSpan={3}
-                className="border-t-2 border-stone-300 bg-stone-50 px-2 py-2 text-start text-xs text-stone-500"
+                className="border-t-2 border-line-strong bg-sunken px-2 py-2 text-start text-xs text-stone-500"
               >
                 {band.unratedRows === 0 ? (
                   <>סכום התעריפים החודשיים של השורות שבמעקב.</>
@@ -711,7 +711,7 @@ function HeadCell({ children }: { children: React.ReactNode }) {
   return (
     <th
       scope="col"
-      className={`${PINNED_TOP} ${FIGURE_PADDING} border-y border-stone-300 bg-white py-2 text-end font-semibold`}
+      className={`${PINNED_TOP} ${FIGURE_PADDING} border-y border-line-strong bg-white py-2 text-end font-semibold`}
     >
       {children}
     </th>

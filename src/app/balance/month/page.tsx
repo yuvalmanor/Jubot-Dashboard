@@ -240,10 +240,10 @@ function ViewTabs({
             key={tab.key}
             href={balanceHref(month, tab.key)}
             aria-current={active ? "page" : undefined}
-            className={`rounded-md border px-3 py-1.5 text-sm font-medium ${
+            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
               active
-                ? "border-stone-900 bg-stone-900 text-white"
-                : "border-stone-300 bg-white hover:bg-stone-50"
+                ? "bg-stone-900 text-white"
+                : "text-stone-600 hover:bg-stone-900/5 hover:text-stone-900"
             }`}
           >
             {tab.label}
@@ -330,7 +330,7 @@ function HouseholdMonth({
 
 function EmptyPanel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="rounded-lg border border-dashed border-stone-300 bg-white/60 p-5 text-stone-600">
+    <p className="rounded-card bg-surface shadow-card p-5 text-stone-600">
       {children}
     </p>
   );
@@ -343,7 +343,7 @@ function MonthNavigator({ month, view }: { month: CalendarMonth; view: string | 
   const next = addMonths(month, 1);
 
   return (
-    <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-300 bg-white p-4">
+    <section className="flex flex-wrap items-center justify-between gap-3 rounded-card bg-surface shadow-card p-4">
       <div className="flex items-center gap-2">
         {/* In RTL the previous month sits to the right, so the arrows point outward. */}
         <MonthStep href={balanceHref(next, view)} label={formatMonth(next)} glyph="‹" />
@@ -365,11 +365,11 @@ function MonthNavigator({ month, view }: { month: CalendarMonth; view: string | 
             defaultValue={monthKey(month)}
             min="2000-01"
             max="2100-12"
-            className="rounded-md border border-stone-300 px-2 py-1.5 text-sm"
+            className="rounded-lg bg-sunken px-2 py-1.5 text-sm"
           />
           <button
             type="submit"
-            className="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-stone-50"
+            className="rounded-lg px-3 py-1.5 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
           >
             הצגה
           </button>
@@ -402,7 +402,7 @@ function MonthStep({ href, label, glyph }: { href: Route; label: string; glyph: 
     <Link
       href={href}
       aria-label={label}
-      className="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-lg leading-none hover:bg-stone-50"
+      className="rounded-lg px-3 py-1.5 text-lg leading-none text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
     >
       <span aria-hidden="true">{glyph}</span>
     </Link>
@@ -440,7 +440,7 @@ function Notices({
 }) {
   if (isBalanceErrorCode(error)) {
     return (
-      <div className="rounded-md border border-red-300 bg-red-50 p-4" role="alert">
+      <div className="rounded-lg bg-red-50 p-4" role="alert">
         <p className="font-medium text-red-900">{ERROR_MESSAGES[error]}</p>
         {detail === undefined ? null : (
           <p className="mt-1 text-sm text-red-800">
@@ -453,7 +453,7 @@ function Notices({
 
   if (created !== undefined) {
     return (
-      <div className="rounded-md border border-emerald-300 bg-emerald-50 p-4" role="status">
+      <div className="rounded-lg bg-emerald-50 p-4" role="status">
         <p className="font-medium text-emerald-900">
           נוצרה קטגוריה חדשה: <bdi>{created}</bdi>
         </p>
@@ -464,7 +464,7 @@ function Notices({
 
   if (zeros !== undefined) {
     return (
-      <div className="rounded-md border border-emerald-300 bg-emerald-50 p-4" role="status">
+      <div className="rounded-lg bg-emerald-50 p-4" role="status">
         <p className="font-medium text-emerald-900">
           נרשמו <bdi className="tabular">{zeros}</bdi> קטגוריות כאפס. החודש סגור.
         </p>
@@ -477,7 +477,7 @@ function Notices({
 
   if (saved) {
     return (
-      <div className="rounded-md border border-emerald-300 bg-emerald-50 p-4" role="status">
+      <div className="rounded-lg bg-emerald-50 p-4" role="status">
         <p className="font-medium text-emerald-900">החודש נשמר.</p>
       </div>
     );
@@ -488,7 +488,7 @@ function Notices({
 
 function UnavailablePanel({ reason }: { reason: string }) {
   return (
-    <div className="rounded-md border border-amber-300 bg-amber-50 p-4">
+    <div className="rounded-lg bg-amber-50 p-4">
       <p className="font-medium text-amber-900">לא ניתן לקרוא את המאזן</p>
       <p className="mt-1 text-sm text-amber-800">{reason}</p>
     </div>

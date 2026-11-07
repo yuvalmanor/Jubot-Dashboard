@@ -169,14 +169,14 @@ export function YearGridTable({
 
   if (empty) {
     return (
-      <p className="rounded-lg border border-dashed border-stone-300 bg-white/60 p-5 text-stone-600">
+      <p className="rounded-card bg-surface shadow-card p-5 text-stone-600">
         אין קטגוריות ואין רישומים בשנה הזו.
       </p>
     );
   }
 
   return (
-    <section className="overflow-hidden rounded-lg border border-stone-300 bg-white">
+    <section className="overflow-hidden rounded-card bg-surface shadow-card">
       {/* The legend was a <caption>, which put it inside the window: as wide as the
           table, so it scrolled sideways with the months, and gone as soon as the
           rows moved — in a window this short it would also cost two of the rows it
@@ -211,7 +211,7 @@ export function YearGridTable({
             <tr>
               <th
                 scope="col"
-                className={`${PINNED_TOP_START} ${CATEGORY_PADDING} border-b border-stone-300 bg-white py-2 text-start font-semibold`}
+                className={`${PINNED_TOP_START} ${CATEGORY_PADDING} border-b border-line-strong bg-white py-2 text-start font-semibold`}
               >
                 קטגוריה
               </th>
@@ -220,14 +220,14 @@ export function YearGridTable({
               ))}
               <th
                 scope="col"
-                className={`${PINNED_TOP_END} ${AGGREGATE_PADDING} border-b border-s border-stone-300 bg-white py-2 text-end font-semibold`}
+                className={`${PINNED_TOP_END} ${AGGREGATE_PADDING} border-b border-s border-line-strong bg-white py-2 text-end font-semibold`}
                 style={{ insetInlineEnd: AGGREGATE_WIDTH }}
               >
                 סכום שנתי
               </th>
               <th
                 scope="col"
-                className={`${PINNED_TOP_END} ${AGGREGATE_PADDING} border-b border-stone-300 bg-white py-2 text-end font-semibold`}
+                className={`${PINNED_TOP_END} ${AGGREGATE_PADDING} border-b border-line-strong bg-white py-2 text-end font-semibold`}
                 style={{ insetInlineEnd: 0 }}
               >
                 ממוצע חודשי
@@ -290,7 +290,7 @@ function MonthHeader({ column, links }: { column: GridMonth; links: GridLinks })
 
   if (column.standing === "future") {
     return (
-      <th scope="col" className={`${PINNED_TOP} ${CELL_PADDING} border-b border-stone-300 bg-stone-50 py-2 text-end font-medium text-stone-300`}>
+      <th scope="col" className={`${PINNED_TOP} ${CELL_PADDING} border-b border-line-strong bg-sunken py-2 text-end font-medium text-stone-300`}>
         {name}
         <span className="block text-xs font-normal">טרם הגיע</span>
       </th>
@@ -307,7 +307,7 @@ function MonthHeader({ column, links }: { column: GridMonth; links: GridLinks })
 
   if (column.standing === "current") {
     return (
-      <th scope="col" className={`${PINNED_TOP} ${CELL_PADDING} border-b border-stone-300 bg-amber-50 py-2 text-end font-semibold text-amber-900`}>
+      <th scope="col" className={`${PINNED_TOP} ${CELL_PADDING} border-b border-line-strong bg-amber-50 py-2 text-end font-semibold text-amber-900`}>
         {heading}
         <span className="block text-xs font-normal text-amber-800">בתהליך</span>
       </th>
@@ -315,7 +315,7 @@ function MonthHeader({ column, links }: { column: GridMonth; links: GridLinks })
   }
 
   return (
-    <th scope="col" className={`${PINNED_TOP} ${CELL_PADDING} border-b border-stone-300 bg-white py-2 text-end font-medium`}>
+    <th scope="col" className={`${PINNED_TOP} ${CELL_PADDING} border-b border-line-strong bg-white py-2 text-end font-medium`}>
       {heading}
       {column.counted ? (
         <ClosingNote column={column} links={links} />
@@ -379,11 +379,11 @@ function Band({
             months scroll; the rest of the row is a plain filler. */}
         <th
           scope="colgroup"
-          className={`${PINNED_START} ${CATEGORY_PADDING} border-t border-stone-300 bg-stone-100 py-1.5 text-start text-xs font-semibold tracking-wide text-stone-600`}
+          className={`${PINNED_START} ${CATEGORY_PADDING} border-t border-line-strong bg-stone-200 py-1.5 text-start text-xs font-semibold tracking-wide text-stone-600`}
         >
           {title}
         </th>
-        <td colSpan={COLUMN_COUNT - 1} className="border-t border-stone-300 bg-stone-100" />
+        <td colSpan={COLUMN_COUNT - 1} className="border-t border-line-strong bg-stone-200" />
       </tr>
 
       {band.rows.map((line) => (
@@ -418,18 +418,18 @@ function FootRow({
   /** חיסכון: the line the year is read for, and the one given the heavier rule. */
   lead?: boolean;
 }) {
-  const top = lead ? "border-t-2 border-stone-300" : "border-t border-stone-200";
+  const top = lead ? "border-t-2 border-line-strong" : "border-t border-line";
 
   return (
     <tr style={{ height: FOOT_ROW }}>
       <th
         scope="row"
-        className={`${PINNED_BOTTOM_START} ${CATEGORY_PADDING} ${top} bg-stone-50 py-2 text-start font-semibold`}
+        className={`${PINNED_BOTTOM_START} ${CATEGORY_PADDING} ${top} bg-sunken py-2 text-start font-semibold`}
         style={{ insetBlockEnd: offset }}
       >
         {label}
       </th>
-      <SummaryCells summary={summary} tone="bg-stone-50" top={top} foot={offset} />
+      <SummaryCells summary={summary} tone="bg-sunken" top={top} foot={offset} />
     </tr>
   );
 }
@@ -518,7 +518,7 @@ function ContributionRow({
     <tr>
       <th
         scope="row"
-        className={`${PINNED_START} ${CATEGORY_PADDING} border-t border-stone-100 bg-stone-50 py-1.5 ps-4 sm:ps-7 text-start text-[0.7rem] sm:text-xs font-normal text-stone-600`}
+        className={`${PINNED_START} ${CATEGORY_PADDING} border-t border-stone-100 bg-sunken py-1.5 ps-4 sm:ps-7 text-start text-[0.7rem] sm:text-xs font-normal text-stone-600`}
       >
         <bdi>{line.name}</bdi>
         {owner === null ? null : (
@@ -540,7 +540,7 @@ function ContributionRow({
 
       <AggregateCells
         aggregate={line.aggregate}
-        tone="bg-stone-50"
+        tone="bg-sunken"
         top="border-t border-stone-100"
         muted
       />
@@ -608,7 +608,7 @@ function AggregateCells({
   return (
     <>
       <td
-        className={`${pin} ${AGGREGATE_PADDING} ${top} ${tone} ${weight} ${size} border-s border-stone-200 text-end`}
+        className={`${pin} ${AGGREGATE_PADDING} ${top} ${tone} ${weight} ${size} border-s border-line text-end`}
         style={{ insetInlineEnd: AGGREGATE_WIDTH, insetBlockEnd: foot }}
       >
         <bdi className="tabular">{format(aggregate.total, { withSymbol: false })}</bdi>
@@ -686,7 +686,7 @@ function Cell({
     cell.standing === "current"
       ? "bg-amber-50"
       : cell.standing === "future" || muted
-        ? "bg-stone-50"
+        ? "bg-sunken"
         : tone;
   const size = muted ? "py-1.5 text-xs text-stone-600" : "py-2";
   const pin = foot === undefined ? "" : PINNED_BOTTOM;
@@ -788,13 +788,13 @@ function CellEntryForm({
         aria-label={`${entry.label}, ${formatMonth(cell.month)}`}
         placeholder="—"
         defaultValue={cell.amount === null ? "" : toDecimalString(cell.amount)}
-        className="tabular w-full rounded-sm border border-stone-400 bg-white px-1 py-0.5 text-left text-xs"
+        className="tabular w-full rounded bg-sunken px-1 py-0.5 text-left text-xs"
       />
 
       <div className="flex items-center justify-between gap-1">
         <button
           type="submit"
-          className="rounded-sm bg-stone-900 px-1.5 py-0.5 text-[0.65rem] font-medium text-white hover:bg-stone-800"
+          className="rounded-sm bg-stone-900 px-1.5 py-0.5 text-[0.65rem] font-medium text-white hover:bg-stone-700"
         >
           שמירה
         </button>
@@ -840,7 +840,7 @@ export function ClosingPanel({
 
   if (closure.state !== "open") {
     return (
-      <section className="rounded-lg border border-stone-300 bg-white p-5" role="status">
+      <section className="rounded-card bg-surface shadow-card p-5" role="status">
         <p className="font-medium">{formatMonth(column.month)}</p>
         <p className="mt-1 text-sm text-stone-600">
           {closure.state === "closed"
@@ -849,7 +849,7 @@ export function ClosingPanel({
         </p>
         <Link
           href={links.cancel}
-          className="mt-3 inline-block rounded-md border border-stone-300 px-3 py-1.5 text-sm font-medium hover:bg-stone-50"
+          className="mt-3 inline-block rounded-lg bg-stone-900 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-stone-700"
         >
           חזרה לטבלה
         </Link>
@@ -858,7 +858,7 @@ export function ClosingPanel({
   }
 
   return (
-    <section className="rounded-lg border border-amber-300 bg-amber-50 p-5">
+    <section className="rounded-card bg-amber-50 p-5">
       <h2 className="font-semibold text-amber-900">סגירת {formatMonth(column.month)}</h2>
 
       <p className="mt-1 text-sm text-amber-900">
@@ -887,14 +887,14 @@ export function ClosingPanel({
 
         <button
           type="submit"
-          className="rounded-md bg-stone-900 px-4 py-2 font-medium text-white hover:bg-stone-800"
+          className="rounded-lg bg-stone-900 px-4 py-2 font-medium text-white hover:bg-stone-700"
         >
           רישום <bdi className="tabular">{closure.blanks.length}</bdi> הקטגוריות כאפס
         </button>
 
         <Link
           href={links.cancel}
-          className="rounded-md border border-stone-300 bg-white px-4 py-2 font-medium hover:bg-stone-50"
+          className="rounded-lg px-4 py-2 font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
         >
           ביטול
         </Link>
@@ -910,7 +910,7 @@ export function ClosingPanel({
 /** The three averages, above the table, each stating what it divided by. */
 export function YearSummaryStrip({ grid }: { grid: YearGrid }) {
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
       <div className="grid gap-4 sm:grid-cols-3">
         <AverageFigure label="ממוצע הכנסות" summary={grid.income.total} />
         <AverageFigure label="ממוצע הוצאות" summary={grid.expenses.total} />
@@ -936,7 +936,7 @@ function AverageFigure({
 }) {
   return (
     <div>
-      <p className="text-sm font-semibold tracking-wide text-stone-500">{label}</p>
+      <p className="text-[13px] font-medium text-stone-500">{label}</p>
       <bdi className={`tabular block ${emphasis ? "text-3xl font-semibold" : "text-2xl"}`}>
         {/* The same figure as the ממוצע חודשי column of the subtotal row below,
             printed at the same precision, so the two can never look like two

@@ -380,8 +380,8 @@ function GapPanel({ reading, rate }: { reading: ScenarioReading; rate: DatedRate
 
   if (plan === null || gap === null) {
     return (
-      <section className="rounded-lg border border-dashed border-stone-300 bg-white/60 p-5 sm:p-6">
-        <h2 className="text-sm font-semibold tracking-wide text-stone-500">פער המימון</h2>
+      <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+        <h2 className="text-[13px] font-medium text-stone-500">פער המימון</h2>
         <p className="mt-2 text-sm text-stone-600">
           עדיין לא נרשם מה ההשקעה דורשת, ולכן אין פער. תרחיש בלי תוכנית מימון הוא שם ומחשבה — מצב
           תקין לחלוטין, ולא חסר.
@@ -395,8 +395,8 @@ function GapPanel({ reading, rate }: { reading: ScenarioReading; rate: DatedRate
   const inTime = closesIn === null ? null : compareMonths(closesIn, neededByMonth) <= 0;
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <h2 className="text-sm font-semibold tracking-wide text-stone-500">פער המימון</h2>
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+      <h2 className="text-[13px] font-medium text-stone-500">פער המימון</h2>
 
       <dl className="mt-3 grid gap-4 sm:grid-cols-3">
         <Figure label="ההשקעה דורשת" amount={format(gap.needs)} note={`עד ${formatDate(plan.neededBy)}`} />
@@ -424,7 +424,7 @@ function GapPanel({ reading, rate }: { reading: ScenarioReading; rate: DatedRate
       </dl>
 
       {gap.unreadable.length === 0 ? null : (
-        <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+        <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
           המקורות{" "}
           <bdi>{gap.unreadable.map((line) => line.source).join(", ")}</bdi> רשומים במטבע אחר ואין שער
           שמור להמיר בו, ולכן אינם נספרים במכוסה. הפער שלמעלה הוא לכל היותר מה שמכוסה — לא סכום
@@ -432,8 +432,8 @@ function GapPanel({ reading, rate }: { reading: ScenarioReading; rate: DatedRate
         </p>
       )}
 
-      <div className="mt-4 border-t border-stone-200 pt-4">
-        <h3 className="text-sm font-semibold tracking-wide text-stone-500">בעוד כמה חודשים</h3>
+      <div className="mt-4 border-t border-line pt-4">
+        <h3 className="text-[13px] font-medium text-stone-500">בעוד כמה חודשים</h3>
 
         {closure === null ? null : closure.basis === "already-covered" ? (
           <p className="mt-2 text-lg font-medium">{monthsText(0)}.</p>
@@ -465,7 +465,7 @@ function GapPanel({ reading, rate }: { reading: ScenarioReading; rate: DatedRate
 
             {closesIn === null ? null : (
               <p
-                className={`mt-3 rounded-md border p-3 text-sm ${
+                className={`mt-3 rounded-lg p-3 text-sm ${
                   inTime === true
                     ? "border-emerald-300 bg-emerald-50 text-emerald-900"
                     : "border-amber-300 bg-amber-50 text-amber-900"
@@ -497,8 +497,8 @@ function SourcesPanel({
   const { scenario, sources, gap } = reading;
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <h2 className="text-sm font-semibold tracking-wide text-stone-500">מקורות המימון המתוכננים</h2>
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+      <h2 className="text-[13px] font-medium text-stone-500">מקורות המימון המתוכננים</h2>
       <p className="mt-1 text-sm text-stone-600">
         כל מקור שיכסה חלק מההשקעה — אותם עובדות של רגל מימון, בזמן עתיד. אין כאן שער ואין תאריך
         תשלום: המרה עתידית עדיין אין לה שער, ושער שהיה נרשם לפני שהכסף זז היה מספר שאיש לא השתמש בו.
@@ -511,7 +511,7 @@ function SourcesPanel({
         <div className="mt-3 overflow-x-auto">
           <table className="w-full min-w-[36rem] text-sm">
             <thead>
-              <tr className="border-b border-stone-200 text-xs text-stone-500">
+              <tr className="border-b border-line text-xs text-stone-500">
                 <th className="py-2 text-start font-medium">מקור</th>
                 <th className="py-2 text-end font-medium">סכום</th>
                 <th className="py-2 text-end font-medium">במטבע התוכנית</th>
@@ -519,7 +519,7 @@ function SourcesPanel({
                 <th className="py-2" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-stone-100">
+            <tbody className="divide-y divide-line">
               {sources.map((line) => (
                 <SourceRow
                   key={line.id}
@@ -539,7 +539,7 @@ function SourcesPanel({
         </div>
       )}
 
-      <form action={addSource} className="mt-4 grid gap-3 border-t border-stone-200 pt-4 sm:grid-cols-4">
+      <form action={addSource} className="mt-4 grid gap-3 border-t border-line pt-4 sm:grid-cols-4">
         <input type="hidden" name="scenarioId" value={scenario.id} />
 
         <Field label="מקור">
@@ -548,7 +548,7 @@ function SourcesPanel({
             required
             maxLength={60}
             placeholder="Apple RSU"
-            className="w-full rounded-md border border-stone-300 px-3 py-2"
+            className="w-full rounded-lg bg-sunken px-3 py-2"
           />
         </Field>
 
@@ -558,7 +558,7 @@ function SourcesPanel({
             required
             inputMode="decimal"
             dir="ltr"
-            className="tabular w-full rounded-md border border-stone-300 px-3 py-2 text-end"
+            className="tabular w-full rounded-lg bg-sunken px-3 py-2 text-end"
           />
         </Field>
 
@@ -575,7 +575,7 @@ function SourcesPanel({
         <div className="flex items-end">
           <button
             type="submit"
-            className="rounded-md border border-stone-300 bg-white px-4 py-2 text-sm font-medium hover:bg-stone-50"
+            className="rounded-lg px-4 py-2 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
           >
             הוספת מקור
           </button>
@@ -636,7 +636,7 @@ function SourceRow({
           <input type="hidden" name="sourceId" value={line.id} />
           <button
             type="submit"
-            className="rounded-md border border-stone-300 bg-white px-2 py-1 text-xs hover:bg-stone-50"
+            className="rounded-lg px-2 py-1 text-xs text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
           >
             הסרה
           </button>
@@ -686,8 +686,8 @@ function PlanPanel({ reading }: { reading: ScenarioReading }) {
   const { scenario, plan } = reading;
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <h2 className="text-sm font-semibold tracking-wide text-stone-500">תוכנית המימון</h2>
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+      <h2 className="text-[13px] font-medium text-stone-500">תוכנית המימון</h2>
       <p className="mt-1 text-sm text-stone-600">
         מה ההשקעה העתידית דורשת, ומתי. זו כוונה של משק הבית ולא מדידה, ולכן היא מוקלדת — לעומת
         המקורות, שנזרעים ממה שרשום.
@@ -703,7 +703,7 @@ function PlanPanel({ reading }: { reading: ScenarioReading }) {
             inputMode="decimal"
             dir="ltr"
             defaultValue={plan === null ? "" : toDecimalString(plan.needs)}
-            className="tabular w-full rounded-md border border-stone-300 px-3 py-2 text-end"
+            className="tabular w-full rounded-lg bg-sunken px-3 py-2 text-end"
           />
         </Field>
 
@@ -723,14 +723,14 @@ function PlanPanel({ reading }: { reading: ScenarioReading }) {
             name="neededBy"
             required
             defaultValue={dateKey(plan?.neededBy ?? dateOf(new Date()))}
-            className="w-full rounded-md border border-stone-300 px-3 py-2"
+            className="w-full rounded-lg bg-sunken px-3 py-2"
           />
         </Field>
 
         <div className="sm:col-span-3">
           <button
             type="submit"
-            className="rounded-md border border-stone-300 bg-white px-4 py-2 text-sm font-medium hover:bg-stone-50"
+            className="rounded-lg px-4 py-2 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
           >
             שמירת תוכנית המימון
           </button>
@@ -752,10 +752,10 @@ function DefinitionPanel({
   const { scenario } = reading;
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <h2 className="text-sm font-semibold tracking-wide text-stone-500">הגדרת התרחיש</h2>
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+      <h2 className="text-[13px] font-medium text-stone-500">הגדרת התרחיש</h2>
 
-      <div className="mt-4 border-b border-stone-200 pb-4">
+      <div className="mt-4 border-b border-line pb-4">
         <ActivePlanControl scenario={scenario} />
       </div>
 
@@ -768,7 +768,7 @@ function DefinitionPanel({
             defaultValue={scenario.name}
             required
             maxLength={80}
-            className="w-full rounded-md border border-stone-300 px-3 py-2"
+            className="w-full rounded-lg bg-sunken px-3 py-2"
           />
         </Field>
 
@@ -777,14 +777,14 @@ function DefinitionPanel({
             name="note"
             defaultValue={scenario.note ?? ""}
             maxLength={400}
-            className="w-full rounded-md border border-stone-300 px-3 py-2"
+            className="w-full rounded-lg bg-sunken px-3 py-2"
           />
         </Field>
 
         <div className="sm:col-span-2 flex flex-wrap items-center gap-3">
           <button
             type="submit"
-            className="rounded-md border border-stone-900 bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
+            className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700"
           >
             שמירה
           </button>
@@ -792,16 +792,16 @@ function DefinitionPanel({
       </form>
 
       {executed !== null ? (
-        <p className="mt-4 border-t border-stone-200 pt-4 text-xs text-stone-500">
+        <p className="mt-4 border-t border-line pt-4 text-xs text-stone-500">
           התרחיש הזה בוצע ב־{formatDate(executed.executedOn)}, ולכן אינו נמחק: הוא כבר לא רק מחשבה
           אלא הדרך שבה פרוייקט מומן, והרגליים שנוצרו ממנו שומרות על המקור שלהן.
         </p>
       ) : (
-        <form action={removeScenario} className="mt-4 border-t border-stone-200 pt-4">
+        <form action={removeScenario} className="mt-4 border-t border-line pt-4">
           <input type="hidden" name="scenarioId" value={scenario.id} />
           <button
             type="submit"
-            className="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs font-medium hover:bg-stone-50"
+            className="rounded-lg px-3 py-1.5 text-xs font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
           >
             הסרת התרחיש
           </button>

@@ -153,7 +153,7 @@ export default async function RsuPage({ searchParams }: { searchParams: Promise<
             />
 
             {loaded.position.grants.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-stone-300 bg-white/60 p-5 text-stone-600">
+              <p className="rounded-card bg-surface shadow-card p-5 text-stone-600">
                 עוד לא נרשמה אף הקצאה. הקצאה נרשמת מהמסמך עצמו — מזהה, תאריך ומספר מניות — וההבשלות
                 נרשמות תחתיה.
               </p>
@@ -240,14 +240,14 @@ function AsOfControl({ asOf, today }: { asOf: ReturnType<typeof dateOf>; today: 
   const isToday = dateKey(asOf) === dateKey(today);
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5">
+    <section className="rounded-card bg-surface shadow-card p-5">
       <form method="get" className="flex flex-wrap items-end gap-4">
         <Field label="נקרא נכון לתאריך" note="שעון סעיף 102 נגזר מהתאריך הזה בכל קריאה">
           <input
             type="date"
             name="asOf"
             defaultValue={dateKey(asOf)}
-            className="rounded-md border border-stone-300 px-3 py-2"
+            className="rounded-lg bg-sunken px-3 py-2"
           />
         </Field>
         <SubmitButton label="קריאה" subtle />
@@ -270,8 +270,8 @@ function PositionPanel({ position, window }: { position: RsuPosition; window: Gp
   const next = nextQualificationDate(position);
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <h2 className="text-sm font-semibold tracking-wide text-stone-500">המצב נכון ל־{formatDate(position.asOf)}</h2>
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+      <h2 className="text-[13px] font-medium text-stone-500">המצב נכון ל־{formatDate(position.asOf)}</h2>
 
       <dl className="mt-4 grid gap-4 sm:grid-cols-3">
         <Figure
@@ -359,7 +359,7 @@ function GrantCard({
   const qualifiedFrom = lots[0]?.qualifiedFrom ?? future[0]?.qualifiedFrom ?? null;
 
   return (
-    <article className="rounded-lg border border-stone-300 bg-white p-5">
+    <article className="rounded-card bg-surface shadow-card p-5">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <h2 className="text-lg font-semibold">
           <bdi>{grant.reference}</bdi>
@@ -414,7 +414,7 @@ function GrantCard({
           רישום הבשלה, מכירה או GP
         </summary>
 
-        <div className="mt-4 space-y-5 border-t border-stone-200 pt-4">
+        <div className="mt-4 space-y-5 border-t border-line pt-4">
           <form action={addVest} className="grid gap-3 sm:grid-cols-4">
             <input type="hidden" name="grantId" value={grant.id} />
             <Field label="תאריך הבשלה">
@@ -423,7 +423,7 @@ function GrantCard({
                 name="vestedOn"
                 defaultValue={dateKey(today)}
                 required
-                className="w-full rounded-md border border-stone-300 px-3 py-2"
+                className="w-full rounded-lg bg-sunken px-3 py-2"
               />
             </Field>
             <Field label="מניות">
@@ -432,7 +432,7 @@ function GrantCard({
                 inputMode="numeric"
                 dir="ltr"
                 required
-                className="tabular w-full rounded-md border border-stone-300 px-3 py-2 text-end"
+                className="tabular w-full rounded-lg bg-sunken px-3 py-2 text-end"
               />
             </Field>
             <Field label="מחיר בהבשלה" note="דולרים למניה">
@@ -441,7 +441,7 @@ function GrantCard({
                 inputMode="decimal"
                 dir="ltr"
                 required
-                className="tabular w-full rounded-md border border-stone-300 px-3 py-2 text-end"
+                className="tabular w-full rounded-lg bg-sunken px-3 py-2 text-end"
               />
             </Field>
             <div className="flex items-end">
@@ -461,7 +461,7 @@ function GrantCard({
                     ? sharePriceToDecimalString(grant.grantPrice.price)
                     : ""
                 }
-                className="tabular w-full rounded-md border border-stone-300 px-3 py-2 text-end"
+                className="tabular w-full rounded-lg bg-sunken px-3 py-2 text-end"
               />
             </Field>
             <div className="flex items-end sm:col-span-3">
@@ -480,7 +480,7 @@ function GrantCard({
                 rows={4}
                 dir="ltr"
                 placeholder={"2026-06-08 212.50\n2026-06-09 213.75"}
-                className="tabular w-full rounded-md border border-stone-300 px-3 py-2 font-mono text-sm"
+                className="tabular w-full rounded-lg bg-sunken px-3 py-2 font-mono text-sm"
               />
             </Field>
             <SubmitButton label="חישוב אומדן" subtle />
@@ -517,7 +517,7 @@ function LotsTable({
     <div className="mt-4 overflow-x-auto">
       <table className="w-full min-w-[36rem] text-sm">
         <thead>
-          <tr className="border-b border-stone-300 text-start text-xs text-stone-500">
+          <tr className="border-b border-line-strong text-start text-xs text-stone-500">
             <th className="py-2 text-start font-medium">הבשלה</th>
             <th className="py-2 text-start font-medium">מניות</th>
             <th className="py-2 text-start font-medium">מחיר בהבשלה</th>
@@ -537,7 +537,7 @@ function LotsTable({
 
 function LotRow({ lot, sales, today }: { lot: Lot; sales: readonly Sale[]; today: ReturnType<typeof dateOf> }) {
   return (
-    <tr className="border-b border-stone-200 align-top">
+    <tr className="border-b border-line align-top">
       <td className="py-3">
         <bdi>{formatDate(lot.vest.vestedOn)}</bdi>
       </td>
@@ -557,11 +557,11 @@ function LotRow({ lot, sales, today }: { lot: Lot; sales: readonly Sale[]; today
       </td>
       <td className="py-3">
         {lot.qualified ? (
-          <span className="rounded-sm border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-xs font-medium text-emerald-900">
+          <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-xs font-medium text-emerald-900">
             אחרי התקופה
           </span>
         ) : (
-          <span className="rounded-sm border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-900">
+          <span className="rounded bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-900">
             לפני התקופה
           </span>
         )}
@@ -581,7 +581,7 @@ function LotRow({ lot, sales, today }: { lot: Lot; sales: readonly Sale[]; today
               name="soldOn"
               defaultValue={dateKey(today)}
               required
-              className="rounded-md border border-stone-300 px-2 py-1 text-xs"
+              className="rounded-lg bg-sunken px-2 py-1 text-xs"
             />
             <input
               name="shares"
@@ -589,7 +589,7 @@ function LotRow({ lot, sales, today }: { lot: Lot; sales: readonly Sale[]; today
               dir="ltr"
               required
               placeholder="מניות"
-              className="tabular w-20 rounded-md border border-stone-300 px-2 py-1 text-end text-xs"
+              className="tabular w-20 rounded-lg bg-sunken px-2 py-1 text-end text-xs"
             />
             <input
               name="price"
@@ -597,11 +597,11 @@ function LotRow({ lot, sales, today }: { lot: Lot; sales: readonly Sale[]; today
               dir="ltr"
               required
               placeholder="מחיר"
-              className="tabular w-24 rounded-md border border-stone-300 px-2 py-1 text-end text-xs"
+              className="tabular w-24 rounded-lg bg-sunken px-2 py-1 text-end text-xs"
             />
             <button
               type="submit"
-              className="rounded-md border border-stone-300 bg-white px-2 py-1 text-xs font-medium hover:bg-stone-50"
+              className="rounded-lg px-2 py-1 text-xs font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
             >
               מכירה
             </button>
@@ -641,8 +641,8 @@ function NewGrantPanel({
   today: ReturnType<typeof dateOf>;
 }) {
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <h2 className="text-sm font-semibold tracking-wide text-stone-500">הקצאה חדשה</h2>
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+      <h2 className="text-[13px] font-medium text-stone-500">הקצאה חדשה</h2>
       <p className="mt-1 text-sm text-stone-600">
         נרשמת מהמסמך עצמו. מזהה ההקצאה נשמר כפי שהוא כתוב, באנגלית. אם המסמך נוקב ב־GP, זו עובדה
         וניתן לרשום אותה כאן; אחרת היא נאמדת מסגירות שוק ומסומנת כאומדן.
@@ -656,7 +656,7 @@ function NewGrantPanel({
             maxLength={40}
             dir="ltr"
             placeholder="RSU-2026-001"
-            className="w-full rounded-md border border-stone-300 px-3 py-2"
+            className="w-full rounded-lg bg-sunken px-3 py-2"
           />
         </Field>
 
@@ -676,7 +676,7 @@ function NewGrantPanel({
             name="grantedOn"
             defaultValue={dateKey(today)}
             required
-            className="w-full rounded-md border border-stone-300 px-3 py-2"
+            className="w-full rounded-lg bg-sunken px-3 py-2"
           />
         </Field>
 
@@ -686,7 +686,7 @@ function NewGrantPanel({
             inputMode="numeric"
             dir="ltr"
             required
-            className="tabular w-full rounded-md border border-stone-300 px-3 py-2 text-end"
+            className="tabular w-full rounded-lg bg-sunken px-3 py-2 text-end"
           />
         </Field>
 
@@ -695,7 +695,7 @@ function NewGrantPanel({
             name="grantPrice"
             inputMode="decimal"
             dir="ltr"
-            className="tabular w-full rounded-md border border-stone-300 px-3 py-2 text-end"
+            className="tabular w-full rounded-lg bg-sunken px-3 py-2 text-end"
           />
         </Field>
 

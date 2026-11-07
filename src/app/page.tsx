@@ -77,8 +77,8 @@ export default async function DashboardPage() {
         {reconciliation === null ? null : <ReconciliationBanner reconciliation={reconciliation} />}
         {activePlan === null ? null : <ActivePlanBanner plan={activePlan} />}
 
-        <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-          <h2 className="text-sm font-semibold tracking-wide text-stone-500">סכום לדוגמה מהמסד</h2>
+        <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+          <h2 className="text-[13px] font-medium text-stone-500">סכום לדוגמה מהמסד</h2>
 
           {tracer.kind === "ok" ? (
             <div className="mt-3">
@@ -98,7 +98,7 @@ export default async function DashboardPage() {
         </section>
 
         <section aria-labelledby="areas-heading">
-          <h2 id="areas-heading" className="text-sm font-semibold tracking-wide text-stone-500">
+          <h2 id="areas-heading" className="text-[13px] font-medium text-stone-500">
             אזורים
           </h2>
           <ul className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -106,7 +106,7 @@ export default async function DashboardPage() {
               <li key={area.title}>
                 <Link
                   href={area.href}
-                  className="block h-full rounded-lg border border-stone-300 bg-white p-4 hover:bg-stone-50"
+                  className="rounded-card bg-surface shadow-card block h-full p-4 transition-colors hover:bg-stone-900/[0.02]"
                 >
                   <p className="font-medium text-stone-900">{area.title}</p>
                   <p className="mt-1 text-sm text-stone-500">{area.note}</p>
@@ -190,9 +190,9 @@ function ActivePlanBanner({ plan }: { plan: ActivePlanReading }) {
     closesIn === null || neededBy === null ? null : compareMonths(closesIn, neededBy) <= 0;
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <h2 className="text-sm font-semibold tracking-wide text-stone-500">
+        <h2 className="text-[13px] font-medium text-stone-500">
           התוכנית שאחריה עוקבים
         </h2>
         <p className="text-sm">
@@ -235,7 +235,7 @@ function ActivePlanBanner({ plan }: { plan: ActivePlanReading }) {
 
           {closesIn === null || inTime === null ? null : (
             <p
-              className={`mt-3 rounded-md border p-3 text-sm ${
+              className={`mt-3 rounded-lg p-3 text-sm ${
                 inTime
                   ? "border-emerald-300 bg-emerald-50 text-emerald-900"
                   : "border-amber-300 bg-amber-50 text-amber-900"
@@ -286,7 +286,7 @@ function ReconciliationBanner({ reconciliation }: { reconciliation: Reconciliati
 
   return (
     <section
-      className={`rounded-lg border p-5 ${
+      className={`rounded-card p-5 ${
         reconciliation.holds ? "border-emerald-300 bg-emerald-50" : "border-amber-300 bg-amber-50"
       }`}
       role={reconciliation.holds ? "status" : "alert"}
@@ -393,7 +393,7 @@ function restatable(snapshot: Snapshot, accounts: readonly Account[]): boolean {
 
 function UnavailablePanel({ reason }: { reason: string }) {
   return (
-    <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-4">
+    <div className="mt-3 rounded-lg bg-amber-50 p-4">
       <p className="font-medium text-amber-900">לא ניתן לקרוא את הסכום מהמסד</p>
       <p className="mt-1 text-sm text-amber-800">{reason}</p>
     </div>

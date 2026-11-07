@@ -166,10 +166,10 @@ function ReviewForm({
         ))}
       </section>
 
-      <div className="flex flex-wrap items-center gap-4 border-t border-stone-300 pt-6">
+      <div className="flex flex-wrap items-center gap-4 border-t border-line pt-6">
         <button
           type="submit"
-          className="rounded-md border border-stone-900 bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
+          className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700"
         >
           ייבוא הסימון הזה
         </button>
@@ -191,7 +191,7 @@ function SummaryPanel({
   const included = proposal.categories.filter((category) => category.included).length;
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5">
+    <section className="rounded-card bg-surface shadow-card p-5">
       <h2 className="text-lg font-semibold">מה נמצא בגיליון</h2>
 
       <dl className="mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -212,7 +212,7 @@ function SummaryPanel({
       </dl>
 
       {recorded.entries === 0 ? null : (
-        <p className="mt-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+        <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
           כבר יש רישומים במערכת. ייבוא יכתוב מחדש כל חודש־קטגוריה שמופיע בגיליון, ולא ייגע בשאר.
         </p>
       )}
@@ -253,12 +253,12 @@ function TotalsPanel({
         </p>
       </div>
 
-      <p className="rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">
+      <p className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-900">
         {agreeing} מתוך {totals.length} סכומים חודשיים מתאימים לאגורה.
       </p>
 
       {disagreeing.length === 0 ? null : (
-        <div className="overflow-x-auto rounded-lg border border-amber-300 bg-amber-50">
+        <div className="overflow-x-auto rounded-card bg-amber-50">
           <table className="w-full min-w-md text-sm">
             <caption className="p-3 text-start text-amber-900">
               החודשים שבהם הגיליון לא מסתדר עם עצמו. הסכום שלנו הוא סכום השורות; ההפרש מוצג כדי
@@ -319,7 +319,7 @@ function ConflictsPanel({
         {conflicts.map((conflict, index) => {
           const key = conflictKey(conflict.categoryKey, conflict.month);
           return (
-            <li key={key} className="rounded-lg border border-stone-300 bg-white p-4">
+            <li key={key} className="rounded-card bg-surface shadow-card p-4">
               <p className="font-medium">
                 <bdi>{conflict.label}</bdi>
                 <span className="text-stone-500">
@@ -407,7 +407,7 @@ function NotesPanel({ flags }: { flags: readonly ImportFlag[] }) {
         {notes.map((note, index) => (
           <li
             key={`${note}#${index}`}
-            className="rounded-md border border-stone-300 bg-white p-3 text-sm text-stone-700"
+            className="rounded-lg bg-sunken p-3 text-sm text-stone-700"
           >
             <bdi>{note}</bdi>
           </li>
@@ -447,7 +447,7 @@ function PersonCategories({
 }) {
   if (rows.length === 0) {
     return (
-      <p className="rounded-lg border border-dashed border-stone-300 bg-white/60 p-5 text-stone-600">
+      <p className="rounded-card bg-surface shadow-card p-5 text-stone-600">
         לא נמצאו שורות עבור <bdi>{person.displayName}</bdi> בגיליון.
       </p>
     );
@@ -459,9 +459,9 @@ function PersonCategories({
         השורות של <bdi>{person.displayName}</bdi>
       </h3>
 
-      <div className="overflow-x-auto rounded-lg border border-stone-300 bg-white">
+      <div className="overflow-x-auto rounded-card bg-surface shadow-card">
         <table className="w-full min-w-2xl text-sm">
-          <thead className="border-b border-stone-300">
+          <thead className="border-b border-line-strong">
             <tr>
               <Th>ייבוא</Th>
               <Th>שם אישי</Th>
@@ -473,7 +473,7 @@ function PersonCategories({
           </thead>
           <tbody>
             {rows.map(({ category, index }) => (
-              <tr key={category.key} className="border-b border-stone-200 last:border-b-0 align-top">
+              <tr key={category.key} className="border-b border-line last:border-b-0 align-top">
                 <Td>
                   <input
                     id={`include-${index}`}
@@ -511,7 +511,7 @@ function PersonCategories({
                     maxLength={60}
                     autoComplete="off"
                     aria-label={`שם משותף עבור ${category.name}`}
-                    className="w-44 rounded-md border border-stone-300 px-2 py-1"
+                    className="w-44 rounded-lg bg-sunken px-2 py-1"
                   />
                 </Td>
               </tr>
@@ -560,7 +560,7 @@ function Notices({ params }: { params: SearchParams }) {
   const error = first(params.error);
   if (isErrorCode(error)) {
     return (
-      <div className="rounded-md border border-red-300 bg-red-50 p-4" role="alert">
+      <div className="rounded-lg bg-red-50 p-4" role="alert">
         <p className="font-medium text-red-900">{ERROR_MESSAGES[error]}</p>
         {first(params.detail) === undefined ? null : (
           <p className="mt-1 text-sm text-red-800">
@@ -577,7 +577,7 @@ function Notices({ params }: { params: SearchParams }) {
   const to = first(params.to);
 
   return (
-    <div className="rounded-md border border-emerald-300 bg-emerald-50 p-4" role="status">
+    <div className="rounded-lg bg-emerald-50 p-4" role="status">
       <p className="font-medium text-emerald-900">הייבוא הושלם.</p>
       <p className="mt-1 text-sm text-emerald-800">
         נכתבו <bdi className="tabular">{first(params.entries)}</bdi> רישומים על פני{" "}
@@ -596,7 +596,7 @@ function Notices({ params }: { params: SearchParams }) {
 
 function UnavailablePanel({ reason }: { reason: string }) {
   return (
-    <div className="rounded-md border border-amber-300 bg-amber-50 p-4">
+    <div className="rounded-lg bg-amber-50 p-4">
       <p className="font-medium text-amber-900">לא ניתן להכין את הייבוא</p>
       <p className="mt-1 text-sm text-amber-800">{reason}</p>
     </div>

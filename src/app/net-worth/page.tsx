@@ -158,7 +158,7 @@ function NetWorthView({ loaded, openingId }: { loaded: LoadedOk; openingId: stri
 
   if (current === null) {
     return (
-      <p className="rounded-lg border border-dashed border-stone-300 bg-white/60 p-5 text-stone-600">
+      <p className="rounded-card bg-surface shadow-card p-5 text-stone-600">
         אין עדיין צילומים, ולכן אין ממה לגזור שווי נטו.{" "}
         <Link href="/snapshots" className="underline underline-offset-4">
           לקיחת הצילום הראשון
@@ -235,7 +235,7 @@ function NetWorthView({ loaded, openingId }: { loaded: LoadedOk; openingId: stri
           />
         </>
       ) : (
-        <div className="rounded-md border border-amber-300 bg-amber-50 p-4">
+        <div className="rounded-lg bg-amber-50 p-4">
           <p className="text-sm text-amber-900">
             לצילום של {formatDate(current.takenOn)} אין שער <bdi>USD/ILS</bdi>, ולכן אין דרך לרכז אותו
             לשקלים. חשיפה, הקצאה וריכוזיות נקראות מצילום אחד — יש לבחור צילום אחר.
@@ -261,7 +261,7 @@ function SnapshotPicker({
   current: Snapshot;
 }) {
   return (
-    <section className="rounded-lg border border-stone-300 bg-white px-5 py-3">
+    <section className="rounded-card bg-surface shadow-card px-5 py-3">
       <p className="text-sm text-stone-600">
         החשיפה, ההקצאה והריכוזיות נקראות מהצילום של{" "}
         <Link href={`/snapshots/${current.id}` as Route} className="font-medium underline-offset-4 hover:underline">
@@ -304,9 +304,9 @@ function TrajectoryPanel({
   const latest = [...points].reverse().find((point) => point.total !== null) ?? null;
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <h2 className="text-sm font-semibold tracking-wide text-stone-500">שווי נטו לאורך זמן</h2>
+        <h2 className="text-[13px] font-medium text-stone-500">שווי נטו לאורך זמן</h2>
         <p className="text-xs text-stone-500">
           כל נקודה מחושבת בשער של הצילום שלה, ולכן הקו אינו מצייר את עצמו מחדש כששער היום זז.
         </p>
@@ -328,7 +328,7 @@ function TrajectoryPanel({
         <table className="w-full text-sm">
           <caption className="sr-only">שווי נטו בכל צילום</caption>
           <thead className="text-xs text-stone-500">
-            <tr className="border-b border-stone-200">
+            <tr className="border-b border-line">
               <th scope="col" className="py-2 text-start font-medium">
                 תאריך
               </th>
@@ -343,9 +343,9 @@ function TrajectoryPanel({
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-stone-100">
+          <tbody className="divide-y divide-line">
             {[...points].reverse().map((point) => (
-              <tr key={point.snapshotId} className={point.snapshotId === currentId ? "bg-stone-50" : ""}>
+              <tr key={point.snapshotId} className={point.snapshotId === currentId ? "bg-sunken" : ""}>
                 <th scope="row" className="py-2 text-start font-normal">
                   <Link
                     href={`/net-worth?snapshot=${point.snapshotId}` as Route}
@@ -405,9 +405,9 @@ function ReconciliationPanel({ reconciliation }: { reconciliation: Reconciliatio
   const { residual, saving } = reconciliation;
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <h2 className="text-sm font-semibold tracking-wide text-stone-500">התאמה מול המאזן</h2>
+        <h2 className="text-[13px] font-medium text-stone-500">התאמה מול המאזן</h2>
         <p className="text-xs text-stone-500">
           {formatDate(reconciliation.from)} — {formatDate(reconciliation.to)}
         </p>
@@ -444,7 +444,7 @@ function ReconciliationPanel({ reconciliation }: { reconciliation: Reconciliatio
           </div>
 
           <div
-            className={`mt-4 rounded-md border p-4 ${
+            className={`mt-4 rounded-lg p-4 ${
               reconciliation.holds
                 ? "border-emerald-300 bg-emerald-50"
                 : "border-amber-300 bg-amber-50"
@@ -474,7 +474,7 @@ function ReconciliationPanel({ reconciliation }: { reconciliation: Reconciliatio
             )}
           </div>
 
-          <ul className="mt-4 divide-y divide-stone-100 border-t border-stone-200">
+          <ul className="mt-4 divide-y divide-line border-t border-line">
             {reconciliation.months.map((month) => (
               <li
                 key={`${month.month.year}-${month.month.month}`}
@@ -532,9 +532,9 @@ function DecompositionPanel({ decomposition }: { decomposition: ChangeDecomposit
   const { counts } = decomposition;
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <h2 className="text-sm font-semibold tracking-wide text-stone-500">ממה מורכב השינוי</h2>
+        <h2 className="text-[13px] font-medium text-stone-500">ממה מורכב השינוי</h2>
         <p className="text-xs text-stone-500">
           {formatDate(decomposition.earlier.takenOn)} — {formatDate(decomposition.later.takenOn)}
         </p>
@@ -581,7 +581,7 @@ function DecompositionPanel({ decomposition }: { decomposition: ChangeDecomposit
         <table className="w-full text-sm">
           <caption className="sr-only">פירוק השינוי לפי חשבון</caption>
           <thead className="text-xs text-stone-500">
-            <tr className="border-b border-stone-200">
+            <tr className="border-b border-line">
               <th scope="col" className="py-2 text-start font-medium">
                 חשבון
               </th>
@@ -599,7 +599,7 @@ function DecompositionPanel({ decomposition }: { decomposition: ChangeDecomposit
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-stone-100">
+          <tbody className="divide-y divide-line">
             {decomposition.rows.map((row) => (
               <tr key={row.account.id}>
                 <th scope="row" className="py-2 text-start font-normal">
@@ -690,7 +690,7 @@ function NoDecompositionPanel({
   earlier: Snapshot | null;
 }) {
   return (
-    <section className="rounded-lg border border-dashed border-stone-300 bg-white/60 p-5 text-sm text-stone-600">
+    <section className="rounded-card bg-surface shadow-card p-5 text-sm text-stone-600">
       {snapshots.length < 2 || earlier === null ? (
         <>
           שינוי הוא מה שקרה בין שתי קריאות, ולצילום הזה אין קריאה שקדמה לו.{" "}
@@ -714,14 +714,14 @@ function NoDecompositionPanel({
 
 function ExposurePanel({ exposure }: { exposure: CurrencyExposure }) {
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <h2 className="text-sm font-semibold tracking-wide text-stone-500">חשיפה למט״ח</h2>
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+      <h2 className="text-[13px] font-medium text-stone-500">חשיפה למט״ח</h2>
       <p className="mt-1 text-sm text-stone-600">
         נגזרת ממה שהנכס <span className="font-medium">הוא</span>, לא ממה שמימן אותו: החזקה דולרית
         חשופה במלואה גם אם שני שלישים מהכסף שקנה אותה התחילו כשקלים.
       </p>
 
-      <ul className="mt-4 divide-y divide-stone-100">
+      <ul className="mt-4 divide-y divide-line">
         {exposure.lines.map((line) => (
           <li key={line.currency} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 py-2">
             <span className="min-w-16 font-medium">
@@ -767,10 +767,10 @@ function AllocationPanel({
   readings: readonly ConvertedReading[];
 }) {
   return (
-    <section className="rounded-lg border border-stone-300 bg-white">
-      <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-stone-200 px-5 py-3">
+    <section className="rounded-card bg-surface shadow-card">
+      <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-line px-5 py-3">
         <div>
-          <h2 className="text-sm font-semibold tracking-wide text-stone-500">הקצאה מול רצוי</h2>
+          <h2 className="text-[13px] font-medium text-stone-500">הקצאה מול רצוי</h2>
           <p className="text-xs text-stone-500">
             כל קטגוריה מופיעה גם כשאין בה כלום — קטגוריה שיעדה 30% ואין בה דבר היא החריגה הגדולה ביותר
             שיש.
@@ -781,7 +781,7 @@ function AllocationPanel({
         </Link>
       </div>
 
-      <ul className="divide-y divide-stone-200">
+      <ul className="divide-y divide-line">
         {result.lines.map((line) => {
           const inBucket = readings.filter((reading) => reading.account.category === line.category);
 
@@ -828,7 +828,7 @@ function AllocationPanel({
                   <BasisNote split={line.basis} className="mt-1" />
                 </summary>
 
-                <ul className="divide-y divide-stone-100 border-t border-stone-100 bg-stone-50/60">
+                <ul className="divide-y divide-line border-t border-stone-100 bg-sunken/70">
                   {inBucket.length === 0 ? (
                     <li className="px-5 py-2 ps-9 text-sm text-stone-500">אין חשבונות בקטגוריה הזאת</li>
                   ) : (
@@ -854,7 +854,7 @@ function AllocationPanel({
         })}
       </ul>
 
-      <p className="border-t border-stone-200 px-5 py-3 text-sm text-stone-500">
+      <p className="border-t border-line px-5 py-3 text-sm text-stone-500">
         {result.targetsTotal === 0 ? (
           <>
             לא נקבעו יעדים, ולכן כל הקטגוריות נקראות ללא יעד.{" "}
@@ -908,9 +908,9 @@ function AppreciationPanel({ range }: { range: AppreciationRange }) {
   const stated = `${range.assumption.annualBasisPoints / 100}%`;
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <h2 className="text-sm font-semibold tracking-wide text-stone-500">שווי נטו כטווח</h2>
+        <h2 className="text-[13px] font-medium text-stone-500">שווי נטו כטווח</h2>
         <Link href="/settings" className="text-sm text-stone-600 underline-offset-4 hover:underline">
           שינוי ההנחה
         </Link>
@@ -953,7 +953,7 @@ function AppreciationPanel({ range }: { range: AppreciationRange }) {
       {range.assets.length === 0 ? (
         <p className="mt-2 text-sm text-stone-500">אין בצילום הזה נכסים המוחזקים בעלות.</p>
       ) : (
-        <ul className="mt-3 divide-y divide-stone-100 border-t border-stone-200">
+        <ul className="mt-3 divide-y divide-line border-t border-line">
           {range.assets.map((asset) => (
             <li key={asset.account.id} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 py-2 text-sm">
               <span className="min-w-0 flex-1">
@@ -980,9 +980,9 @@ function AppreciationPanel({ range }: { range: AppreciationRange }) {
 
 function ConcentrationPanel({ concentration }: { concentration: Concentration }) {
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <h2 className="text-sm font-semibold tracking-wide text-stone-500">
+        <h2 className="text-[13px] font-medium text-stone-500">
           ריכוזיות — <bdi>Apple RSU</bdi>
         </h2>
         <Link href="/settings" className="text-sm text-stone-600 underline-offset-4 hover:underline">
@@ -1013,7 +1013,7 @@ function ConcentrationPanel({ concentration }: { concentration: Concentration })
             </div>
           </div>
 
-          <ul className="mt-3 divide-y divide-stone-100 border-t border-stone-200">
+          <ul className="mt-3 divide-y divide-line border-t border-line">
             {concentration.readings.map((reading) => (
               <li key={reading.account.id} className="flex flex-wrap items-baseline gap-x-4 py-2 text-sm">
                 <span className="min-w-0 flex-1">
@@ -1047,7 +1047,7 @@ function Share({ share }: { share: number | null }) {
 
 function UnavailablePanel({ reason }: { reason: string }) {
   return (
-    <div className="rounded-md border border-amber-300 bg-amber-50 p-4">
+    <div className="rounded-lg bg-amber-50 p-4">
       <p className="font-medium text-amber-900">לא ניתן לקרוא את השווי נטו</p>
       <p className="mt-1 text-sm text-amber-800">{reason}</p>
     </div>

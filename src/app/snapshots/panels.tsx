@@ -34,7 +34,7 @@ export function Notices({
 }) {
   if (isErrorCode(error)) {
     return (
-      <div className="rounded-md border border-red-300 bg-red-50 p-4" role="alert">
+      <div className="rounded-lg bg-red-50 p-4" role="alert">
         <p className="font-medium text-red-900">{ERROR_MESSAGES[error]}</p>
         {detail === undefined ? null : (
           <p className="mt-1 text-sm text-red-800">
@@ -55,7 +55,7 @@ export function Notices({
         : "הצילום נשמר.";
 
   return (
-    <div className="rounded-md border border-emerald-300 bg-emerald-50 p-4" role="status">
+    <div className="rounded-lg bg-emerald-50 p-4" role="status">
       <p className="font-medium text-emerald-900">{text}</p>
     </div>
   );
@@ -63,7 +63,7 @@ export function Notices({
 
 export function UnavailablePanel({ reason }: { reason: string }) {
   return (
-    <div className="rounded-md border border-amber-300 bg-amber-50 p-4">
+    <div className="rounded-lg bg-amber-50 p-4">
       <p className="font-medium text-amber-900">לא ניתן לקרוא את המיפוי</p>
       <p className="mt-1 text-sm text-amber-800">{reason}</p>
     </div>

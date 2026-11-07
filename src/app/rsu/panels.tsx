@@ -59,7 +59,7 @@ export function Notices({
 }) {
   if (isErrorCode(error)) {
     return (
-      <div className="rounded-md border border-red-300 bg-red-50 p-4" role="alert">
+      <div className="rounded-lg bg-red-50 p-4" role="alert">
         <p className="font-medium text-red-900">{ERROR_MESSAGES[error]}</p>
         {detail === undefined ? null : (
           <p className="mt-1 text-sm text-red-800">
@@ -77,7 +77,7 @@ export function Notices({
   if (text === undefined) return null;
 
   return (
-    <div className="rounded-md border border-emerald-300 bg-emerald-50 p-4" role="status">
+    <div className="rounded-lg bg-emerald-50 p-4" role="status">
       <p className="font-medium text-emerald-900">
         {text}
         {name.length === 0 ? null : (
@@ -92,7 +92,7 @@ export function Notices({
 
 export function UnavailablePanel({ reason }: { reason: string }) {
   return (
-    <div className="rounded-md border border-amber-300 bg-amber-50 p-4">
+    <div className="rounded-lg bg-amber-50 p-4">
       <p className="font-medium text-amber-900">לא ניתן לקרוא את מצב ה־RSU</p>
       <p className="mt-1 text-sm text-amber-800">{reason}</p>
     </div>
@@ -130,7 +130,7 @@ export function Select({
     <select
       name={name}
       defaultValue={defaultValue}
-      className="w-full rounded-md border border-stone-300 bg-white px-3 py-2"
+      className="w-full rounded-lg bg-sunken px-3 py-2"
     >
       {children}
     </select>
@@ -180,7 +180,7 @@ export function GrantPriceFigure({
 
       {isEstimated(grantPrice) ? (
         <>
-          <span className="rounded-sm border border-amber-400 bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-900">
+          <span className="rounded bg-amber-50 px-1.5 py-0.5 text-xs font-medium text-amber-900">
             אומדן
           </span>
           <span className="text-xs text-stone-500">
@@ -194,7 +194,7 @@ export function GrantPriceFigure({
           ) : null}
         </>
       ) : (
-        <span className="rounded-sm border border-stone-300 bg-stone-50 px-1.5 py-0.5 text-xs font-medium text-stone-700">
+        <span className="rounded bg-stone-200 px-1.5 py-0.5 text-xs font-medium text-stone-700">
           מהמסמך
         </span>
       )}
@@ -208,8 +208,8 @@ export function SubmitButton({ label, subtle = false }: { label: string; subtle?
       type="submit"
       className={
         subtle
-          ? "rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-stone-50"
-          : "rounded-md border border-stone-900 bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
+          ? "rounded-lg px-3 py-1.5 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
+          : "rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700"
       }
     >
       {label}

@@ -65,7 +65,7 @@ export function CategoryAdminPanel({
 }) {
   return (
     <section id={CATEGORY_PANEL_ID} className="space-y-6 scroll-mt-4">
-      <div className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
+      <div className="rounded-card bg-surface shadow-card p-5 sm:p-6">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
           <h2 className="text-lg font-semibold">ניהול קטגוריות</h2>
           <Link href={links.closeAdmin} className="text-sm text-stone-600 underline-offset-4 hover:underline">
@@ -112,7 +112,7 @@ function NewCategorySection({
   const households = householdCategoriesFor(categories);
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
       <h3 className="text-base font-semibold">קטגוריה חדשה</h3>
       <p className="mt-1 text-sm text-stone-600">
         קטגוריה אישית תמיד נכנסת לקטגוריה משותפת — או חדשה, או קיימת. אפשר להתחיל אותה בחודש מוקדם יותר
@@ -129,7 +129,7 @@ function NewCategorySection({
           <select
             id="new-person"
             name="personId"
-            className="mt-1 w-full rounded-md border border-stone-300 px-3 py-1.5"
+            className="mt-1 w-full rounded-lg bg-sunken px-3 py-1.5"
           >
             {people.map((person) => (
               <option key={person.id} value={person.id}>
@@ -149,7 +149,7 @@ function NewCategorySection({
             type="text"
             autoComplete="off"
             maxLength={60}
-            className="mt-1 w-full rounded-md border border-stone-300 px-3 py-1.5"
+            className="mt-1 w-full rounded-lg bg-sunken px-3 py-1.5"
           />
         </div>
 
@@ -173,7 +173,7 @@ function NewCategorySection({
             defaultValue={monthKey(today)}
             min="2000-01"
             max="2100-12"
-            className="mt-1 w-full rounded-md border border-stone-300 px-3 py-1.5"
+            className="mt-1 w-full rounded-lg bg-sunken px-3 py-1.5"
           />
         </div>
 
@@ -185,7 +185,7 @@ function NewCategorySection({
             id="new-household"
             name="householdCategoryId"
             defaultValue="new"
-            className="mt-1 w-full rounded-md border border-stone-300 px-3 py-1.5"
+            className="mt-1 w-full rounded-lg bg-sunken px-3 py-1.5"
           >
             <option value="new">חדשה</option>
             {households.map((household) => (
@@ -207,14 +207,14 @@ function NewCategorySection({
             autoComplete="off"
             maxLength={60}
             placeholder="ברירת מחדל: אותו שם"
-            className="mt-1 w-full rounded-md border border-stone-300 px-3 py-1.5"
+            className="mt-1 w-full rounded-lg bg-sunken px-3 py-1.5"
           />
         </div>
 
         <div className="sm:col-span-2">
           <button
             type="submit"
-            className="rounded-md bg-stone-900 px-4 py-2 font-medium text-white hover:bg-stone-800"
+            className="rounded-lg bg-stone-900 px-4 py-2 font-medium text-white hover:bg-stone-700"
           >
             יצירת הקטגוריה
           </button>
@@ -304,7 +304,7 @@ function HouseholdCard({
     people.find((person) => person.id === personId)?.displayName ?? personId;
 
   return (
-    <article className="rounded-lg border border-stone-300 bg-white p-5">
+    <article className="rounded-card bg-surface shadow-card p-5">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h4 className="text-base font-semibold">
           <bdi>{category.name}</bdi>
@@ -352,12 +352,12 @@ function HouseholdCard({
               defaultValue={category.name}
               maxLength={60}
               autoComplete="off"
-              className="mt-1 w-full rounded-md border border-stone-300 px-3 py-1.5"
+              className="mt-1 w-full rounded-lg bg-sunken px-3 py-1.5"
             />
           </div>
           <button
             type="submit"
-            className="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-stone-50"
+            className="rounded-lg px-3 py-1.5 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
           >
             שינוי שם
           </button>
@@ -374,7 +374,7 @@ function HouseholdCard({
               <select
                 id={`merge-${category.id}`}
                 name="targetHouseholdCategoryId"
-                className="mt-1 w-full rounded-md border border-stone-300 px-3 py-1.5"
+                className="mt-1 w-full rounded-lg bg-sunken px-3 py-1.5"
               >
                 {mergeTargets.map((target) => (
                   <option key={target.id} value={target.id}>
@@ -385,7 +385,7 @@ function HouseholdCard({
             </div>
             <button
               type="submit"
-              className="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-stone-50"
+              className="rounded-lg px-3 py-1.5 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
             >
               מיזוג
             </button>
@@ -426,7 +426,7 @@ function WatchToggle({ category, links }: { category: HouseholdCategory; links: 
       </label>
       <button
         type="submit"
-        className="rounded-md border border-stone-300 bg-white px-3 py-1 text-sm font-medium hover:bg-stone-50"
+        className="rounded-lg px-3 py-1 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
       >
         שמירת המעקב
       </button>
@@ -493,7 +493,7 @@ function PersonalCard({
   const targets = householdCategoriesFor(categories, { type: category.type });
 
   return (
-    <article className="rounded-lg border border-stone-300 bg-white p-5">
+    <article className="rounded-card bg-surface shadow-card p-5">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h4 className="font-medium">
           <bdi>{category.name}</bdi>
@@ -523,12 +523,12 @@ function PersonalCard({
               defaultValue={category.name}
               maxLength={60}
               autoComplete="off"
-              className="mt-1 w-full rounded-md border border-stone-300 px-3 py-1.5"
+              className="mt-1 w-full rounded-lg bg-sunken px-3 py-1.5"
             />
           </div>
           <button
             type="submit"
-            className="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-stone-50"
+            className="rounded-lg px-3 py-1.5 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
           >
             שינוי שם
           </button>
@@ -548,7 +548,7 @@ function PersonalCard({
               defaultValue={monthKey(category.activeFrom)}
               min="2000-01"
               max="2100-12"
-              className="mt-1 rounded-md border border-stone-300 px-2 py-1.5 text-sm"
+              className="mt-1 rounded-lg bg-sunken px-2 py-1.5 text-sm"
             />
           </div>
           <div>
@@ -562,12 +562,12 @@ function PersonalCard({
               defaultValue={category.activeUntil === null ? "" : monthKey(category.activeUntil)}
               min="2000-01"
               max="2100-12"
-              className="mt-1 rounded-md border border-stone-300 px-2 py-1.5 text-sm"
+              className="mt-1 rounded-lg bg-sunken px-2 py-1.5 text-sm"
             />
           </div>
           <button
             type="submit"
-            className="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-stone-50"
+            className="rounded-lg px-3 py-1.5 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
           >
             שמירת תקופה
           </button>
@@ -586,7 +586,7 @@ function PersonalCard({
               id={`household-${category.id}`}
               name="householdCategoryId"
               defaultValue={household.id}
-              className="mt-1 w-full rounded-md border border-stone-300 px-3 py-1.5"
+              className="mt-1 w-full rounded-lg bg-sunken px-3 py-1.5"
             >
               {targets.map((target) => (
                 <option key={target.id} value={target.id}>
@@ -607,12 +607,12 @@ function PersonalCard({
               maxLength={60}
               autoComplete="off"
               placeholder="ברירת מחדל: אותו שם"
-              className="mt-1 w-40 rounded-md border border-stone-300 px-3 py-1.5"
+              className="mt-1 w-40 rounded-lg bg-sunken px-3 py-1.5"
             />
           </div>
           <button
             type="submit"
-            className="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-stone-50"
+            className="rounded-lg px-3 py-1.5 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
           >
             שיוך
           </button>
@@ -624,7 +624,7 @@ function PersonalCard({
 
 function EmptyPanel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="rounded-lg border border-dashed border-stone-300 bg-white/60 p-5 text-stone-600">
+    <p className="rounded-card bg-surface shadow-card p-5 text-stone-600">
       {children}
     </p>
   );

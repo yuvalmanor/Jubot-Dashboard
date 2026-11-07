@@ -94,7 +94,7 @@ export default async function ComparePage({
           <>
             <Picker scenarios={loaded.scenarios} left={loaded.leftId} right={loaded.rightId} />
             {loaded.comparison === null ? (
-              <p className="rounded-lg border border-dashed border-stone-300 bg-white/60 p-5 text-stone-600">
+              <p className="rounded-card bg-surface shadow-card p-5 text-stone-600">
                 {loaded.scenarios.length < 2
                   ? "צריך שני תרחישים כדי להשוות. תרחיש אחד לבדו הוא מחשבה, ולא בחירה בין שתיים."
                   : "יש לבחור שני תרחישים שונים."}
@@ -248,8 +248,8 @@ function Picker({
   right: string | null;
 }) {
   return (
-    <form method="get" className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <h2 className="text-sm font-semibold tracking-wide text-stone-500">איזה מול איזה</h2>
+    <form method="get" className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+      <h2 className="text-[13px] font-medium text-stone-500">איזה מול איזה</h2>
 
       <div className="mt-3 grid gap-3 sm:grid-cols-3">
         <label className="block">
@@ -281,7 +281,7 @@ function Picker({
         <div className="flex items-end">
           <button
             type="submit"
-            className="rounded-md border border-stone-300 bg-white px-4 py-2 text-sm font-medium hover:bg-stone-50"
+            className="rounded-lg px-4 py-2 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
           >
             השוואה
           </button>
@@ -298,11 +298,11 @@ function ComparisonTable({ comparison }: { comparison: ScenarioComparison }) {
   const right = comparison.right.reading.scenario;
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[40rem] text-sm">
           <thead>
-            <tr className="border-b border-stone-200 text-xs text-stone-500">
+            <tr className="border-b border-line text-xs text-stone-500">
               <th className="py-2 text-start font-medium" />
               <th className="py-2 text-end font-medium">
                 <Link href={`/planning/${left.id}`} className="underline-offset-4 hover:underline">
@@ -319,7 +319,7 @@ function ComparisonTable({ comparison }: { comparison: ScenarioComparison }) {
               <th className="py-2 text-end font-medium">הפרש</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-stone-100">
+          <tbody className="divide-y divide-line">
             {comparison.rows.map((row) => (
               <Row key={row.key} row={row} />
             ))}
@@ -328,7 +328,7 @@ function ComparisonTable({ comparison }: { comparison: ScenarioComparison }) {
       </div>
 
       {comparison.sameCurrency ? null : (
-        <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+        <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
           התוכניות של שני התרחישים אינן באותו מטבע
           {comparison.currencies.left === null || comparison.currencies.right === null
             ? " — לאחד מהם עדיין לא נרשם מה ההשקעה דורשת"

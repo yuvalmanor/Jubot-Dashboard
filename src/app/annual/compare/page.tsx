@@ -89,7 +89,7 @@ export default async function CompareAnnualReviewsPage({
             {loaded.kind === "compared" ? (
               <ComparisonPanel comparison={loaded.comparison} />
             ) : (
-              <p className="rounded-lg border border-dashed border-stone-300 bg-white/60 p-5 text-stone-600">
+              <p className="rounded-card bg-surface shadow-card p-5 text-stone-600">
                 {loaded.reviews.length < 2
                   ? "צריך שני סיכומים שנתיים כדי להשוות. אחד לבדו אינו השוואה."
                   : "בחרו שתי שנים שונות. שנה מול עצמה אינה עונה על כלום."}
@@ -182,8 +182,8 @@ function ChooserPanel({
   right: number | null;
 }) {
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <h2 className="text-sm font-semibold tracking-wide text-stone-500">אילו שנים</h2>
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+      <h2 className="text-[13px] font-medium text-stone-500">אילו שנים</h2>
 
       <form method="get" className="mt-4 grid gap-4 sm:grid-cols-3">
         <Field label="שנה">
@@ -195,7 +195,7 @@ function ChooserPanel({
         <div className="flex items-end">
           <button
             type="submit"
-            className="rounded-md border border-stone-900 bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
+            className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700"
           >
             השוואה
           </button>
@@ -218,7 +218,7 @@ function YearSelect({
     <select
       name={name}
       defaultValue={selected === null ? "" : String(selected)}
-      className="tabular w-full rounded-md border border-stone-300 bg-white px-3 py-2"
+      className="tabular w-full rounded-lg bg-sunken px-3 py-2"
     >
       <option value="">— בחירה —</option>
       {reviews.map((review) => (
@@ -236,9 +236,9 @@ function ComparisonPanel({ comparison }: { comparison: AnnualReviewComparison })
   const { earlier, later } = comparison;
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <h2 className="text-sm font-semibold tracking-wide text-stone-500">
+        <h2 className="text-[13px] font-medium text-stone-500">
           <bdi className="tabular">{earlier.review.year}</bdi> מול{" "}
           <bdi className="tabular">{later.review.year}</bdi>
         </h2>
@@ -262,7 +262,7 @@ function ComparisonPanel({ comparison }: { comparison: AnnualReviewComparison })
       <div className="mt-4 overflow-x-auto">
         <table className="w-full min-w-[36rem] text-sm">
           <thead>
-            <tr className="border-b border-stone-200 text-right text-xs text-stone-500">
+            <tr className="border-b border-line text-right text-xs text-stone-500">
               <th className="py-2 font-medium">מה</th>
               <th className="tabular py-2 font-medium">{earlier.review.year}</th>
               <th className="tabular py-2 font-medium">{later.review.year}</th>
@@ -302,7 +302,7 @@ function RatePanel({ comparison }: { comparison: AnnualReviewComparison }) {
   if (comparison.sameRate || !converted || earlier === null || later === null) return null;
 
   return (
-    <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+    <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
       השנים הוקפאו בשערים שונים —{" "}
       <bdi className="tabular">{formatRate(earlier.rate)}</bdi> מול{" "}
       <bdi className="tabular">{formatRate(later.rate)}</bdi>. בשורות המסומנות &rdquo;חי, לפי עובדה

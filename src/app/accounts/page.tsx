@@ -78,8 +78,8 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
 
         {loaded.kind === "ok" ? (
           <>
-            <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-              <h2 className="text-sm font-semibold tracking-wide text-stone-500">חשבון חדש</h2>
+            <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+              <h2 className="text-[13px] font-medium text-stone-500">חשבון חדש</h2>
               <p className="mt-1 text-sm text-stone-600">
                 כל חשבון שייך לאדם, מוחזק במטבע משלו, ומחויב בבסיס שווי — שווי שוק, עלות או הערכה.
                 אין ברירת מחדל: סכום שלא ידוע איך הגיעו אליו הוא בדיוק מה שהמערכת הזאת קיימת כדי למנוע.
@@ -91,7 +91,7 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
                     name="name"
                     required
                     maxLength={60}
-                    className="w-full rounded-md border border-stone-300 px-3 py-2"
+                    className="w-full rounded-lg bg-sunken px-3 py-2"
                   />
                 </Field>
 
@@ -141,7 +141,7 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
                     required
                     maxLength={60}
                     list="asset-kinds"
-                    className="w-full rounded-md border border-stone-300 px-3 py-2"
+                    className="w-full rounded-lg bg-sunken px-3 py-2"
                   />
                   <datalist id="asset-kinds">
                     {loaded.assetKinds.map((kind) => (
@@ -156,14 +156,14 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
                     name="openedOn"
                     defaultValue={dateKey(today)}
                     required
-                    className="w-full rounded-md border border-stone-300 px-3 py-2"
+                    className="w-full rounded-lg bg-sunken px-3 py-2"
                   />
                 </Field>
 
                 <div className="flex items-end">
                   <button
                     type="submit"
-                    className="rounded-md border border-stone-900 bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
+                    className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700"
                   >
                     יצירת חשבון
                   </button>
@@ -172,7 +172,7 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
             </section>
 
             {loaded.accounts.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-stone-300 bg-white/60 p-5 text-stone-600">
+              <p className="rounded-card bg-surface shadow-card p-5 text-stone-600">
                 אין עדיין חשבונות. צילום ראשון יכלול כל חשבון שיוגדר כאן.
               </p>
             ) : (
@@ -269,11 +269,11 @@ function CategorySection({
   if (accounts.length === 0) return null;
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white">
-      <h2 className="border-b border-stone-200 px-5 py-3 text-sm font-semibold tracking-wide text-stone-500">
+    <section className="rounded-card bg-surface shadow-card">
+      <h2 className="border-b border-line px-5 py-3 text-[13px] font-medium text-stone-500">
         {ASSET_CATEGORY_LABELS[category]}
       </h2>
-      <ul className="divide-y divide-stone-200">
+      <ul className="divide-y divide-line">
         {accounts.map((account) => (
           <li key={account.id}>
             <AccountRow
@@ -346,7 +346,7 @@ function AccountRow({
         )}
       </summary>
 
-      <div className="border-t border-stone-100 bg-stone-50/60 px-5 py-4">
+      <div className="border-t border-stone-100 bg-sunken/70 px-5 py-4">
         <form action={editAccount} className="grid gap-4 sm:grid-cols-2">
           <input type="hidden" name="accountId" value={account.id} />
           <input type="hidden" name="currency" value={account.currency} />
@@ -357,7 +357,7 @@ function AccountRow({
               defaultValue={account.name}
               required
               maxLength={60}
-              className="w-full rounded-md border border-stone-300 px-3 py-2"
+              className="w-full rounded-lg bg-sunken px-3 py-2"
             />
           </Field>
 
@@ -388,7 +388,7 @@ function AccountRow({
               required
               maxLength={60}
               list="asset-kinds-existing"
-              className="w-full rounded-md border border-stone-300 px-3 py-2"
+              className="w-full rounded-lg bg-sunken px-3 py-2"
             />
             <datalist id="asset-kinds-existing">
               {assetKinds.map((kind) => (
@@ -403,7 +403,7 @@ function AccountRow({
               name="openedOn"
               defaultValue={dateKey(account.openedOn)}
               required
-              className="w-full rounded-md border border-stone-300 px-3 py-2"
+              className="w-full rounded-lg bg-sunken px-3 py-2"
             />
           </Field>
 
@@ -412,14 +412,14 @@ function AccountRow({
               type="date"
               name="closedOn"
               defaultValue={account.closedOn === null ? "" : dateKey(account.closedOn)}
-              className="w-full rounded-md border border-stone-300 px-3 py-2"
+              className="w-full rounded-lg bg-sunken px-3 py-2"
             />
           </Field>
 
           <div className="sm:col-span-2">
             <button
               type="submit"
-              className="rounded-md border border-stone-900 bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
+              className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700"
             >
               שמירה
             </button>
@@ -432,7 +432,7 @@ function AccountRow({
             <input type="hidden" name="intent" value="reopen" />
             <button
               type="submit"
-              className="rounded-md border border-stone-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-stone-50"
+              className="rounded-lg px-3 py-1.5 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
             >
               החזרה לשימוש
             </button>
@@ -461,8 +461,8 @@ function AccountRow({
 function PositionsPanel({ account, positions }: { account: Account; positions: readonly Position[] }) {
   if (!canHoldPositions(account)) {
     return (
-      <section className="mt-5 border-t border-stone-200 pt-4">
-        <h3 className="text-sm font-semibold tracking-wide text-stone-500">החזקות</h3>
+      <section className="mt-5 border-t border-line pt-4">
+        <h3 className="text-[13px] font-medium text-stone-500">החזקות</h3>
         <p className="mt-1 text-xs text-stone-500">
           החשבון מוחזק בעלות, ולכן אין בו החזקות לרשום: אין בו סכום שנמדד בשוק, ורשימת החזקות הייתה
           רומזת על מדידה שלא קיימת.
@@ -472,8 +472,8 @@ function PositionsPanel({ account, positions }: { account: Account; positions: r
   }
 
   return (
-    <section className="mt-5 border-t border-stone-200 pt-4">
-      <h3 className="text-sm font-semibold tracking-wide text-stone-500">החזקות</h3>
+    <section className="mt-5 border-t border-line pt-4">
+      <h3 className="text-[13px] font-medium text-stone-500">החזקות</h3>
       <p className="mt-1 text-xs text-stone-500">
         מה החשבון מושקע בו. ההחזקה אומרת <span className="font-medium">מה קנינו</span>, לא כמה יש —
         כמה יש זה מה שהצילום אומר, עם תאריך עליו. החזקות זזות עם השוק, וזה בסדר גמור.
@@ -482,7 +482,7 @@ function PositionsPanel({ account, positions }: { account: Account; positions: r
       {positions.length === 0 ? (
         <p className="mt-2 text-sm text-stone-500">אין החזקות רשומות בחשבון הזה.</p>
       ) : (
-        <ul className="mt-2 divide-y divide-stone-200 rounded-md border border-stone-200 bg-white">
+        <ul className="mt-2 divide-y divide-line rounded-lg bg-sunken">
           {positions.map((position) => (
             <li key={position.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
               <span className="min-w-0 flex-1 text-sm">
@@ -495,7 +495,7 @@ function PositionsPanel({ account, positions }: { account: Account; positions: r
                 <input type="hidden" name="positionId" value={position.id} />
                 <button
                   type="submit"
-                  className="rounded-md border border-stone-300 bg-white px-2 py-1 text-xs hover:bg-stone-50"
+                  className="rounded-lg px-2 py-1 text-xs text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
                 >
                   הסרה
                 </button>
@@ -514,7 +514,7 @@ function PositionsPanel({ account, positions }: { account: Account; positions: r
             maxLength={30}
             dir="ltr"
             placeholder="1159235"
-            className="tabular mt-1 w-32 rounded-md border border-stone-300 px-3 py-2 text-start"
+            className="tabular mt-1 w-32 rounded-lg bg-sunken px-3 py-2 text-start"
           />
         </label>
         <label className="block">
@@ -524,12 +524,12 @@ function PositionsPanel({ account, positions }: { account: Account; positions: r
             required
             maxLength={60}
             placeholder="ACWI"
-            className="mt-1 w-48 rounded-md border border-stone-300 px-3 py-2"
+            className="mt-1 w-48 rounded-lg bg-sunken px-3 py-2"
           />
         </label>
         <button
           type="submit"
-          className="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-medium hover:bg-stone-50"
+          className="rounded-lg px-3 py-2 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
         >
           הוספת החזקה
         </button>
@@ -555,8 +555,8 @@ function EarmarksPanel({
   today: CalendarDate;
 }) {
   return (
-    <section className="mt-5 border-t border-stone-200 pt-4">
-      <h3 className="text-sm font-semibold tracking-wide text-stone-500">ייעודים</h3>
+    <section className="mt-5 border-t border-line pt-4">
+      <h3 className="text-[13px] font-medium text-stone-500">ייעודים</h3>
       <p className="mt-1 text-xs text-stone-500">
         למה הכסף בחשבון מובטח. הסכום קבוע: הוצאה מהחשבון לא מקטינה את ההבטחה אלא הופכת אותה לחסרת
         כיסוי, וזה נקרא בתוך הצילום. הסכום נרשם ב־<bdi>{account.currency}</bdi>, המטבע שהחשבון מוחזק בו.
@@ -565,7 +565,7 @@ function EarmarksPanel({
       {earmarks.length === 0 ? (
         <p className="mt-2 text-sm text-stone-500">אין ייעודים בחשבון הזה.</p>
       ) : (
-        <ul className="mt-2 divide-y divide-stone-200 rounded-md border border-stone-200 bg-white">
+        <ul className="mt-2 divide-y divide-line rounded-lg bg-sunken">
           {earmarks.map((earmark) => {
             const standing = isEarmarkActiveOn(earmark, today);
             return (
@@ -579,7 +579,7 @@ function EarmarksPanel({
                       defaultValue={earmark.name}
                       required
                       maxLength={60}
-                      className="mt-1 w-full rounded-md border border-stone-300 px-3 py-2"
+                      className="mt-1 w-full rounded-lg bg-sunken px-3 py-2"
                     />
                   </label>
                   <label className="block">
@@ -591,12 +591,12 @@ function EarmarksPanel({
                       defaultValue={toDecimalString(earmark.claim)}
                       inputMode="decimal"
                       dir="ltr"
-                      className="tabular mt-1 w-36 rounded-md border border-stone-300 px-3 py-2 text-end"
+                      className="tabular mt-1 w-36 rounded-lg bg-sunken px-3 py-2 text-end"
                     />
                   </label>
                   <button
                     type="submit"
-                    className="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-medium hover:bg-stone-50"
+                    className="rounded-lg px-3 py-2 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
                   >
                     שמירה
                   </button>
@@ -612,7 +612,7 @@ function EarmarksPanel({
                     <input type="hidden" name="intent" value={standing ? "release" : "reinstate"} />
                     <button
                       type="submit"
-                      className="rounded-md border border-stone-300 bg-white px-2 py-1 text-xs hover:bg-stone-50"
+                      className="rounded-lg px-2 py-1 text-xs text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
                     >
                       {standing ? "שחרור הייעוד" : "החזרת הייעוד"}
                     </button>
@@ -633,7 +633,7 @@ function EarmarksPanel({
             required
             maxLength={60}
             placeholder="קרן חירום"
-            className="mt-1 w-48 rounded-md border border-stone-300 px-3 py-2"
+            className="mt-1 w-48 rounded-lg bg-sunken px-3 py-2"
           />
         </label>
         <label className="block">
@@ -645,7 +645,7 @@ function EarmarksPanel({
             required
             inputMode="decimal"
             dir="ltr"
-            className="tabular mt-1 w-36 rounded-md border border-stone-300 px-3 py-2 text-end"
+            className="tabular mt-1 w-36 rounded-lg bg-sunken px-3 py-2 text-end"
           />
         </label>
         <label className="block">
@@ -654,12 +654,12 @@ function EarmarksPanel({
             type="date"
             name="declaredOn"
             defaultValue={dateKey(today)}
-            className="mt-1 rounded-md border border-stone-300 px-3 py-2"
+            className="mt-1 rounded-lg bg-sunken px-3 py-2"
           />
         </label>
         <button
           type="submit"
-          className="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-medium hover:bg-stone-50"
+          className="rounded-lg px-3 py-2 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
         >
           הוספת ייעוד
         </button>
@@ -693,7 +693,7 @@ function Select({
     <select
       name={name}
       defaultValue={defaultValue}
-      className="w-full rounded-md border border-stone-300 bg-white px-3 py-2"
+      className="w-full rounded-lg bg-sunken px-3 py-2"
     >
       {children}
     </select>
@@ -739,7 +739,7 @@ function Notices({
 }) {
   if (isErrorCode(error)) {
     return (
-      <div className="rounded-md border border-red-300 bg-red-50 p-4" role="alert">
+      <div className="rounded-lg bg-red-50 p-4" role="alert">
         <p className="font-medium text-red-900">{ERROR_MESSAGES[error]}</p>
         {detail === undefined ? null : (
           <p className="mt-1 text-sm text-red-800">
@@ -756,7 +756,7 @@ function Notices({
   const text = DONE_MESSAGES[verb] ?? "החשבון נשמר";
 
   return (
-    <div className="rounded-md border border-emerald-300 bg-emerald-50 p-4" role="status">
+    <div className="rounded-lg bg-emerald-50 p-4" role="status">
       <p className="font-medium text-emerald-900">
         {text}
         {name.length === 0 ? null : (
@@ -771,7 +771,7 @@ function Notices({
 
 function UnavailablePanel({ reason }: { reason: string }) {
   return (
-    <div className="rounded-md border border-amber-300 bg-amber-50 p-4">
+    <div className="rounded-lg bg-amber-50 p-4">
       <p className="font-medium text-amber-900">לא ניתן לקרוא את החשבונות</p>
       <p className="mt-1 text-sm text-amber-800">{reason}</p>
     </div>

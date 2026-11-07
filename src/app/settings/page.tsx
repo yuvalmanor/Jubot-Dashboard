@@ -123,8 +123,8 @@ async function loadPage(email: string): Promise<Loaded> {
 
 function AppreciationPanel({ settings }: { settings: HouseholdSettings }) {
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <h2 className="text-sm font-semibold tracking-wide text-stone-500">הנחת עליית ערך לנדל״ן</h2>
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+      <h2 className="text-[13px] font-medium text-stone-500">הנחת עליית ערך לנדל״ן</h2>
       <p className="mt-1 text-sm text-stone-600">
         נכס המוחזק בעלות לעולם אינו מוערך מחדש במיפוי. ההנחה הזאת אינה משנה את המיפוי — היא מאפשרת
         לקרוא את השווי נטו כטווח בין מה שנרשם לבין מה שהוא היה שווה אם היה עולה בקצב הזה. כל מספר
@@ -141,7 +141,7 @@ function AppreciationPanel({ settings }: { settings: HouseholdSettings }) {
             dir="ltr"
             step={PERCENT_STEP}
             defaultValue={asPercentText(settings.appreciation.annualBasisPoints)}
-            className="tabular mt-1 w-32 rounded-md border border-stone-300 px-3 py-2 text-end"
+            className="tabular mt-1 w-32 rounded-lg bg-sunken px-3 py-2 text-end"
           />
         </label>
         <SaveButton label="שמירת ההנחה" />
@@ -156,8 +156,8 @@ function TargetsPanel({ settings }: { settings: HouseholdSettings }) {
   const total = settings.targets.reduce((running, target) => running + target.basisPoints, 0);
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <h2 className="text-sm font-semibold tracking-wide text-stone-500">הקצאה רצויה</h2>
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+      <h2 className="text-[13px] font-medium text-stone-500">הקצאה רצויה</h2>
       <p className="mt-1 text-sm text-stone-600">
         כמה מהשווי אמור לשבת בכל קטגוריה. קטגוריה שנשארת ריקה אינה יעד של אפס — היא קטגוריה שלא
         נקבע לה יעד, וכך היא תיקרא במסך שווי נטו.
@@ -176,7 +176,7 @@ function TargetsPanel({ settings }: { settings: HouseholdSettings }) {
                 dir="ltr"
                 step={PERCENT_STEP}
                 defaultValue={asPercentText(targetFor(settings.targets, category))}
-                className="tabular mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-end"
+                className="tabular mt-1 w-full rounded-lg bg-sunken px-3 py-2 text-end"
               />
             </label>
           ))}
@@ -213,8 +213,8 @@ function ConcentrationPanel({
   const watched = new Set(settings.concentrationAccountIds);
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <h2 className="text-sm font-semibold tracking-wide text-stone-500">ריכוזיות — חשבונות במעקב</h2>
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+      <h2 className="text-[13px] font-medium text-stone-500">ריכוזיות — חשבונות במעקב</h2>
       <p className="mt-1 text-sm text-stone-600">
         אילו חשבונות נספרים כ־<bdi>Apple RSU</bdi> בחישוב חלקם מכלל ההון. הבחירה היא לפי החשבון עצמו
         ולא לפי שמו, כך ששינוי שם לא יגרום לריכוזיות להיקרא בשקט כאפס.
@@ -275,8 +275,8 @@ function MarketMovingPanel({
   const marked = new Set(settings.marketMovingAccountIds);
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <h2 className="text-sm font-semibold tracking-wide text-stone-500">חשבונות שנעים עם השוק</h2>
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+      <h2 className="text-[13px] font-medium text-stone-500">חשבונות שנעים עם השוק</h2>
       <p className="mt-1 text-sm text-stone-600">
         שני צילומים רושמים מצב ולא תנועה, ולכן שום נתון אינו יכול לומר אם קרן עלתה או שהופקד לתוכה
         כסף. זו ההכרעה היחידה בפירוק השינוי, והיא של משק הבית: מה שסומן כאן נקרא{" "}
@@ -350,8 +350,8 @@ function GpWindowPanel({ settings }: { settings: HouseholdSettings }) {
   const { gpWindow } = settings;
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <h2 className="text-sm font-semibold tracking-wide text-stone-500">
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+      <h2 className="text-[13px] font-medium text-stone-500">
         חלון ה־GP לאומדן מחיר ההקצאה
       </h2>
       <p className="mt-1 text-sm text-stone-600">
@@ -371,7 +371,7 @@ function GpWindowPanel({ settings }: { settings: HouseholdSettings }) {
           <select
             name="basis"
             defaultValue={gpWindow.basis}
-            className="mt-1 w-full rounded-md border border-stone-300 bg-white px-3 py-2"
+            className="mt-1 w-full rounded-lg bg-sunken px-3 py-2"
           >
             <option value="trading">ימי מסחר</option>
             <option value="calendar">ימי לוח</option>
@@ -385,7 +385,7 @@ function GpWindowPanel({ settings }: { settings: HouseholdSettings }) {
             inputMode="numeric"
             dir="ltr"
             defaultValue={String(gpWindow.before)}
-            className="tabular mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-end"
+            className="tabular mt-1 w-full rounded-lg bg-sunken px-3 py-2 text-end"
           />
         </label>
 
@@ -396,7 +396,7 @@ function GpWindowPanel({ settings }: { settings: HouseholdSettings }) {
             inputMode="numeric"
             dir="ltr"
             defaultValue={String(gpWindow.after)}
-            className="tabular mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-end"
+            className="tabular mt-1 w-full rounded-lg bg-sunken px-3 py-2 text-end"
           />
         </label>
 
@@ -451,8 +451,8 @@ function RsuAccountPanel({
   const named = accounts.find((account) => account.id === settings.rsuAccountId) ?? null;
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <h2 className="text-sm font-semibold tracking-wide text-stone-500">
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+      <h2 className="text-[13px] font-medium text-stone-500">
         החשבון במיפוי שנושא את החזקת ה־<bdi>RSU</bdi>
       </h2>
       <p className="mt-1 text-sm text-stone-600">
@@ -479,7 +479,7 @@ function RsuAccountPanel({
             <select
               name="accountId"
               defaultValue={settings.rsuAccountId ?? ""}
-              className="mt-1 w-full min-w-64 rounded-md border border-stone-300 bg-white px-3 py-2"
+              className="mt-1 w-full min-w-64 rounded-lg bg-sunken px-3 py-2"
             >
               <option value="">— אין חשבון נושא —</option>
               {open.map((account) => (
@@ -518,8 +518,8 @@ function TaxRatesPanel({ settings }: { settings: HouseholdSettings }) {
   const { taxRates } = settings;
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <h2 className="text-sm font-semibold tracking-wide text-stone-500">שיעורי המס על מכירת RSU</h2>
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+      <h2 className="text-[13px] font-medium text-stone-500">שיעורי המס על מכירת RSU</h2>
       <p className="mt-1 text-sm text-stone-600">
         מנה שעברה את 24 החודשים משלמת את השיעור השולי על ה־GP ואת שיעור רווח ההון על כל מה שמעליו.
         מנה שלא עברה — השיעור השולי על הכול. איזו משתי הדרכים חלה נקבע מהשעון של המנה עצמה, ולא
@@ -536,7 +536,7 @@ function TaxRatesPanel({ settings }: { settings: HouseholdSettings }) {
             dir="ltr"
             step={PERCENT_STEP}
             defaultValue={asPercentText(taxRates.ordinaryBasisPoints)}
-            className="tabular mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-end"
+            className="tabular mt-1 w-full rounded-lg bg-sunken px-3 py-2 text-end"
           />
         </label>
 
@@ -549,7 +549,7 @@ function TaxRatesPanel({ settings }: { settings: HouseholdSettings }) {
             dir="ltr"
             step={PERCENT_STEP}
             defaultValue={asPercentText(taxRates.capitalGainsBasisPoints)}
-            className="tabular mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-end"
+            className="tabular mt-1 w-full rounded-lg bg-sunken px-3 py-2 text-end"
           />
         </label>
 
@@ -573,8 +573,8 @@ function FeesPanel({ settings }: { settings: HouseholdSettings }) {
   const { fees } = settings;
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <h2 className="text-sm font-semibold tracking-wide text-stone-500">עמלות מכירה</h2>
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+      <h2 className="text-[13px] font-medium text-stone-500">עמלות מכירה</h2>
       <p className="mt-1 text-sm text-stone-600">
         מה שהברוקר והנאמן גובים. אלה עובדות עליהם ולא על הקוד, ולכן הן כאן. הן יורדות{" "}
         <span className="font-medium">מהנטו</span> ולא מהבסיס החייב במס: עמלה היא כסף שלא הגיע, לא
@@ -590,7 +590,7 @@ function FeesPanel({ settings }: { settings: HouseholdSettings }) {
             inputMode="decimal"
             dir="ltr"
             defaultValue={fees.brokerPerShare === null ? "" : sharePriceToDecimalString(fees.brokerPerShare)}
-            className="tabular mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-end"
+            className="tabular mt-1 w-full rounded-lg bg-sunken px-3 py-2 text-end"
           />
         </label>
 
@@ -602,7 +602,7 @@ function FeesPanel({ settings }: { settings: HouseholdSettings }) {
             inputMode="decimal"
             dir="ltr"
             defaultValue={fees.brokerFlat === null ? "" : toDecimalString(fees.brokerFlat)}
-            className="tabular mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-end"
+            className="tabular mt-1 w-full rounded-lg bg-sunken px-3 py-2 text-end"
           />
         </label>
 
@@ -615,7 +615,7 @@ function FeesPanel({ settings }: { settings: HouseholdSettings }) {
             dir="ltr"
             step={PERCENT_STEP}
             defaultValue={asPercentText(fees.trusteeBasisPoints)}
-            className="tabular mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-end"
+            className="tabular mt-1 w-full rounded-lg bg-sunken px-3 py-2 text-end"
           />
         </label>
 
@@ -640,7 +640,7 @@ function SaveButton({ label }: { label: string }) {
   return (
     <button
       type="submit"
-      className="rounded-md border border-stone-900 bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
+      className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700"
     >
       {label}
     </button>
@@ -683,7 +683,7 @@ function Notices({
 }) {
   if (isErrorCode(error)) {
     return (
-      <div className="rounded-md border border-red-300 bg-red-50 p-4" role="alert">
+      <div className="rounded-lg bg-red-50 p-4" role="alert">
         <p className="font-medium text-red-900">{ERROR_MESSAGES[error]}</p>
         {detail === undefined ? null : (
           <p className="mt-1 text-sm text-red-800">
@@ -697,7 +697,7 @@ function Notices({
   if (done === undefined || !(done in DONE_MESSAGES)) return null;
 
   return (
-    <div className="rounded-md border border-emerald-300 bg-emerald-50 p-4" role="status">
+    <div className="rounded-lg bg-emerald-50 p-4" role="status">
       <p className="font-medium text-emerald-900">{DONE_MESSAGES[done]}</p>
     </div>
   );
@@ -705,7 +705,7 @@ function Notices({
 
 function UnavailablePanel({ reason }: { reason: string }) {
   return (
-    <div className="rounded-md border border-amber-300 bg-amber-50 p-4">
+    <div className="rounded-lg bg-amber-50 p-4">
       <p className="font-medium text-amber-900">לא ניתן לקרוא את ההגדרות</p>
       <p className="mt-1 text-sm text-amber-800">{reason}</p>
     </div>

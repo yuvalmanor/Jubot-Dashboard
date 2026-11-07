@@ -67,7 +67,7 @@ export function Notices({
 }) {
   if (isErrorCode(error)) {
     return (
-      <div className="rounded-md border border-red-300 bg-red-50 p-4" role="alert">
+      <div className="rounded-lg bg-red-50 p-4" role="alert">
         <p className="font-medium text-red-900">{ERROR_MESSAGES[error]}</p>
         {detail === undefined ? null : (
           <p className="mt-1 text-sm text-red-800">
@@ -84,7 +84,7 @@ export function Notices({
   const text = DONE_MESSAGES[verb] ?? "התרחיש נשמר";
 
   return (
-    <div className="rounded-md border border-emerald-300 bg-emerald-50 p-4" role="status">
+    <div className="rounded-lg bg-emerald-50 p-4" role="status">
       <p className="font-medium text-emerald-900">
         {text}
         {name.length === 0 ? null : (
@@ -99,7 +99,7 @@ export function Notices({
 
 export function UnavailablePanel({ reason }: { reason: string }) {
   return (
-    <div className="rounded-md border border-amber-300 bg-amber-50 p-4">
+    <div className="rounded-lg bg-amber-50 p-4">
       <p className="font-medium text-amber-900">לא ניתן לקרוא את לוח התכנון</p>
       <p className="mt-1 text-sm text-amber-800">{reason}</p>
     </div>
@@ -137,7 +137,7 @@ export function Select({
     <select
       name={name}
       defaultValue={defaultValue}
-      className="w-full rounded-md border border-stone-300 bg-white px-3 py-2"
+      className="w-full rounded-lg bg-sunken px-3 py-2"
     >
       {children}
     </select>
@@ -254,8 +254,8 @@ export function PacePanel({ pace }: { pace: SavingPace }) {
   const to = pace.window[pace.window.length - 1]?.month;
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
-      <h2 className="text-sm font-semibold tracking-wide text-stone-500">קצב החיסכון הנוכחי</h2>
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
+      <h2 className="text-[13px] font-medium text-stone-500">קצב החיסכון הנוכחי</h2>
 
       {pace.monthly === null ? (
         <p className="mt-2 text-sm text-stone-600">
@@ -283,7 +283,7 @@ export function PacePanel({ pace }: { pace: SavingPace }) {
       )}
 
       {pace.incomplete.length === 0 ? null : (
-        <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+        <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
           חודשים שנרשמו רק בחלקם:{" "}
           <bdi>{pace.incomplete.map((month) => formatMonth(month)).join(", ")}</bdi>. חודש לא גמור
           מציג חיסכון קטן מהאמיתי, ולכן הקצב שלמעלה נמוך מהאמת ולא גבוה ממנה.

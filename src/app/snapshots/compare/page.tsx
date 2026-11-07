@@ -78,7 +78,7 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
             {loaded.kind === "ready" ? (
               <Comparison comparison={loaded.comparison} accounts={loaded.accounts} />
             ) : (
-              <p className="rounded-lg border border-dashed border-stone-300 bg-white/60 p-5 text-stone-600">
+              <p className="rounded-card bg-surface shadow-card p-5 text-stone-600">
                 {loaded.hint}
               </p>
             )}
@@ -161,14 +161,14 @@ function ChoicePanel({
     <form
       method="get"
       action="/snapshots/compare"
-      className="grid gap-4 rounded-lg border border-stone-300 bg-white p-5 sm:grid-cols-3 sm:p-6"
+      className="grid gap-4 rounded-card bg-surface shadow-card p-5 sm:grid-cols-3 sm:p-6"
     >
       <SnapshotSelect name="from" label="צילום ראשון" history={history} selected={from} />
       <SnapshotSelect name="to" label="צילום שני" history={history} selected={to} />
       <div className="flex items-end">
         <button
           type="submit"
-          className="rounded-md border border-stone-900 bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
+          className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700"
         >
           השוואה
         </button>
@@ -194,7 +194,7 @@ function SnapshotSelect({
       <select
         name={name}
         defaultValue={selected ?? ""}
-        className="mt-1 w-full rounded-md border border-stone-300 bg-white px-3 py-2"
+        className="mt-1 w-full rounded-lg bg-sunken px-3 py-2"
       >
         <option value="">— בחירת תאריך —</option>
         {history.map((header) => (
@@ -222,9 +222,9 @@ function Comparison({
     <div className="space-y-6">
       <TotalsPanel comparison={comparison} accounts={accounts} />
 
-      <section className="rounded-lg border border-stone-300 bg-white">
-        <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-stone-200 px-5 py-3">
-          <h2 className="text-sm font-semibold tracking-wide text-stone-500">חשבון מול חשבון</h2>
+      <section className="rounded-card bg-surface shadow-card">
+        <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-line px-5 py-3">
+          <h2 className="text-[13px] font-medium text-stone-500">חשבון מול חשבון</h2>
           <p className="text-xs text-stone-500">
             <bdi className="tabular">{counts.changed}</bdi> שורות השתנו ·{" "}
             <bdi className="tabular">{counts.carried}</bdi> נגררו בצילום השני
@@ -243,7 +243,7 @@ function Comparison({
               הפרש לכל חשבון בין {formatDate(earlier.takenOn)} ל־{formatDate(later.takenOn)}
             </caption>
             <thead className="text-xs text-stone-500">
-              <tr className="border-b border-stone-200">
+              <tr className="border-b border-line">
                 <th scope="col" className="px-5 py-2 text-start font-medium">
                   חשבון
                 </th>
@@ -267,8 +267,8 @@ function Comparison({
               if (rows.length === 0) return [];
 
               return (
-                <tbody key={category} className="divide-y divide-stone-100 border-b border-stone-200">
-                  <tr className="bg-stone-50/60">
+                <tbody key={category} className="divide-y divide-line border-b border-line">
+                  <tr className="bg-sunken/70">
                     <th scope="colgroup" colSpan={5} className="px-5 py-2 text-start text-xs text-stone-500">
                       {ASSET_CATEGORY_LABELS[category]}
                     </th>
@@ -282,7 +282,7 @@ function Comparison({
           </table>
         </div>
 
-        <p className="border-t border-stone-200 px-5 py-3 text-xs text-stone-500">
+        <p className="border-t border-line px-5 py-3 text-xs text-stone-500">
           כל הפרש כאן הוא במטבע שהחשבון מוחזק בו, כדי ששינוי בשער לא ייראה כמו כסף שזז.
         </p>
       </section>
@@ -303,7 +303,7 @@ function TotalsPanel({
 
   if (!convertible) {
     return (
-      <div className="rounded-md border border-amber-300 bg-amber-50 p-4">
+      <div className="rounded-lg bg-amber-50 p-4">
         <p className="text-sm text-amber-900">
           לאחד הצילומים אין שער <bdi>USD/ILS</bdi>, ולכן אין דרך לרכז את שניהם לשקלים. ההפרשים לכל
           חשבון למטה נקראים במטבע שלהם.
@@ -315,12 +315,12 @@ function TotalsPanel({
   const totals = comparisonTotals(comparison, accounts, READING_CURRENCY);
 
   return (
-    <section className="rounded-lg border border-stone-300 bg-white p-5 sm:p-6">
+    <section className="rounded-card bg-surface shadow-card p-5 sm:p-6">
       <div className="grid gap-4 sm:grid-cols-3">
         <TotalColumn label={formatDate(earlier.takenOn)} snapshot={earlier} accounts={accounts} />
         <TotalColumn label={formatDate(later.takenOn)} snapshot={later} accounts={accounts} />
         <div>
-          <p className="text-sm font-semibold tracking-wide text-stone-500">הפרש</p>
+          <p className="text-[13px] font-medium text-stone-500">הפרש</p>
           <bdi className="tabular block text-2xl font-semibold">{format(totals.change)}</bdi>
           {totals.rateChanged ? (
             <p className="mt-1 text-xs text-amber-800">
@@ -356,7 +356,7 @@ function TotalColumn({
 
   return (
     <div>
-      <p className="text-sm font-semibold tracking-wide text-stone-500">
+      <p className="text-[13px] font-medium text-stone-500">
         <Link href={`/snapshots/${snapshot.id}` as Route} className="underline-offset-4 hover:underline">
           {label}
         </Link>

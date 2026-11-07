@@ -85,7 +85,7 @@ export default async function AnnualReviewPage({
         {loaded.kind === "unavailable" ? (
           <UnavailablePanel reason={loaded.reason} />
         ) : loaded.kind === "missing" ? (
-          <p className="rounded-lg border border-dashed border-stone-300 bg-white/60 p-5 text-stone-600">
+          <p className="rounded-card bg-surface shadow-card p-5 text-stone-600">
             אין סיכום שנתי לשנת <bdi className="tabular">{year}</bdi>.{" "}
             <Link href="/annual" className="underline underline-offset-4">
               פתיחת סיכום חדש
@@ -131,7 +131,7 @@ function ReviewBody({ context }: { context: ReviewContext }) {
   return (
     <>
       {reading.review.note === null ? null : (
-        <p className="rounded-lg border border-stone-300 bg-white p-5 text-sm text-stone-700">
+        <p className="rounded-card bg-surface shadow-card p-5 text-sm text-stone-700">
           <bdi>{reading.review.note}</bdi>
         </p>
       )}
@@ -236,7 +236,7 @@ function NetWorthPanel({ reading }: { reading: AnnualReviewReading }) {
           )}
 
           {netWorth.withinYear ? null : (
-            <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
               הקריאה הזו נלקחה ב־{formatDate(netWorth.takenOn)}, כלומר לא בתוך השנה שהיא סוגרת.
             </p>
           )}
@@ -266,7 +266,7 @@ function ProjectsPanel({ context }: { context: ReviewContext }) {
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[42rem] text-sm">
               <thead>
-                <tr className="border-b border-stone-200 text-right text-xs text-stone-500">
+                <tr className="border-b border-line text-right text-xs text-stone-500">
                   <th className="py-2 font-medium">פרוייקט</th>
                   <th className="py-2 font-medium">
                     עלות
@@ -355,11 +355,11 @@ function ProjectRow({ line, year }: { line: ProjectLine; year: number }) {
             inputMode="decimal"
             defaultValue={valuation === null ? "" : toDecimalString(valuation.value)}
             placeholder="ריק = אין הערכה"
-            className="tabular w-32 rounded-md border border-stone-300 px-2 py-1"
+            className="tabular w-32 rounded-lg bg-sunken px-2 py-1"
           />
           <button
             type="submit"
-            className="rounded-md border border-stone-300 bg-white px-2 py-1 text-xs font-medium hover:bg-stone-50"
+            className="rounded-lg px-2 py-1 text-xs font-medium text-stone-600 transition-colors hover:bg-stone-900/5 hover:text-stone-900"
           >
             שמירה
           </button>
@@ -447,7 +447,7 @@ function FrozenFactsPanel({ context }: { context: ReviewContext }) {
       </p>
 
       {reading.missing.length === 0 ? null : (
-        <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+        <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
           חסר: <bdi>{reading.missing.map((fact) => FROZEN_FACT_LABELS[fact]).join(", ")}</bdi>. מה
           שלא נרשם ביום הסגירה לא ניתן לשחזור, ולכן הוא נאמר כחסר ולא מומצא.
         </p>
@@ -460,7 +460,7 @@ function FrozenFactsPanel({ context }: { context: ReviewContext }) {
           <select
             name="closingSnapshotId"
             defaultValue={review.closingSnapshotId ?? ""}
-            className="w-full rounded-md border border-stone-300 bg-white px-3 py-2"
+            className="w-full rounded-lg bg-sunken px-3 py-2"
           >
             <option value="">— לא נבחר —</option>
             {snapshots.map((snapshot) => (
@@ -477,7 +477,7 @@ function FrozenFactsPanel({ context }: { context: ReviewContext }) {
             inputMode="decimal"
             defaultValue={review.closingRate === null ? "" : String(review.closingRate.rate)}
             placeholder="3.6500"
-            className="tabular w-full rounded-md border border-stone-300 px-3 py-2"
+            className="tabular w-full rounded-lg bg-sunken px-3 py-2"
           />
         </Field>
 
@@ -491,7 +491,7 @@ function FrozenFactsPanel({ context }: { context: ReviewContext }) {
                 : sharePriceToDecimalString(review.closingSharePrice)
             }
             placeholder="280.0000"
-            className="tabular w-full rounded-md border border-stone-300 px-3 py-2"
+            className="tabular w-full rounded-lg bg-sunken px-3 py-2"
           />
         </Field>
 
@@ -499,7 +499,7 @@ function FrozenFactsPanel({ context }: { context: ReviewContext }) {
           <select
             name="sharePriceCurrency"
             defaultValue={review.closingSharePrice?.currency ?? "USD"}
-            className="w-full rounded-md border border-stone-300 bg-white px-3 py-2"
+            className="w-full rounded-lg bg-sunken px-3 py-2"
           >
             <option value="USD">USD</option>
             <option value="ILS">ILS</option>
@@ -511,14 +511,14 @@ function FrozenFactsPanel({ context }: { context: ReviewContext }) {
             name="note"
             maxLength={400}
             defaultValue={review.note ?? ""}
-            className="w-full rounded-md border border-stone-300 px-3 py-2"
+            className="w-full rounded-lg bg-sunken px-3 py-2"
           />
         </Field>
 
         <div className="sm:col-span-2">
           <button
             type="submit"
-            className="rounded-md border border-stone-900 bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
+            className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700"
           >
             שמירת העובדות
           </button>
@@ -537,8 +537,8 @@ function FrozenFactsPanel({ context }: { context: ReviewContext }) {
 
 function RemovePanel({ reading }: { reading: AnnualReviewReading }) {
   return (
-    <section className="rounded-lg border border-stone-200 bg-white/60 p-5">
-      <h2 className="text-sm font-semibold tracking-wide text-stone-500">הסרת הסיכום</h2>
+    <section className="rounded-card bg-surface shadow-card p-5">
+      <h2 className="text-[13px] font-medium text-stone-500">הסרת הסיכום</h2>
       <p className="mt-1 text-sm text-stone-600">
         הסרה מוחקת את העובדות שהוקפאו ואת ההערכות, ולא נוגעת בשום רישום אחר: המאזן, המיפוי,
         הפרוייקטים והמענקים נשארים כפי שהם.
@@ -547,7 +547,7 @@ function RemovePanel({ reading }: { reading: AnnualReviewReading }) {
         <input type="hidden" name="year" value={reading.review.year} />
         <button
           type="submit"
-          className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-900 hover:bg-red-50"
+          className="rounded-lg px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50"
         >
           הסרת הסיכום של {reading.review.year}
         </button>
