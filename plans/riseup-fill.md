@@ -330,8 +330,18 @@ the tests use.
       `docs/source/maazan-sheet-export.md` to the shekel, **except** the rows a disposition
       is still owed on — חו"ל, which prints *not recorded* rather than −1,560 — and income,
       which prints 17,735 against the sheet's 17,734; the expense rows total 8,613
-- [ ] For Yuval 2026-09 the same, and the lines awaiting a credit print gross: חו"ל 3,692
+- [x] For Yuval 2026-09 the same, and the lines awaiting a credit print gross: חו"ל 3,692
       rather than 3,506, ביגוד והנעלה 140 rather than 20, income 19,053, expense rows 12,565
+- [x] אוכל בחוץ, AliExpress and תחבצ+ליים print as *not recorded* against the sheet's typed
+      0 — RiseUp holds all three as categories with no charges, the same empty envelope it
+      returns for October's blank רפואה, so nothing can tell a 0 from a blank
+      <!-- Added 2026-11-14, out of the box above: it says September reads "the same" as
+           October, and October's names every row that prints *not recorded* against a
+           column value. These three were not named. The rule they prove is the header's
+           own — a blank is never filled with zero — and this is its only live evidence,
+           so it gets a box rather than a clause: a fold later "fixed" to emit 0 for an
+           empty envelope fails here by name. -->
+
 - [x] סופר prints 1,876 — the five weekly envelopes summed to 1,875.57, then rounded once
 - [x] AIAI prints 252 for October (126 + 63 + 63, not the 251 that rounding the sum gives)
       and 169 for September (46 + 61 + 62)
@@ -374,7 +384,8 @@ fold.
 
 - [ ] Yuval 2026-09 matches his sheet column **in full**, total 12,259, once its two credits
       carry `net:` — the 186.07 ferry credit to חו"ל (3,506) and the 120.25 store credit to
-      ביגוד והנעלה (20)
+      ביגוד והנעלה (20); the three rows the sheet typed as 0 are excepted, as in Phase 30,
+      and neither they nor the sheet's zeros move the total
 - [ ] `riseup:fill -- eden 2026-09` matches her sheet column row by row and totals **16,224**,
       which is her sheet's 16,231 less the 7₪ רכב line that does not reconcile; the output
       states that difference rather than absorbing it
