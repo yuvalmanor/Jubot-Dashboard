@@ -538,7 +538,34 @@ function reportComparison(comparison: RiseUpComparison, host: string, person: st
   say(`- Month compared: **${monthKey(comparison.month)}**, ${person}'s Personal Categories only`);
   say();
 
-  if (comparison.identical) {
+  // The unresolved count comes first and overrides everything the table says.
+  // Money RiseUp holds that reached no Personal Category is money this table is
+  // short by, and a row reading *left alone* beside it may be left alone only
+  // because its RiseUp line has no rule yet — so nothing here is offered for
+  // approval until the count is nil.
+  if (!comparison.approvable) {
+    const parts = [
+      comparison.unresolved > 0
+        ? `**${comparison.unresolved}** unresolved ${comparison.unresolved === 1 ? "row" : "rows"} above`
+        : null,
+      comparison.blocked.length > 0
+        ? `**${comparison.blocked.length}** ${comparison.blocked.length === 1 ? "figure" : "figures"} with no Personal Category to land in`
+        : null,
+    ].filter((part) => part !== null);
+    say(
+      `**Not approvable.** ${parts.join(" and ")} — so this table is incomplete by an amount ` +
+        `nobody has placed, and a row below reading *left alone* may be left alone only because ` +
+        `its RiseUp line has no rule yet. It is printed because the report is never refused; ` +
+        `nothing in it may be written until the ${comparison.unresolved + comparison.blocked.length === 1 ? "row is" : "rows are"} resolved.`,
+    );
+    say();
+    say(
+      `Were they resolved, ${comparison.changes.length === 0 ? "**no line**" : `**${comparison.changes.length}** ${comparison.changes.length === 1 ? "line" : "lines"}`} ` +
+        `would be offered: ${comparison.counts.differs} changed, ${comparison.counts.new} new. ` +
+        `${comparison.counts.same} already agree; ${comparison.counts["left-alone"]} are left alone.`,
+    );
+    say();
+  } else if (comparison.identical) {
     say(
       `**Nothing to approve.** ${comparison.counts.same} ${comparison.counts.same === 1 ? "row" : "rows"} ` +
         `already agree, ${comparison.counts["left-alone"]} are being left alone and ` +
@@ -580,9 +607,11 @@ function reportComparison(comparison: RiseUpComparison, host: string, person: st
   say();
 
   say(
-    `*Left alone* is a row the מאזן holds and RiseUp said nothing about — each Person's grid ` +
-      `holds rows the other one actually pays, and three of Yuval's were typed as a literal 0. ` +
-      `None of them is proposed as a zero and none of them counts as a difference.`,
+    `*Left alone* is a row the מאזן holds that no RiseUp line fed — ordinarily because each ` +
+      `Person's grid holds rows the other one actually pays, and three of Yuval's were typed as ` +
+      `a literal 0. None of them is proposed as a zero and none counts as a difference. While ` +
+      `anything above is unresolved, a row may also read *left alone* because the RiseUp line ` +
+      `that would feed it has no rule yet, which is the other reason nothing here is approvable.`,
   );
   say();
 
@@ -704,7 +733,12 @@ if (args.includes("--no-db")) {
 } else {
   try {
     const { held, host } = await heldCategories(person.id, fold.month, connectionString);
-    comparison = { comparison: compareWithLedger(fold.totals, held, fold.month), host };
+    comparison = {
+      comparison: compareWithLedger(fold.totals, held, fold.month, {
+        unresolved: fold.unresolved.length,
+      }),
+      host,
+    };
   } catch (cause) {
     // The fold is the expensive half and it is already in hand. A database that
     // cannot be reached must not take the report down with it.

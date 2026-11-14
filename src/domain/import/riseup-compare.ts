@@ -131,6 +131,25 @@ export interface RiseUpComparison {
   readonly counts: Readonly<Record<ComparisonState, number>>;
   /** Nothing to approve: no `differs`, no `new`, nothing blocked. */
   readonly identical: boolean;
+  /** How many RiseUp rows the fold left unresolved. Carried, never guessed at. */
+  readonly unresolved: number;
+  /**
+   * Whether this table may be acted on at all.
+   *
+   * **False while anything is unresolved**, whatever the rows say. An unmapped
+   * row is money RiseUp holds that reached no Personal Category, so a table drawn
+   * over it is incomplete by an amount nobody has placed — and a row reading
+   * *left alone* beside it may be left alone only because its RiseUp line has no
+   * rule yet. The plan's header is the rule: an unmapped row blocks the write and
+   * the comparison, never the report. So the table still prints, with what it is
+   * missing stated over it, and nothing in it is offered for approval.
+   */
+  readonly approvable: boolean;
+}
+
+export interface ComparisonOptions {
+  /** `fold.unresolved.length` — rows RiseUp holds that nobody has placed. */
+  readonly unresolved?: number;
 }
 
 // --- the comparison ----------------------------------------------------------
@@ -175,6 +194,7 @@ export function compareWithLedger(
   totals: readonly FoldedAmount[],
   held: readonly HeldCategory[],
   month: CalendarMonth,
+  options: ComparisonOptions = {},
 ): RiseUpComparison {
   assertRiseUpAuthority(month);
 
@@ -217,6 +237,7 @@ export function compareWithLedger(
 
   const changes = rows.filter((row) => row.state === "differs" || row.state === "new");
   const blocked = rows.filter((row) => row.state === "no-such-category");
+  const unresolved = options.unresolved ?? 0;
 
   return {
     month,
@@ -225,5 +246,7 @@ export function compareWithLedger(
     blocked,
     counts,
     identical: changes.length === 0 && blocked.length === 0,
+    unresolved,
+    approvable: unresolved === 0 && blocked.length === 0,
   };
 }

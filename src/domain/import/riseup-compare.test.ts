@@ -41,8 +41,8 @@ const rowFor = (
 
 describe("one line per Personal Category, with both figures and the difference", () => {
   const comparison = compareWithLedger(
-    [expense("משתנות", 1_800), expense("סופר", 1_900), expense("פנאי", null)],
-    [heldExpense("משתנות", 1_800), heldExpense("סופר", 1_750), heldExpense("פנאי", null)],
+    [expense("משתנות", 4_210), expense("סופר", 4_365), expense("פנאי", null)],
+    [heldExpense("משתנות", 4_210), heldExpense("סופר", 4_180), heldExpense("פנאי", null)],
     OCTOBER,
   );
 
@@ -55,9 +55,9 @@ describe("one line per Personal Category, with both figures and the difference",
   it("states both figures and the difference on a line that moved", () => {
     const row = rowFor(comparison, "סופר");
     expect(row?.state).toBe("differs");
-    expect(toDecimalString(row?.jubot ?? shekels(0))).toBe("1750.00");
-    expect(toDecimalString(row?.riseUp ?? shekels(0))).toBe("1900.00");
-    expect(toDecimalString(row?.difference ?? shekels(0))).toBe("150.00");
+    expect(toDecimalString(row?.jubot ?? shekels(0))).toBe("4180.00");
+    expect(toDecimalString(row?.riseUp ?? shekels(0))).toBe("4365.00");
+    expect(toDecimalString(row?.difference ?? shekels(0))).toBe("185.00");
   });
 
   it("carries no difference where there is nothing to subtract", () => {
@@ -72,17 +72,17 @@ describe("one line per Personal Category, with both figures and the difference",
 
   it("reports a negative difference as a negative difference", () => {
     const row = rowFor(
-      compareWithLedger([expense('חו"ל', -1_560)], [heldExpense('חו"ל', 200)], OCTOBER),
+      compareWithLedger([expense('חו"ל', -2_480)], [heldExpense('חו"ל', 200)], OCTOBER),
       'חו"ל',
     );
-    expect(toDecimalString(row?.difference ?? shekels(0))).toBe("-1760.00");
+    expect(toDecimalString(row?.difference ?? shekels(0))).toBe("-2680.00");
   });
 });
 
 describe("a month that already agrees", () => {
   const comparison = compareWithLedger(
-    [expense("משתנות", 1_800), expense("סופר", 1_900), expense("שכ\"ד", null)],
-    [heldExpense("משתנות", 1_800), heldExpense("סופר", 1_900), heldExpense("שכ\"ד", 7_000)],
+    [expense("משתנות", 4_210), expense("סופר", 4_365), expense("שכ\"ד", null)],
+    [heldExpense("משתנות", 4_210), heldExpense("סופר", 4_365), heldExpense("שכ\"ד", 3_070)],
     OCTOBER,
   );
 
@@ -99,7 +99,7 @@ describe("a row Jubot holds and RiseUp says nothing about", () => {
   // typed a literal 0 into three of Yuval's. Neither is this feature's business.
   const comparison = compareWithLedger(
     [expense("אוכל בחוץ", null), { personalCategory: "שכ\"ד", type: "expense", amount: null, handTyped: true }],
-    [heldExpense("אוכל בחוץ", 0), heldExpense("שכ\"ד", 7_000)],
+    [heldExpense("אוכל בחוץ", 0), heldExpense("שכ\"ד", 3_070)],
     OCTOBER,
   );
 
@@ -124,7 +124,7 @@ describe("a row Jubot holds and RiseUp says nothing about", () => {
 
 describe("a row RiseUp has and Jubot never recorded", () => {
   const comparison = compareWithLedger(
-    [expense("בתי קפה", 413)],
+    [expense("בתי קפה", 592)],
     [heldExpense("בתי קפה", null)],
     OCTOBER,
   );
@@ -154,8 +154,8 @@ describe("neither side has it", () => {
 describe("a figure with no Personal Category to land in", () => {
   // `רפואי ופארם` is a live RiseUp category of Eden's with no row in her grid.
   const comparison = compareWithLedger(
-    [expense("רפואי ופארם", 120)],
-    [heldExpense("משתנות", 753)],
+    [expense("רפואי ופארם", 244)],
+    [heldExpense("משתנות", 866)],
     OCTOBER,
   );
 
@@ -179,12 +179,12 @@ describe("a figure with no Personal Category to land in", () => {
 describe("income and expense are separate rows even under one name", () => {
   const comparison = compareWithLedger(
     [
-      { personalCategory: "הכנסות", type: "income", amount: shekels(17_735) },
-      expense("משתנות", 1_846),
+      { personalCategory: "הכנסות", type: "income", amount: shekels(21_406) },
+      expense("משתנות", 5_119),
     ],
     [
-      { personalCategory: "הכנסות", type: "income", amount: shekels(17_734) },
-      heldExpense("משתנות", 1_846),
+      { personalCategory: "הכנסות", type: "income", amount: shekels(21_405) },
+      heldExpense("משתנות", 5_119),
     ],
     OCTOBER,
   );
@@ -196,8 +196,8 @@ describe("income and expense are separate rows even under one name", () => {
 
   it("never nets one type against the other", () => {
     const sameName = compareWithLedger(
-      [{ personalCategory: "משתנות", type: "income", amount: shekels(10) }],
-      [heldExpense("משתנות", 10)],
+      [{ personalCategory: "משתנות", type: "income", amount: shekels(77) }],
+      [heldExpense("משתנות", 77)],
       OCTOBER,
     );
     expect(sameName.rows).toHaveLength(2);
@@ -213,7 +213,7 @@ describe("income and expense are separate rows even under one name", () => {
 
 describe("a retired category is flagged rather than hidden", () => {
   const comparison = compareWithLedger(
-    [expense("צביקה", 1_260)],
+    [expense("צביקה", 4_732)],
     [{ personalCategory: "צביקה", type: "expense", amount: null, retired: true }],
     OCTOBER,
   );
@@ -274,4 +274,48 @@ describe("the script is still write-less", () => {
       expect(code).not.toContain(statement);
     },
   );
+});
+
+describe("what the fold left unresolved", () => {
+  // The header's rule: an unmapped row blocks the write and the comparison, never
+  // the report. So the table still comes back — nothing in it is approvable.
+  const matching = () =>
+    compareWithLedger(
+      [expense("משתנות", 4_210), expense("סופר", 4_365)],
+      [heldExpense("משתנות", 4_210), heldExpense("סופר", 4_365)],
+      OCTOBER,
+      { unresolved: 2 },
+    );
+
+  it("is carried on the comparison rather than guessed at", () => {
+    expect(matching().unresolved).toBe(2);
+    expect(compareWithLedger([], [], OCTOBER).unresolved).toBe(0);
+  });
+
+  it("makes a month that otherwise agrees unapprovable", () => {
+    const comparison = matching();
+    expect(comparison.identical).toBe(true);
+    expect(comparison.approvable).toBe(false);
+  });
+
+  it("still returns every row, because the report is never refused", () => {
+    expect(matching().rows).toHaveLength(2);
+  });
+
+  it("leaves a fully resolved month approvable", () => {
+    const comparison = compareWithLedger(
+      [expense("משתנות", 4_210)],
+      [heldExpense("משתנות", 4_210)],
+      OCTOBER,
+      { unresolved: 0 },
+    );
+    expect(comparison.approvable).toBe(true);
+    expect(comparison.identical).toBe(true);
+  });
+
+  it("is not approvable while a figure has nowhere to land either", () => {
+    const comparison = compareWithLedger([expense("רפואי ופארם", 244)], [], OCTOBER);
+    expect(comparison.unresolved).toBe(0);
+    expect(comparison.approvable).toBe(false);
+  });
 });

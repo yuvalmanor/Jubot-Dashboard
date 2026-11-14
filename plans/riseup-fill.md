@@ -474,29 +474,58 @@ Category, print category / Jubot / RiseUp / difference. Still `--write`-less.
            17,735 is approved. The database was seeded by folding the saved response and
            writing its own totals, so no figure passed through anyone's hands. Output:
            "**Nothing to approve.** 19 rows already agree, 0 are being left alone and 2 are
-           blank on both sides — so a write would change nothing." -->
+           blank on both sides — so a write would change nothing." The persisted
+           `.pglite/` was not touched: `db:local` aborts on it, so `LOCAL_PG_DATA=memory://`
+           was used. -->
 - [x] A row Jubot holds and RiseUp says nothing about is shown as *left alone*, never as a
       proposed zero
-      <!-- Live: Yuval's אינטרנט (83) and טלפון 012 (79), whose two Partner commitments stay
-           unresolved until Phase 34 asks him which is which, read *left alone* rather than
-           as a proposed blank. -->
+      <!-- The evidence is `riseup-compare.test.ts`, where a sheet-typed 0 and a row the
+           other Person pays both read *left alone*, with no proposed zero and no difference.
+           Neither October holds a live instance of the ordinary case. The two rows that do
+           read *left alone* in Yuval's October — אינטרנט and טלפון 012 — are **not**
+           it: RiseUp holds 83.16 and 79.00 for them, and the two Partner commitments stay
+           unresolved until Phase 34 asks which is which, so those rows are left alone
+           because the RiseUp line that would feed them has no rule yet. That is a different
+           fact; it is what the section's "not approvable" banner is for, and the footnote
+           under the table now states both reasons rather than only the first. -->
 - [x] A row RiseUp has and Jubot never recorded is shown as *new*
       <!-- Live: Eden 2026-10, which the ledger holds nothing of — twelve rows, all new. -->
-- [x] Yuval 2026-10 against the live database shows **no difference at all** on the rows the
+- [ ] Yuval 2026-10 against the live database shows **no difference at all** on the rows the
       melt reconciled — the rounding rule of Phase 30 is what makes סופר agree rather than
       differ by a shekel — so anything that does differ is a charge that landed after the
       sheet was copied, and is named
-      <!-- Run on 2026-11-14: all eighteen expense rows agree to the shekel — סופר 1,876,
-           AIAI 252, חו"ל −1,560, משתנות 1,846 — and nothing differs that a late charge
-           explains. The one line that differs is **income, by 1₪** (17,735 against the
-           sheet's 17,734), which is not a late charge at all: it is the header's own stated
-           consequence of rounding the salary charge, written into this plan before the
-           phase was built and already excepted by Phase 30's own criterion. It is named in
-           the table like any other difference and is the household's to approve. -->
+      <!-- Left unchecked on 2026-11-14, after the audit found it was being read generously.
+           What the run shows against the household's own ledger: **eighteen of his twenty
+           reconciled rows agree to the shekel** — סופר 1,876, AIAI 252, חו"ל −1,560,
+           משתנות 1,846, רכב 421 — and not one of them differs. Two clauses of the box do
+           not hold as written:
+
+           1. **The other two reconciled rows were never compared.** אינטרנט (83) and
+              טלפון 012 (79) read *left alone*, because their Partner commitments stay
+              unresolved until Phase 34. "No difference at all on the rows the melt
+              reconciled" is true of those two only in the sense that nothing was compared.
+           2. **One line differs, and it is not a late charge.** Income reads 17,735 against
+              the ledger's 17,734 — the header's own stated consequence of rounding the
+              salary charge, written into this plan before the phase was built and already
+              excepted by Phase 30's income criterion. The box's "anything that does differ
+              is a charge that landed after the sheet was copied" leaves no room for it.
+
+           Both are the plan working rather than the code failing, and the figures above are
+           what this phase can show. Rewording is the household's call — the precedent is
+           Phase 30's income box and Phase 31's two sheet-comparison boxes — so the box stays
+           unchecked until they say. Proposed: *"Yuval 2026-10 against the live database
+           shows no difference on the eighteen reconciled rows the mapping file resolves;
+           income differs by the 1₪ the header predicted, and the two Partner rows read
+           left alone until Phase 34 identifies them."* -->
 - [x] The report states which month RiseUp resolved, when its cashflow was last updated,
       and every category still awaiting charges, by name
       <!-- The waiting section now prints in every run rather than only when it has rows, so
-           "none still waiting" is a stated fact rather than a silence. -->
+           "none still waiting" is a stated fact rather than a silence. Three rows of Yuval's
+           2026-11 print a raw envelope id rather than a name. They are fixed items with no
+           charge yet, and the saved response was checked: such an envelope carries no
+           merchant, no `sequenceId` and no customer comment at all, which is the header's
+           own "a fixed item with no charge this month carries no sequenceId and cannot be
+           identified at all". There is nothing nameable to print instead. -->
 - [x] A month before 2026-10 is refused here, where the database is involved, naming the
       cutover; folding such a month report-only stays allowed
       <!-- The guard reads the month the *fold* covers, not the argument, because `previous`
@@ -508,10 +537,38 @@ Category, print category / Jubot / RiseUp / difference. Still `--write`-less.
            `scripts/riseup-fill.ts`, strips its commentary so that prose like "last updated"
            cannot satisfy it, and fails on `insert`, `update `, `delete from` or
            `saveMonthEntries`. It is tied to this phase and goes when Phase 33 writes. -->
-- [ ] **The advisor has audited this phase.** With the three gates green and the work
+- [x] **The advisor has audited this phase.** With the three gates green and the work
       committed, the advisor is asked to audit it; every finding is either fixed here or
       named in the report with the reason it was not. This box is checked last and the
       branch is pushed after it — a phase is not finished until its audit is.
+      <!-- Audited 2026-11-14. Fixed: the comparison ignored what the fold left unresolved
+           and would print "nothing to approve" over two unplaced Partner charges — it now
+           carries the unresolved count, is `approvable: false` while anything is unresolved
+           or has nowhere to land, and leads the section with what it is short by, printed
+           and never refused; the *left alone* footnote claimed "RiseUp said nothing" about
+           rows RiseUp holds money for, and now gives both reasons; box 5 was checked on a
+           generous reading and is unchecked above with the run's real result and a proposed
+           rewording; box 3 cited the Partner pair, which is the wrong case, and now cites
+           the tests; several figures in the test file were real household amounts despite
+           its own header, and were replaced with invented ones.
+
+           Named and not fixed:
+           - **Printing an unapprovable comparison rather than refusing it** is the one
+             reading of the header this phase had to choose. "An unmapped row blocks the
+             write, never the report" and "what they stop is the comparison and the write"
+             pull opposite ways, and criterion 5 asks for a live comparison of a month whose
+             two Partner rows cannot be resolved before Phase 34 — so refusing would put the
+             phase's own criterion out of reach. It prints, marked not approvable. A refusal
+             instead is a header decision and the household's to make.
+           - **`--from` is no longer network-free by default.** `riseup:fill` now loads
+             `.env.production.local`, so a `--from` run reads the ledger unless `--no-db` is
+             passed. Phase 30's box says `--from` folds "with no network": it still makes no
+             RiseUp call, but it does open a database connection. `--no-db` is also a flag
+             the header's command section does not list.
+           - **Phase 31's line 430 has moved, and its own comment is now stale.** Eden's
+             October salary is no longer *excluded*: it reads as a 60,341.69 credit awaiting
+             a disposition, with the salary slot still empty. The box needs one `income`
+             disposition in her mapping file, which is hers to decide and not this phase's. -->
 
 ---
 
