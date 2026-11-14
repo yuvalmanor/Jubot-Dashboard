@@ -388,25 +388,36 @@ fold.
 
 ### Acceptance criteria
 
-- [ ] Yuval 2026-09 matches his sheet column **in full**, total 12,259, once its two credits
+- [x] Yuval 2026-09 matches his sheet column **in full**, total 12,259, once its two credits
       carry `net:` — the 186.07 ferry credit to חו"ל (3,506) and the 120.25 store credit to
       ביגוד והנעלה (20); the three rows the sheet typed as 0 are excepted, as in Phase 30,
       and neither they nor the sheet's zeros move the total
 - [ ] `riseup:fill -- eden 2026-09` matches her sheet column row by row and totals **16,224**,
       which is her sheet's 16,231 less the 7₪ רכב line that does not reconcile; the output
       states that difference rather than absorbing it
-- [ ] סופר prints 617, from `כלכלה` (203.95) and `השלמות` (412.86) together
-- [ ] ארנונה prints 471 and שכ"ד prints 7,000, both drawn out of `חשבונות` by label
-- [ ] ביגוד והנעלה prints 249 and חיות מחמד prints 1,466, each net of its credit
-- [ ] A credit with no recorded disposition is reported with its merchant, amount and date,
+      <!-- Left unchecked on 2026-11-14. The figures are verified: her September folds row
+           by row to her sheet column and totals exactly 16,224, with nothing adjusted and
+           no balancing row. What is not built is the last clause — the output naming the
+           sheet's 16,231 — because nothing in this phase reads the sheet, and the header
+           forbids a sheet amount in the mapping file. Two ways out, and it is the
+           household's call: reword this box and the רכב one the way Phase 30's boxes were
+           reworded, or let a report-only run read `docs/source/maazan-sheet-export.md` and
+           print a third column. -->
+- [x] סופר prints 617, from `כלכלה` (203.95) and `השלמות` (412.86) together
+- [x] ארנונה prints 471 and שכ"ד prints 7,000, both drawn out of `חשבונות` by label
+- [x] ביגוד והנעלה prints 249 and חיות מחמד prints 1,466, each net of its credit
+- [x] A credit with no recorded disposition is reported with its merchant, amount and date,
       blocks the write and never nets by guesswork
-- [ ] A disposition recorded by `transactionId` makes the next run silent about it, and
+- [x] A disposition recorded by `transactionId` makes the next run silent about it, and
       `income` lands in the Person's income category
-- [ ] Yuval's חו"ל prints −1,560 once its Bit credit carries `net:חו"ל`, bringing his
+- [x] Yuval's חו"ל prints −1,560 once its Bit credit carries `net:חו"ל`, bringing his
       October expense rows to the sheet's 7,053
 - [ ] רכב prints 2,562 and the output says so plainly against the sheet's 2,569; the
       difference is reported, not reconciled away
-- [ ] A fixture built from an untidied month — no salary charge, an excluded salary, a rent
+      <!-- Left unchecked on 2026-11-14, for the reason on the רכב-bearing box above. The
+           row prints **2,562** beside its exact 2,562.25 and is reconciled away nowhere;
+           the sheet's 2,569 appears in no output because no output reads the sheet. -->
+- [x] A fixture built from an untidied month — no salary charge, an excluded salary, a rent
       cheque in the *other spending* bucket — reports that it found no salary, names the
       excluded amount and writes no income
       <!-- Taken from Eden's 2026-10 as it stood on 2026-11-13. Her live October will stop
@@ -414,15 +425,29 @@ fold.
            fixture, not to her account. -->
 - [ ] For her live 2026-10, after she tidies it, income reads what RiseUp then shows — read
       from the source, never the 60,341.69 written into this plan
-- [ ] A label rule applies to a charge in the *other spending* bucket as well as to one in
+      <!-- Left unchecked on 2026-11-14: her October is still untidied, so the condition
+           this box opens with has not happened. The live run that day read the salary as
+           an excluded 60,341.69 and wrote no income, which is the box above it, not this
+           one. Checking this needs one run after she squares the month away. -->
+- [x] A label rule applies to a charge in the *other spending* bucket as well as to one in
       a category, so October's 7,000 cheque reaches שכ"ד
-- [ ] RiseUp's savings category is marked `never-write` and is silent in every month
-- [ ] Reserve pay is reported as a memo and reaches no Personal Category
-- [ ] Yuval's fold is unchanged by this phase (his file still carries no label rules)
-- [ ] **The advisor has audited this phase.** With the three gates green and the work
+- [x] RiseUp's savings category is marked `never-write` and is silent in every month
+- [x] Reserve pay is reported as a memo and reaches no Personal Category
+- [x] Yuval's fold is unchanged by this phase (his file still carries no label rules)
+- [x] **The advisor has audited this phase.** With the three gates green and the work
       committed, the advisor is asked to audit it; every finding is either fixed here or
       named in the report with the reason it was not. This box is checked last and the
       branch is pushed after it — a phase is not finished until its audit is.
+      <!-- Audited 2026-11-14. Fixed: the two boxes above were unchecked rather than read
+           generously; a `net:` destination no rule feeds is now refused instead of
+           inventing a row; the plan file and the test file were restored to LF after a
+           script rewrote them as CRLF, and `riseup-yuval.json` to its own formatting; the
+           fixture's one real merchant and amount were replaced with invented ones per
+           ADR 0006. Named and not fixed: a `net:` credit against a Personal Category fed
+           by several RiseUp lines is refused with no way to resolve it, so a single
+           grocery refund would make Eden's סופר unwritable in Phase 33. Nothing in the
+           header settles which line such a credit corrects, so it is a planning decision
+           and not an implementation detail. -->
 
 ---
 

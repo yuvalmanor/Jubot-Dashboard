@@ -289,11 +289,21 @@ function report(fold: RiseUpFold, source: string, savedTo: string | null): void 
   say(`| --- | --- | ---: | --- |`);
   for (const total of fold.totals) {
     const lines = total.lines
-      .map((line) =>
-        line.exact.minorUnits === line.rounded.minorUnits
-          ? `${line.label} ${shekels(line.rounded)}`
-          : `${line.label} ${shekels(line.exact)} → ${shekels(line.rounded)}`,
-      )
+      .map((line) => {
+        // Netting first, rounding after — so a netted line shows its gross, the
+        // credit that came off it, and only then the figure.
+        // A credit netted into a category that held no charge of its own is the
+        // whole line; there is no gross to show it coming off.
+        const netting =
+          line.credits.length === 0 || line.gross.minorUnits === 0
+            ? ""
+            : ` ${shekels(line.gross)}${line.credits
+                .map((credit) => ` − ${shekels(credit.amount)} (${credit.merchant})`)
+                .join("")} =`;
+        return line.exact.minorUnits === line.rounded.minorUnits
+          ? `${line.label}${netting} ${shekels(line.rounded)}`
+          : `${line.label}${netting} ${shekels(line.exact)} → ${shekels(line.rounded)}`;
+      })
       .join("; ");
     const amount = total.amount === null ? "*not recorded*" : `**${shekels(total.amount)}**`;
     const from = total.lines.length === 0 ? (total.handTyped ? "hand-typed" : "—") : lines;
@@ -316,8 +326,29 @@ function report(fold: RiseUpFold, source: string, savedTo: string | null): void 
   if (income.length === 0) {
     say(
       `**No income.** No salary charge was found, so none is written — RiseUp's predicted ` +
-        `salary is never substituted. What was seen is listed below.`,
+        `salary is never substituted.`,
     );
+    const excludedIn = fold.excluded.filter((row) => row.side === "income");
+    if (excludedIn.length > 0) {
+      say();
+      say(
+        `RiseUp holds ${excludedIn.length === 1 ? "one payment" : `${excludedIn.length} payments`} in as ` +
+          `**excluded**, and excluded money reaches no total. If the salary is among them, the month is ` +
+          `not tidied away yet:`,
+      );
+      for (const row of excludedIn) {
+        say(`- ${row.label} — ${shekels(row.amount)} in${row.date === undefined ? "" : ` (${row.date})`}`);
+      }
+    }
+    const credits = fold.unresolved.filter((row) => row.kind === "credit-without-disposition");
+    if (credits.length > 0) {
+      say();
+      say(
+        `${credits.length === 1 ? "One payment" : `${credits.length} payments`} in arrived outside the ` +
+          `salary slot and ${credits.length === 1 ? "is" : "are"} listed under *Unresolved* below. A real ` +
+          `earning among them is recorded with the \`income\` disposition rather than left unwritable.`,
+      );
+    }
   }
   say();
 
@@ -337,6 +368,21 @@ function report(fold: RiseUpFold, source: string, savedTo: string | null): void 
     }
   }
   say();
+
+  if (fold.memos.length > 0) {
+    say(`## Memos, written nowhere`);
+    say();
+    say(
+      `These sit beside the מאזן's totals and reach no Personal Category at all. Reserve pay is ` +
+        `the household's case: it has no row to go into and must not be given one.`,
+    );
+    say();
+    for (const row of fold.memos) {
+      const where = [row.date, row.note].filter((part) => part !== undefined).join(" — ");
+      say(`- ${row.label} — ${shekels(row.amount)} in${where === "" ? "" : ` (${where})`}`);
+    }
+    say();
+  }
 
   if (fold.silenced.length > 0) {
     say(`## Silent by decision`);

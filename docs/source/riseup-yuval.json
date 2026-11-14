@@ -20,7 +20,11 @@
     "asks Yuval (Phase 34).",
     "",
     "Yuval's file carries no label rules: his categories are already his rows. Eden's",
-    "חשבונות needs them (Phase 31)."
+    "חשבונות needs them (Phase 31).",
+    "",
+    "transactionDispositions records what became of each payment in that is not the salary",
+    "charge, keyed by the transactionId RiseUp gave it. Ids, reasons and merchant labels only,",
+    "never an amount: the figures stay in RiseUp and the fold reads them from there."
   ],
   "incomeCategory": "הכנסות",
   "variableCategory": "משתנות",
@@ -115,6 +119,36 @@
       "action": "never-write",
       "riseupGoals": true,
       "note": "a RiseUp goal is money put aside, which the מאזן records nowhere either"
+    }
+  ],
+  "transactionDispositions": [
+    {
+      "transactionId": "baa642c3-b7c3-11f1-a256-11644a4fc3f2",
+      "action": "net:חו\"ל",
+      "merchant": "SARONIC FERRIES",
+      "date": "2026-09-19",
+      "note": "a ferry refund of a trip expense; the sheet already netted it into חו\"ל before rounding"
+    },
+    {
+      "transactionId": "956aa766-acbc-11f1-be76-fdad9e712721",
+      "action": "net:ביגוד והנעלה",
+      "merchant": "המשביר בתי כל בו בע\"",
+      "date": "2026-09-07",
+      "note": "a department-store credit against the same month's clothes charge"
+    },
+    {
+      "transactionId": "7f83699e-c063-11f1-b385-ad901e876726",
+      "action": "net:חו\"ל",
+      "merchant": "העברת כסף bit",
+      "date": "2026-10-04",
+      "note": "a Bit transfer reimbursing a trip expense; it is what makes October חו\"ל negative"
+    },
+    {
+      "transactionId": "a22fcf08-c12c-11f1-b782-032e01829175",
+      "action": "ignore",
+      "merchant": "העברת כסף bit",
+      "date": "2026-10-05",
+      "note": "reached nothing the מאזן records"
     }
   ]
 }

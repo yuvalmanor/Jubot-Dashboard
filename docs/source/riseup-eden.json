@@ -1,0 +1,136 @@
+{
+  "person": "eden",
+  "server": "riseup-eden",
+  "customer": "267458",
+  "_note": [
+    "Which RiseUp row feeds which of Eden's Personal Categories. Committed rather than",
+    "stored in the database so that a changed subscription shows up in a git diff and a",
+    "person can read it (ADR 0006).",
+    "",
+    "Rules and identities only — never an amount. Every sequenceId below was read off the",
+    "charges of 2026-09 and is the same across months: an envelope's own id changes every",
+    "month, which is why it is never the key.",
+    "",
+    "Eden's file is the one that needs label rules. RiseUp keeps one חשבונות category where",
+    "her grid has five rows, and RiseUp's own label on each charge is exactly the row name —",
+    "שיק for the rent cheque, ארנונה, מים, חשמל, גז. A label rule wins over a category rule",
+    "and reaches into the other-spending bucket too, which is how a rent cheque that landed",
+    "in the bucket still reaches שכ\"ד. There is deliberately no category rule for חשבונות:",
+    "a charge in it that no label claims is an unresolved row, not a guess.",
+    "",
+    "RiseUp's רפואי ופארם has no row in her 2026 grid, so it is left unmapped and prints as",
+    "unresolved. Proposing it as a new Personal Category is --map's job (Phase 34), and this",
+    "file may not invent one.",
+    "",
+    "Her אוכל APPLE, Tello/Skype and אינטרנט rows are blank all year and are absent here",
+    "rather than marked hand-typed: which of her rows really has no RiseUp source is settled",
+    "against the database by --map, not read off the sheet export."
+  ],
+  "incomeCategory": "הכנסות",
+  "variableCategory": "משתנות",
+  "categoryRules": [
+    {
+      "riseupCategory": "כלכלה",
+      "personalCategory": "סופר",
+      "note": "arrives as one envelope per week, summed into one line and rounded once"
+    },
+    {
+      "riseupCategory": "השלמות",
+      "personalCategory": "סופר",
+      "note": "the sheet's own note on her סופר row reads כולל השלמות; two RiseUp categories, one row"
+    },
+    {
+      "riseupCategory": "אוכל בחוץ - קפה",
+      "personalCategory": "בתי קפה"
+    },
+    {
+      "riseupCategory": "אוכל בחוץ - בילויים",
+      "personalCategory": "אוכל בחוץ"
+    },
+    {
+      "riseupCategory": "אוכל בחוץ - וולט",
+      "personalCategory": "אוכל בחוץ"
+    },
+    { "riseupCategory": "רכב", "personalCategory": "רכב" },
+    {
+      "riseupCategory": "תחבורה ציבורית",
+      "personalCategory": "תחבצ+ליים",
+      "note": "the grid's row is תחבצ+ליים — buses, trains and Lime together"
+    },
+    {
+      "riseupCategory": "חו״ל",
+      "personalCategory": "חו\"ל",
+      "note": "RiseUp writes it with a gershayim (U+05F4), the grid with a straight quote"
+    },
+    { "riseupCategory": "ביגוד והנעלה", "personalCategory": "ביגוד והנעלה" },
+    { "riseupCategory": "חיות מחמד", "personalCategory": "חיות מחמד" },
+    { "riseupCategory": "נגאנו", "personalCategory": "נגאנו" },
+    { "riseupCategory": "העברות EPP", "personalCategory": "העברות EPP" },
+    { "riseupCategory": "כושר", "personalCategory": "כושר" }
+  ],
+  "fixedItemRules": [
+    {
+      "sequenceId": "5e61a083-c1c1-11ef-8468-21e21604dc6f",
+      "merchant": "משכורת",
+      "personalCategory": "הכנסות",
+      "note": "the salary charge. RiseUp's predicted salary is never used: no charge, no income"
+    },
+    {
+      "sequenceId": "f1315922-7808-11f0-9412-27669800880d",
+      "merchant": "הו”ק הלואה קרן",
+      "personalCategory": "הלווואות",
+      "note": "the grid spells it with three ו — הלווואות — and the row name is what it is"
+    },
+    {
+      "sequenceId": "d9d9b00c-f379-11f0-9c35-a5e4865f27ae",
+      "merchant": "רייזאפ מומנטס בע?מ",
+      "personalCategory": "רייזאפ"
+    }
+  ],
+  "labelRules": [
+    {
+      "label": "שיק",
+      "personalCategory": "שכ\"ד",
+      "note": "the rent is paid by cheque, and RiseUp labels the charge שיק wherever it lands"
+    },
+    { "label": "ארנונה", "personalCategory": "ארנונה" },
+    { "label": "מים", "personalCategory": "מים" },
+    { "label": "חשמל", "personalCategory": "חשמל" },
+    { "label": "גז", "personalCategory": "גז" }
+  ],
+  "dispositions": [
+    {
+      "action": "never-write",
+      "riseupCategory": "__saving-hidden-category__",
+      "note": "shown in the app as השקעה וחיסכון. Money moved, not spent: the מאזן records transfers nowhere"
+    },
+    {
+      "action": "never-write",
+      "riseupGoals": true,
+      "note": "a RiseUp goal is money put aside, which the מאזן records nowhere either"
+    }
+  ],
+  "transactionDispositions": [
+    {
+      "transactionId": "f39d3a90-a678-11f1-abd1-4bedd11762d5",
+      "action": "memo",
+      "merchant": "מופ”ת מילואים",
+      "date": "2026-09-01",
+      "note": "reserve pay. מילואים sits beside the sheet's totals and has no Personal Category at all"
+    },
+    {
+      "transactionId": "6d793b77-ae59-11f1-afe5-c71422df1bce",
+      "action": "net:ביגוד והנעלה",
+      "merchant": "מיס נורי פאשיין בע\"מ-צמרת",
+      "date": "2026-09-10",
+      "note": "a credit from the same clothes shop; the sheet already netted it before rounding"
+    },
+    {
+      "transactionId": "d05fa2f5-b237-11f1-992c-b57a318616b2",
+      "action": "net:חיות מחמד",
+      "merchant": "כל בו לחתול ולכלב",
+      "date": "2026-09-15",
+      "note": "a pet-shop credit against the same month's charge from that shop"
+    }
+  ]
+}
