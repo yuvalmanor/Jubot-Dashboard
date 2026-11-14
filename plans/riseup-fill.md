@@ -342,7 +342,13 @@ the tests use.
            he answers, both are unresolved rows — printed, not written. -->
 - [ ] RiseUp's savings category and its goal are silent in every month, on both accounts
 - [x] רפואה and ביגוד והנעלה print as *not recorded*, never as 0
-- [ ] Income prints 17,734 from the salary charge; the predicted salary is never used
+- [x] Income is the salary charge — 17,734.54, which the shekel rule rounds to 17,735 — and
+      never RiseUp's prediction for the slot, which was 17,500.36
+      <!-- This box read "income prints 17,734" until 2026-11-14, which is the sheet's
+           figure and not the printed one: the header and the criterion above both settle
+           17,735, and a box cannot ask for a figure its own phase forbids. What it is
+           for is the clause nothing else tests — the charge rather than the prediction,
+           234₪ apart in October, so a fold that read the wrong one would print 17,500. -->
 - [x] The two Bit credits are reported as awaiting a disposition and change no figure
 - [x] An excluded transaction never reaches a total
 - [x] A RiseUp row with no rule stops the run and is named in the output; a fixed item with
