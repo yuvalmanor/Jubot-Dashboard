@@ -371,6 +371,17 @@ export function foldRiseUpMonth(
    * receipt inside an expense row is a credit nobody has decided about yet — it is
    * reported and it changes nothing (Phase 31 records the dispositions).
    */
+  /**
+   * Whether this row has anything of its own in it. A row whose only movement is
+   * a credit nobody has decided about has no figure yet: it reads *not recorded*
+   * rather than 0, exactly as a tracked category with no charges does, because a
+   * blank and a zero are different facts (ADR 0001).
+   */
+  const contributes = (personalCategory: string, actuals: readonly RiseUpActual[]): boolean =>
+    personalCategory === mapping.incomeCategory
+      ? actuals.some(isIncomeActual)
+      : actuals.some((actual) => !isIncomeActual(actual));
+
   const exactFor = (personalCategory: string, actuals: readonly RiseUpActual[]): Money =>
     personalCategory === mapping.incomeCategory
       ? subtract(receivedIn(actuals, currency), chargedIn(actuals, currency))
@@ -492,6 +503,7 @@ export function foldRiseUpMonth(
         continue;
       }
       if (rule.personalCategory !== mapping.incomeCategory) reportCredits(envelope, merchant);
+      if (!contributes(rule.personalCategory, actuals)) continue;
       push(rule.personalCategory, {
         label: rule.merchant ?? merchant,
         kind: "fixedItem",
@@ -506,6 +518,7 @@ export function foldRiseUpMonth(
       const actuals = actualsOf(envelope);
       if (actuals.length === 0) continue;
       reportCredits(envelope, "the other-spending bucket");
+      if (!contributes(mapping.variableCategory, actuals)) continue;
       push(mapping.variableCategory, {
         label: "other spending",
         kind: "variableBucket",

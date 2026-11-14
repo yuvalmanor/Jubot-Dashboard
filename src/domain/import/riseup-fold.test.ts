@@ -296,6 +296,38 @@ describe("a blank is never a zero", () => {
     expect(row(fold(), "בריאות").lines).toHaveLength(0);
   });
 
+  it("leaves a row whose only movement is a credit not recorded, never 0", () => {
+    // A refund and nothing else, both on a mapped fixed item and in the bucket.
+    // Until a disposition says what became of it there is no figure to print, and
+    // 0 would claim that nothing was spent.
+    const onlyCredits: RiseUpMonth = {
+      ...MONTH,
+      envelopes: [
+        {
+          id: "env-stream-a-october",
+          type: "fixed",
+          originalAmount: 60,
+          balanceDate: "2026-10-18",
+          sequenceCustomerComment: "",
+          actuals: [receipt("tx-stream-a-refund", "מנוי א", 62.74, "seq-stream-a")],
+        },
+        {
+          id: "env-variable",
+          type: "variable",
+          originalAmount: null,
+          balanceDate: "2026-11-02",
+          sequenceCustomerComment: "",
+          actuals: [receipt("tx-other-back", "חנות", 50)],
+        },
+      ],
+      excluded: [],
+    };
+    const result = fold(onlyCredits);
+    expect(figure(result, "מנויים")).toBeNull();
+    expect(figure(result, "משתנות")).toBeNull();
+    expect(result.unresolved.filter((item) => item.kind === "credit-without-disposition")).toHaveLength(2);
+  });
+
   it("prints a row with no RiseUp source at all as hand-typed, not as 0", () => {
     expect(figure(fold(), 'שכ"ד')).toBeNull();
     expect(row(fold(), 'שכ"ד').handTyped).toBe(true);

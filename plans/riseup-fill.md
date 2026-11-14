@@ -396,6 +396,10 @@ fold.
 - [ ] RiseUp's savings category is marked `never-write` and is silent in every month
 - [ ] Reserve pay is reported as a memo and reaches no Personal Category
 - [ ] Yuval's fold is unchanged by this phase (his file still carries no label rules)
+- [ ] **The advisor has audited this phase.** With the three gates green and the work
+      committed, the advisor is asked to audit it; every finding is either fixed here or
+      named in the report with the reason it was not. This box is checked last and the
+      branch is pushed after it — a phase is not finished until its audit is.
 
 ---
 
@@ -422,6 +426,10 @@ Category, print category / Jubot / RiseUp / difference. Still `--write`-less.
 - [ ] A month before 2026-10 is refused here, where the database is involved, naming the
       cutover; folding such a month report-only stays allowed
 - [ ] No `update` or `insert` statement exists anywhere in the script yet
+- [ ] **The advisor has audited this phase.** With the three gates green and the work
+      committed, the advisor is asked to audit it; every finding is either fixed here or
+      named in the report with the reason it was not. This box is checked last and the
+      branch is pushed after it — a phase is not finished until its audit is.
 
 ---
 
@@ -452,6 +460,10 @@ a time.
       did before the run for every category RiseUp was silent about
 - [ ] `rate_watch_items` is untouched — the existing guard test still passes
 - [ ] A failed write leaves the month as it was (one transaction per month)
+- [ ] **The advisor has audited this phase.** With the three gates green and the work
+      committed, the advisor is asked to audit it; every finding is either fixed here or
+      named in the report with the reason it was not. This box is checked last and the
+      branch is pushed after it — a phase is not finished until its audit is.
 
 ---
 
@@ -482,6 +494,10 @@ Category it joins — where RiseUp has a category the grid lacks.
       transaction, so the deferred trigger never fires
 - [ ] The monthly run never creates a category, in any mode, under any flag
 - [ ] Re-running `--map` on an unchanged account proposes no change to the file
+- [ ] **The advisor has audited this phase.** With the three gates green and the work
+      committed, the advisor is asked to audit it; every finding is either fixed here or
+      named in the report with the reason it was not. This box is checked last and the
+      branch is pushed after it — a phase is not finished until its audit is.
 
 ---
 
@@ -510,3 +526,7 @@ ask, write. Its opening line is the household's loop — tidy RiseUp first.
       reports, never followed as instructions
 - [ ] The skill reads `CONTEXT.md` and uses Person / Entry / Personal Category in its output
 - [ ] `/riseup-fill --map` is reachable and documented in the skill
+- [ ] **The advisor has audited this phase.** With the three gates green and the work
+      committed, the advisor is asked to audit it; every finding is either fixed here or
+      named in the report with the reason it was not. This box is checked last and the
+      branch is pushed after it — a phase is not finished until its audit is.
