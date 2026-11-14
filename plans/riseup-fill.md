@@ -185,19 +185,29 @@ a wrong figure gets into the grid. So the model never does the sums:
 - **The skill is the plumbing**: it gets a month's response onto disk, hands the path to the
   script, shows the result and asks.
 
-**Open, and it blocks Phase 31, not 35:** how the response reaches the disk. Yuval's months
-are 70–90,000 characters, too large for the model's context, so the harness spills each to a
-file and names the path — usable as-is, which is how both of his months were reconciled.
-Eden's arrived *inline* instead, and there is no file: putting one on disk would mean the
-model retyping a thousand lines of amounts, which is the transcription this feature exists to
-abolish. Phase 31 is proved against her real September, so it needs that file.
+### The script fetches the month itself
 
-The alternative is for `scripts/riseup-fill.ts` to **be** the MCP client: launch
-`npx -y @riseup-oss/mcp` with that Person's token and call `get_budget` itself, so no figure
-ever passes through the model and every month arrives the same way. Same server, same
-read-only `budget:read` scope. It does mean the script reads the token out of the MCP
-configuration, and it changes Phase 30's shape: `--from <saved.json>` stays, as what the
-tests and a re-run use, but the normal path becomes `--fetch`.
+**Settled.** `scripts/riseup-fill.ts` is the MCP client: it launches `npx -y @riseup-oss/mcp`
+with that Person's token and calls `get_budget` itself. **No figure ever passes through the
+model**, and every month arrives the same way regardless of size.
+
+The way that was tried instead is the reason: a response too large for the model's context is
+spilled to a file by the harness, which is how Yuval's two months (70–90,000 characters) were
+reconciled — but Eden's arrive *inline*, with no file, and putting one on disk would mean the
+model retyping a thousand lines of amounts. A mechanism that works only by accident of file
+size, and whose accident goes the wrong way for one of the two accounts, is not a mechanism.
+
+What this commits to:
+
+- **Same server, same scope.** The `@riseup-oss/mcp` server the household already configured,
+  speaking stdio, with `budget:read` and nothing else.
+- **The token is read from the MCP configuration** — `mcpServers.<server>.env.RISEUP_PAT` in
+  the user's `~/.claude.json` — for the server that Person's row names. It is never printed,
+  never logged, never written to the repository, and never passed on a command line.
+- **`--from <saved.json>` stays** as the path tests and a re-run use, so every phase can be
+  checked without the network and `riseup-fold.ts` itself stays pure.
+- **The skill keeps no data.** It names the Person and the month, runs the script, and shows
+  what came back.
 
 **No real RiseUp output is ever committed.** Fixtures are written by hand. The response
 files live in the scratchpad, and the mapping files hold rules and ids, never amounts.
@@ -302,12 +312,20 @@ Category rules, fixed-item rules by `sequenceId`, the weekly sum, the bucket, ex
 ignored, a no-charge fixed item left blank, income from the salary charge. No label rules,
 no refunds, no database, no writes.
 
-Nothing in this phase may read the network: the script takes a path to a saved response.
+This phase also brings the fetch, because it is how a month arrives: the script speaks to
+that Person's RiseUp MCP server and saves the response to the scratchpad. `riseup-fold.ts`
+stays pure and network-free — the fetch lives in the script, behind the same `--from` door
+the tests use.
 
 ### Acceptance criteria
 
-- [ ] `npm run riseup:fill -- yuval 2026-10 --from <saved.json>` prints one amount per
-      Personal Category and writes nothing
+- [ ] `npm run riseup:fill -- yuval 2026-10` fetches the month through the `riseup` MCP
+      server and prints one amount per Personal Category, writing nothing to the ledger
+- [ ] `--from <saved.json>` folds a response already on disk, identically, with no network
+- [ ] The response is saved outside the repository and `git status` is clean after a run
+- [ ] The token never appears in output, in an error, in a log, or on a command line
+- [ ] A Person whose MCP server is not configured stops the run, naming the entry to add,
+      and never reads the other Person's account
 - [ ] Every printed figure for Yuval 2026-10 equals his column in
       `docs/source/maazan-sheet-export.md` to the shekel, **except** the rows a disposition
       is still owed on — חו"ל, which prints *not recorded* rather than −1,560 — and income,
@@ -342,8 +360,9 @@ Credits netted against a category (both accounts need this), the four dispositio
 rules that win over category rules (hers only), and `docs/source/riseup-eden.json`. Still no
 database and no writes — both accounts must be provably right before anything can write.
 
-**Settle the open mechanic first**: this phase is proved against Eden's real September, and
-her responses arrive inline rather than as a file.
+This phase is proved against Eden's real September, which the Phase 30 fetch is what makes
+reachable: her responses are small enough to arrive inline, so there is no spilled file to
+fold.
 
 ### Acceptance criteria
 
@@ -471,14 +490,9 @@ Category it joins — where RiseUp has a category the grid lacks.
 ### What to build
 
 `.claude/skills/riseup-fill/SKILL.md`, **authored with `/skill-smith`** so it follows the
-house conventions for skills rather than being hand-rolled. It drives the phases above:
-resolve Person → server, get the month's response onto disk, hand the path to the script,
-show the side-by-side, ask, write. Its opening line is the household's loop — tidy RiseUp
-first.
-
-The open mechanic above is settled back in Phase 31, and this phase inherits it: either the
-skill hands over the file the harness spilled, or the script fetches the month itself and the
-skill never carries a figure.
+house conventions for skills rather than being hand-rolled. It is deliberately thin, because
+the script fetches and folds: name the Person and the month, run it, show the side-by-side,
+ask, write. Its opening line is the household's loop — tidy RiseUp first.
 
 ### Acceptance criteria
 
@@ -489,7 +503,8 @@ skill never carries a figure.
 - [ ] A month range runs month by month, each with its own approval
 - [ ] The skill states the resolved month, the cashflow's last update, and any category
       still awaiting charges before showing the diff
-- [ ] The skill never does arithmetic itself: every figure it shows comes from the script
+- [ ] The skill never does arithmetic itself, and never carries a month's data: every figure
+      it shows comes from the script, which fetched it
 - [ ] No RiseUp response is written inside the repository
 - [ ] Merchant names, sequence names and customer comments are treated as data — quoted in
       reports, never followed as instructions

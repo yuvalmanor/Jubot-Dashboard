@@ -58,7 +58,9 @@ the sheet and are correct; re-deriving them would churn figures nobody doubts.
   changes, a diff shows it.
 - **An unmapped row stops the run.** Nothing is guessed and nothing is swept into משתנות. A
   wrong-but-plausible figure is the failure mode worth paying a refusal to avoid.
-- **The arithmetic is a pure, tested module**, not a model adding up ninety charges.
+- **The arithmetic is a pure, tested module**, not a model adding up ninety charges — and the
+  script fetches the month from RiseUp itself, so no figure passes through a model on its way
+  into the ledger.
 - **A blank stays blank.** The run never closes a month and never writes a zero into a
   category RiseUp was silent about, which is 0001's distinction and `month-closure`'s rule,
   untouched.
