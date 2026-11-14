@@ -47,7 +47,11 @@ Settled during the melt. Not to be re-litigated per phase.
   Yuval's AIAI: 125.74 + 62.74 + 62.83 reads **252** in the sheet (126 + 63 + 63), where
   rounding the sum would give 251. His weekly `כלכלה` envelopes are one category in the app,
   so they are summed first and rounded once: 1,875.57 → **1,876**, which is what the sheet
-  says. Netting a credit happens inside its category, before that rounding.
+  says. The unit is therefore one RiseUp line per target Personal Category — a line split by
+  a label rule is rounded per destination — and **netting happens first, rounding after**.
+  Income obeys the same rule, with one known consequence: his October salary of 17,734.54
+  rounds to **17,735** where the sheet reads 17,734, so the first October run shows a 1₪
+  difference on the income row. It is reported like any other and approved or not.
 - **RiseUp is the authority from 2026-10 inclusive.** August and September 2026 and
   everything before them stay as the sheet recorded them, and
   [the importer](../src/domain/import/sheet-importer.ts) remains the only thing that writes
@@ -100,14 +104,18 @@ a subscription changes, and a person can read it.
    five rows of her grid, and what rescues the 7,000 rent cheque and the 495 gas bill that
    landed in her *other spending* bucket in October instead. Yuval's file carries none.
 4. **Row dispositions.** `hand-typed` for a row with no RiseUp source, so it is never
-   flagged again; `never-write` for RiseUp's savings category, which is money moved rather
-   than spent and which the מאזן records nowhere (the importer's `transfer` role).
+   flagged again; `never-write` for RiseUp's savings category and its goal, which are money
+   moved rather than spent and which the מאזן records nowhere (the importer's `transfer`
+   role). Both accounts carry a savings category, so both files carry these.
 
 Plus the refund decisions of the next section, keyed by `transactionId`.
 
-**An unmapped row stops the run.** Nothing is guessed, and nothing is swept into משתנות: a
-wrong-but-plausible figure in the grid is worse than a run that refuses. The one exemption is
-the empty fixed item above, which has nothing to map.
+**An unmapped row blocks the write, never the report.** The fold always prints what it read,
+with every unresolved thing named — an unmapped row, a credit with no disposition, a Partner
+item nobody has identified. What they stop is the comparison and the write, because a figure
+in the grid that nobody chose is the failure worth refusing over. Nothing is guessed and
+nothing is swept into משתנות. The one thing that is never unresolved is the empty fixed item
+above, which has nothing to map.
 
 ### Reading a month out of RiseUp
 
@@ -144,7 +152,9 @@ the mapping file, which makes a re-run silent and leaves the reason on the recor
   Category at all, and reserve pay must not reach one.
 
 So a disposition is one of `net:<category>`, `income`, `ignore`, `memo`. An amount in with no
-recorded disposition stops the run.
+recorded disposition is reported and blocks the write. Yuval's own months show how ordinary
+these are: a 186.07 ferry credit against חו"ל and a 120.25 department-store credit against
+ביגוד והנעלה in September, the 1,560 Bit refund in October.
 
 ### The command
 
@@ -175,23 +185,64 @@ a wrong figure gets into the grid. So the model never does the sums:
 - **The skill is the plumbing**: it gets a month's response onto disk, hands the path to the
   script, shows the result and asks.
 
-**Open, to settle before Phase 35 (it does not block Phases 30–34, which all read a saved
-file):** how the response reaches the disk. Yuval's month is ~70,000 characters and the
-harness spills it to a file whose path is in the error, which is usable as-is. Eden's two
-months arrived *inline*, and writing those to the scratchpad means the model retyping a
-thousand lines of amounts — slow and exactly the kind of transcription this feature exists to
-abolish. The alternative is for `scripts/riseup-fill.ts` to be the MCP client itself: launch
-`npx -y @riseup-oss/mcp` with that Person's token and call `get_budget` directly, so nothing
-passes through the model at all. Same server, same read-only scope; it does mean the script
-reads the token out of the MCP configuration.
+**Open, and it blocks Phase 31, not 35:** how the response reaches the disk. Yuval's months
+are 70–90,000 characters, too large for the model's context, so the harness spills each to a
+file and names the path — usable as-is, which is how both of his months were reconciled.
+Eden's arrived *inline* instead, and there is no file: putting one on disk would mean the
+model retyping a thousand lines of amounts, which is the transcription this feature exists to
+abolish. Phase 31 is proved against her real September, so it needs that file.
+
+The alternative is for `scripts/riseup-fill.ts` to **be** the MCP client: launch
+`npx -y @riseup-oss/mcp` with that Person's token and call `get_budget` itself, so no figure
+ever passes through the model and every month arrives the same way. Same server, same
+read-only `budget:read` scope. It does mean the script reads the token out of the MCP
+configuration, and it changes Phase 30's shape: `--from <saved.json>` stays, as what the
+tests and a re-run use, but the normal path becomes `--fetch`.
 
 **No real RiseUp output is ever committed.** Fixtures are written by hand. The response
 files live in the scratchpad, and the mapping files hold rules and ids, never amounts.
 
 ## What the reconciliation proved
 
-Done during the melt, against `docs/source/maazan-sheet-export.md`. This is the evidence the
-acceptance criteria below are written from.
+Done during the melt of 2026-11-13/14, against `docs/source/maazan-sheet-export.md`. This is
+the evidence the acceptance criteria below are written from.
+
+**Two cautions for whoever builds this.** RiseUp keeps revising a month — a category
+recategorised in the app moves a figure — so every total quoted below is as it stood on
+2026-11-13/14 and should be re-fetched before being treated as a failing test. And nobody has
+confirmed against the database that `entries` holds 2026-08 to 2026-10 as the export implies;
+`npm run db:census` says so in one read-only run, and Phase 32 is the first phase that cares.
+
+### Yuval, 2026-09 — the second month, which reconciles exactly
+
+His sheet total **12,259** equals the sum of his rows, with every rule above applied:
+משתנות 1,046 (1,046.48); סופר 2,111 (2,111.20); רכב 1,159; בתי קפה 289; צביקה 1,260;
+הלוואות 1,000; Tello/Skype 35 (35.19); רפואה 55 (54.96); אפל מיוזיק 24; רייזאפ 55; מכבי 105
+(104.58); לובי99 25; פנאי 673 (673.30); ספורט ובריאות 615; אוכל בחוץ, תחבצ+ליים and
+AliExpress all 0; income **19,053** (19,053.18).
+
+Three lines are only right because of a rule:
+
+- **AIAI 169** = 46 + 61 + 62, each line rounded before adding (46.05 + 61.17 + 61.52).
+- **חו"ל 3,506** = 3,692.04 of charges less a **186.07 credit from a ferry company**.
+- **ביגוד והנעלה 20** = 140.00 less a **120.25 credit from a department store**.
+
+So credits netted by merchant are not Eden's peculiarity — his months need them too.
+
+### The two Partner items cannot be resolved from the sheet
+
+His אינטרנט and טלפון 012 come from two Partner commitments, stable across months as
+`31965066` and `15aca9b5`. What they charged:
+
+| | `31965066` | `15aca9b5` | sheet אינטרנט | sheet טלפון 012 |
+| --- | ---: | ---: | ---: | ---: |
+| 2026-09 | 29.25 | 83.06 | 83 | 29 |
+| 2026-10 | 83.16 | 79.00 | 83 | 79 |
+
+Each month is internally consistent and the two months imply **opposite** answers: whichever
+commitment is the internet, one of the two columns contradicts it. The hand-copy was reading
+amounts, not identities. So which commitment is which is a question for `--map`, answered by
+Yuval, and no phase may assert it from the sheet.
 
 ### Yuval, 2026-10 — identity at category level
 
@@ -258,13 +309,20 @@ Nothing in this phase may read the network: the script takes a path to a saved r
 - [ ] `npm run riseup:fill -- yuval 2026-10 --from <saved.json>` prints one amount per
       Personal Category and writes nothing
 - [ ] Every printed figure for Yuval 2026-10 equals his column in
-      `docs/source/maazan-sheet-export.md` to the shekel, **except חו"ל**, which prints as
-      *not recorded* because its refund has no disposition yet; the expense rows total 8,613
+      `docs/source/maazan-sheet-export.md` to the shekel, **except** the rows a disposition
+      is still owed on — חו"ל, which prints *not recorded* rather than −1,560 — and income,
+      which prints 17,735 against the sheet's 17,734; the expense rows total 8,613
+- [ ] For Yuval 2026-09 the same, and the lines awaiting a credit print gross: חו"ל 3,692
+      rather than 3,506, ביגוד והנעלה 140 rather than 20, income 19,053, expense rows 12,565
 - [ ] סופר prints 1,876 — the five weekly envelopes summed to 1,875.57, then rounded once
-- [ ] AIAI prints 252 — 126 + 63 + 63, each RiseUp line rounded before being added, and
-      explicitly not the 251 that rounding the sum would give
-- [ ] אינטרנט prints 83 and טלפון 012 prints 79, told apart by the `sequenceId` on their
-      charges, with the envelope ids ignored
+- [ ] AIAI prints 252 for October (126 + 63 + 63, not the 251 that rounding the sum gives)
+      and 169 for September (46 + 61 + 62)
+- [ ] The two Partner items are kept apart by the `sequenceId` on their charges, with the
+      envelope ids ignored, and each is printed with its id and merchant
+      <!-- Which one is אינטרנט and which is טלפון 012 cannot be read off the sheet: its
+           September and October columns imply opposite answers. Phase 34 asks Yuval. Until
+           he answers, both are unresolved rows — printed, not written. -->
+- [ ] RiseUp's savings category and its goal are silent in every month, on both accounts
 - [ ] רפואה and ביגוד והנעלה print as *not recorded*, never as 0
 - [ ] Income prints 17,734 from the salary charge; the predicted salary is never used
 - [ ] The two Bit credits are reported as awaiting a disposition and change no figure
@@ -276,23 +334,30 @@ Nothing in this phase may read the network: the script takes a path to a saved r
 
 ---
 
-## Phase 31: Eden's shape — label rules and refunds
+## Phase 31: dispositions, and the rules Eden's account adds
 
 ### What to build
 
-The three rules her account needs and his does not: label rules that win over category
-rules, credits netted against a category, and `docs/source/riseup-eden.json`. Still no
+Credits netted against a category (both accounts need this), the four dispositions, label
+rules that win over category rules (hers only), and `docs/source/riseup-eden.json`. Still no
 database and no writes — both accounts must be provably right before anything can write.
+
+**Settle the open mechanic first**: this phase is proved against Eden's real September, and
+her responses arrive inline rather than as a file.
 
 ### Acceptance criteria
 
-- [ ] `riseup:fill -- eden 2026-09 --from <saved.json>` matches her sheet column row by
-      row, and the printed total is 16,231
-- [ ] סופר prints 617, from `כלכלה` and `השלמות` together
+- [ ] Yuval 2026-09 matches his sheet column **in full**, total 12,259, once its two credits
+      carry `net:` — the 186.07 ferry credit to חו"ל (3,506) and the 120.25 store credit to
+      ביגוד והנעלה (20)
+- [ ] `riseup:fill -- eden 2026-09` matches her sheet column row by row and totals **16,224**,
+      which is her sheet's 16,231 less the 7₪ רכב line that does not reconcile; the output
+      states that difference rather than absorbing it
+- [ ] סופר prints 617, from `כלכלה` (203.95) and `השלמות` (412.86) together
 - [ ] ארנונה prints 471 and שכ"ד prints 7,000, both drawn out of `חשבונות` by label
 - [ ] ביגוד והנעלה prints 249 and חיות מחמד prints 1,466, each net of its credit
-- [ ] A credit with no recorded disposition stops the run and is reported with its merchant,
-      amount and date — never netted by guesswork
+- [ ] A credit with no recorded disposition is reported with its merchant, amount and date,
+      blocks the write and never nets by guesswork
 - [ ] A disposition recorded by `transactionId` makes the next run silent about it, and
       `income` lands in the Person's income category
 - [ ] Yuval's חו"ל prints −1,560 once its Bit credit carries `net:חו"ל`, bringing his
@@ -357,6 +422,13 @@ a time.
 - [ ] A line the household declines is not written, and the run says what it skipped
 - [ ] Re-running the same month after a write reports an empty diff and writes nothing
 - [ ] No month before 2026-10 can be written, by any flag combination
+- [ ] **The importer gives up the other side of the boundary**: `/balance/import` and
+      `planWrites` refuse any month from 2026-10 onward, so the committed export's 2026-10
+      column can no longer be written over a RiseUp figure. Stated in ADR 0006; this is where
+      it becomes code
+- [ ] A run with anything unresolved — an unmapped row, a credit without a disposition, a
+      Partner item nobody has identified — writes nothing at all, not even the lines that
+      are clear
 - [ ] No blank is ever written as a zero, and `monthClosure` reports the month exactly as it
       did before the run for every category RiseUp was silent about
 - [ ] `rate_watch_items` is untouched — the existing guard test still passes
@@ -385,6 +457,8 @@ Category it joins — where RiseUp has a category the grid lacks.
 - [ ] Rows with no RiseUp source are written as `hand-typed` and never flagged again
 - [ ] `רפואי ופארם` is offered as a new Personal Category for Eden, with its Household
       Category, and is created only on approval
+- [ ] Yuval is asked which Partner commitment is אינטרנט and which is טלפון 012, with both
+      months' charges shown, and the answer is written into his file by id
 - [ ] A created Personal Category lands with its Household Category assignment in one
       transaction, so the deferred trigger never fires
 - [ ] The monthly run never creates a category, in any mode, under any flag
@@ -402,9 +476,9 @@ resolve Person → server, get the month's response onto disk, hand the path to 
 show the side-by-side, ask, write. Its opening line is the household's loop — tidy RiseUp
 first.
 
-This phase is where the open mechanic above is settled: either the skill relies on the
-harness spilling the response to a file, or `scripts/riseup-fill.ts` becomes the MCP client
-and the skill never carries a figure at all. Decide it before building, not during.
+The open mechanic above is settled back in Phase 31, and this phase inherits it: either the
+skill hands over the file the harness spilled, or the script fetches the month itself and the
+skill never carries a figure.
 
 ### Acceptance criteria
 
