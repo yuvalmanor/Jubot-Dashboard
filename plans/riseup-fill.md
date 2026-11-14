@@ -490,33 +490,37 @@ Category, print category / Jubot / RiseUp / difference. Still `--write`-less.
            under the table now states both reasons rather than only the first. -->
 - [x] A row RiseUp has and Jubot never recorded is shown as *new*
       <!-- Live: Eden 2026-10, which the ledger holds nothing of — twelve rows, all new. -->
-- [ ] Yuval 2026-10 against the live database shows **no difference at all** on the rows the
-      melt reconciled — the rounding rule of Phase 30 is what makes סופר agree rather than
-      differ by a shekel — so anything that does differ is a charge that landed after the
-      sheet was copied, and is named
-      <!-- Left unchecked on 2026-11-14, after the audit found it was being read generously.
-           What the run shows against the household's own ledger: **eighteen of his twenty
-           reconciled rows agree to the shekel** — סופר 1,876, AIAI 252, חו"ל −1,560,
-           משתנות 1,846, רכב 421 — and not one of them differs. Two clauses of the box do
-           not hold as written:
+- [x] Yuval 2026-10 against the live database shows **no difference at all** on the eighteen
+      reconciled rows his mapping file resolves — the rounding rule of Phase 30 is what makes
+      סופר agree rather than differ by a shekel — so an expense row that differs is a charge
+      that landed after the sheet was copied, and is named. Income differs by the **1₪** the
+      header predicted when it settled where the rounding happens, and the two Partner rows
+      read *left alone* until Phase 34 identifies them
+      <!-- Reworded 2026-11-14, on the household's say-so, after the audit found the box was
+           being read generously rather than met. What the run shows against their own
+           ledger: **eighteen of his twenty reconciled rows agree to the shekel** — סופר
+           1,876, AIAI 252, חו"ל −1,560, משתנות 1,846, רכב 421 — and not one of them
+           differs. Two clauses of the old wording did not hold, and both are the plan
+           working rather than the code failing:
 
            1. **The other two reconciled rows were never compared.** אינטרנט (83) and
               טלפון 012 (79) read *left alone*, because their Partner commitments stay
-              unresolved until Phase 34. "No difference at all on the rows the melt
-              reconciled" is true of those two only in the sense that nothing was compared.
+              unresolved until Phase 34 asks which is which — a question the header forbids
+              anyone to answer from the sheet. "No difference at all on the rows the melt
+              reconciled" was true of those two only in the sense that nothing was compared,
+              so the box now says eighteen and names them as left alone.
            2. **One line differs, and it is not a late charge.** Income reads 17,735 against
               the ledger's 17,734 — the header's own stated consequence of rounding the
               salary charge, written into this plan before the phase was built and already
-              excepted by Phase 30's income criterion. The box's "anything that does differ
-              is a charge that landed after the sheet was copied" leaves no room for it.
+              excepted by Phase 30's income criterion. The old "anything that does differ is
+              a charge that landed after the sheet was copied" left no room for it, so the
+              clause now scopes itself to an expense row and the 1₪ is named outright.
 
-           Both are the plan working rather than the code failing, and the figures above are
-           what this phase can show. Rewording is the household's call — the precedent is
-           Phase 30's income box and Phase 31's two sheet-comparison boxes — so the box stays
-           unchecked until they say. Proposed: *"Yuval 2026-10 against the live database
-           shows no difference on the eighteen reconciled rows the mapping file resolves;
-           income differs by the 1₪ the header predicted, and the two Partner rows read
-           left alone until Phase 34 identifies them."* -->
+           What the box is for survives both edits, which is why it is still worth having:
+           the eighteen rows agreeing to the shekel is the whole feature's proof, and
+           סופר 1,876 is the rounding rule of Phase 30 holding against the real database
+           rather than against a fixture. The 1₪ is reported like any other difference and
+           is the household's to approve or decline in Phase 33. -->
 - [x] The report states which month RiseUp resolved, when its cashflow was last updated,
       and every category still awaiting charges, by name
       <!-- The waiting section now prints in every run rather than only when it has rows, so
@@ -547,8 +551,9 @@ Category, print category / Jubot / RiseUp / difference. Still `--write`-less.
            or has nowhere to land, and leads the section with what it is short by, printed
            and never refused; the *left alone* footnote claimed "RiseUp said nothing" about
            rows RiseUp holds money for, and now gives both reasons; box 5 was checked on a
-           generous reading and is unchecked above with the run's real result and a proposed
-           rewording; box 3 cited the Partner pair, which is the wrong case, and now cites
+           generous reading, so it was unchecked with the run's real result and a proposed
+           rewording, and then reworded on the household's say-so to ask for what the run
+           actually shows; box 3 cited the Partner pair, which is the wrong case, and now cites
            the tests; several figures in the test file were real household amounts despite
            its own header, and were replaced with invented ones.
 
