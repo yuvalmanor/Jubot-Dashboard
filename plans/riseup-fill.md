@@ -350,7 +350,13 @@ the tests use.
       <!-- Which one is אינטרנט and which is טלפון 012 cannot be read off the sheet: its
            September and October columns imply opposite answers. Phase 34 asks Yuval. Until
            he answers, both are unresolved rows — printed, not written. -->
-- [ ] RiseUp's savings category and its goal are silent in every month, on both accounts
+- [x] RiseUp's savings category and its goal are silent on Yuval's account in every month,
+      by the `never-write` dispositions in his file — both were empty in both his months,
+      so a savings category holding charges staying silent is the fixture's case
+      <!-- This read "on both accounts" until 2026-11-14. Eden's half cannot be shown in a
+           phase that builds only Yuval's mapping file, and it is already asked for in
+           Phase 31, where her file is written. -->
+
 - [x] רפואה and ביגוד והנעלה print as *not recorded*, never as 0
 - [x] Income is the salary charge — 17,734.54, which the shekel rule rounds to 17,735 — and
       never RiseUp's prediction for the slot, which was 17,500.36
