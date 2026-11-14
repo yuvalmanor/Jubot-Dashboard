@@ -44,13 +44,13 @@ const idsFor = (...names: string[]) =>
  * on both sides (מתנות).
  */
 const COMPARISON = compareWithLedger(
-  [expense("משתנות", 4_210), expense("סופר", 4_365), expense("מנויים", 252), expense("מתנות", null)],
+  [expense("משתנות", 4_210), expense("סופר", 4_365), expense("מנויים", 318), expense("מתנות", null)],
   [
     held("משתנות", 4_210),
     held("סופר", 4_180),
     held("מנויים", null),
     held("מתנות", null),
-    held('שכ"ד', 7_000),
+    held('שכ"ד', 8_450),
   ],
   OCTOBER,
 );
@@ -134,7 +134,7 @@ describe("the approval is of the figures it was printed with", () => {
       plan.approved.map((write) => [write.personalCategory, toDecimalString(write.amount)]),
     ).toEqual([
       ["סופר", "4365.00"],
-      ["מנויים", "252.00"],
+      ["מנויים", "318.00"],
     ]);
   });
 
@@ -149,7 +149,7 @@ describe("the approval is of the figures it was printed with", () => {
   it("refuses a token printed for a month that has since moved", () => {
     const stale = approvalToken(PERSON, COMPARISON);
     const revised = compareWithLedger(
-      [expense("משתנות", 4_210), expense("סופר", 4_412), expense("מנויים", 252)],
+      [expense("משתנות", 4_210), expense("סופר", 4_412), expense("מנויים", 318)],
       [held("משתנות", 4_210), held("סופר", 4_180), held("מנויים", null)],
       OCTOBER,
     );
@@ -284,11 +284,11 @@ describe("what a write may hold", () => {
   it("writes an income line into the income category and not into an expense of the same name", () => {
     const sameName = compareWithLedger(
       [
-        { personalCategory: "הכנסות", type: "income", amount: shekels(17_735) },
+        { personalCategory: "הכנסות", type: "income", amount: shekels(21_308) },
         expense("הכנסות", 12),
       ],
       [
-        { personalCategory: "הכנסות", type: "income", amount: shekels(17_734) },
+        { personalCategory: "הכנסות", type: "income", amount: shekels(21_307) },
         held("הכנסות", null),
       ],
       OCTOBER,

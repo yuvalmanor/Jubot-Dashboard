@@ -593,7 +593,7 @@ a time.
            stdin is null under the Phase 35 skill — and bound to the figures, so an approval
            of 1,846 cannot write 1,912 half an hour later. Live against a throwaway
            in-memory PGlite: `--write` alone printed the five offered lines, the token, and
-           "**Nothing was written.** The lines above were not confirmed", and the nine
+           "**Nothing was written.** The lines above were not confirmed", and the six
            `entries` rows were byte-identical afterwards. A token that approves other
            figures is refused by name and writes nothing either. -->
 - [x] Approved lines land in `entries` as whole shekels, and the grid at `/balance` shows
@@ -674,10 +674,38 @@ a time.
            does not exist failed on the foreign key, and October's eight rows were identical
            before and after. -->
 
-- [ ] **The advisor has audited this phase.** With the three gates green and the work
+- [x] **The advisor has audited this phase.** With the three gates green and the work
       committed, the advisor is asked to audit it; every finding is either fixed here or
       named in the report with the reason it was not. This box is checked last and the
       branch is pushed after it — a phase is not finished until its audit is.
+      <!-- Audited 2026-11-14. Fixed: a range held its whole report in `out` and printed
+           once at the end, so a month already *written* would have been reported nowhere if
+           a later month's fetch failed — each month now prints as it finishes; a
+           `--decline <YYYY-MM>:<n>` naming a month the run does not cover was silently
+           ignored, which would have written the very line it meant to stop, and is now
+           refused (`previous` excepted, since RiseUp resolves it); four figures in
+           `riseup-write.test.ts` were the household's real ones despite the file's own
+           header and were replaced with invented ones, as Phase 32's audit did for the same
+           reason; box 1's comment said "nine" `entries` rows where the ledger held six;
+           `db:demo` was re-run through the changed `planWrites` and the README's count of
+           what it loads was stale (796/49 before this phase; it loads 868 across 50 and now
+           stops at 2026-09).
+
+           Named and not fixed:
+           - **A range with `--write` was never run end to end.** The range run above is
+             report-only: `--from` is refused with a range, and no live month is writable
+             until Phase 34 identifies the two Partner commitments. So repeated `--approve`
+             and the per-month `--decline <YYYY-MM>:<n>` form are reasoned and unit-tested
+             but not shown writing. Phase 35's "a month range runs month by month, each with
+             its own approval" is where that becomes checkable.
+           - **The three new flags are not in the header's command section.** `--write`,
+             `--approve` and `--decline` are missing there, exactly as `--no-db` was after
+             Phase 32. The README documents all four; the plan's own command list is a
+             header edit and not an implementation detail.
+           - **The script exits 0 whether the write happened, was refused or failed.** The
+             report says which, and Phase 35's skill will have to read it rather than the
+             exit code. Changing that is a decision about every caller of the script, this
+             one included, so it is left to that phase. -->
 
 ---
 

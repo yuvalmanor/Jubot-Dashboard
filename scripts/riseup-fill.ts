@@ -881,6 +881,19 @@ for (const raw of flagValues("--decline")) {
     if (scope !== null && !MONTH.test(scope)) {
       throw new Error(`\`${scope}\` is not a month in \`--decline ${piece}\`.\n${usage}`);
     }
+    // A decline for a month this run does not cover would be read by nothing and
+    // the line it meant to stop would be written. Refusing is the only safe
+    // reading: a typo in the month is exactly how an approval gets wider than
+    // the household meant it. `previous` is the one case that cannot be checked
+    // here — RiseUp resolves it — so a scoped decline is allowed to stand, and
+    // the month it names is matched once the fold says which month arrived.
+    if (scope !== null && !dates.includes("previous") && !dates.includes(scope)) {
+      throw new Error(
+        `\`--decline ${piece}\` names ${scope}, which this run does not cover ` +
+          `(${dates.join(", ")}). It would be ignored and line ${number} written, so the run ` +
+          `stops instead.\n${usage}`,
+      );
+    }
     const key = scope ?? "*";
     declines.set(key, [...(declines.get(key) ?? []), number]);
   }
@@ -1065,16 +1078,21 @@ async function runMonth(date: string): Promise<void> {
   );
 }
 
+/**
+ * Each month is printed as soon as it is done, not held to the end.
+ *
+ * A range writes one month at a time, and a month that has been written is a
+ * fact about the ledger: if the next month's fetch times out, the report saying
+ * what landed must already be out. Holding the whole run in `out` and printing
+ * once would lose it.
+ */
+let printed = 0;
 for (const date of dates) {
-  if (out.length > 0) {
-    say();
-    say(`---`);
-    say();
-  }
   await runMonth(date);
+  process.stdout.write(`${printed > 0 ? "\n---\n\n" : ""}${out.join("\n")}\n`);
+  printed += 1;
+  out.length = 0;
 }
-
-process.stdout.write(`${out.join("\n")}\n`);
 // The MCP server is a child process with a shell between us and it; nothing is
 // left to wait for once the report is out.
 process.exit(0);

@@ -51,7 +51,8 @@ npm run db:demo
 
 That empties every domain table and reloads one coherent household. The **מאזן is real**: it
 runs the committed sheet export through the very same importer `/balance/import` uses, which
-is 796 entries across 49 categories. **Everything else is invented** — nothing in the
+is 868 entries across 50 categories, covering 2024-07 to 2026-09 — the importer stops at the
+cutover, so the demo holds no month RiseUp owns. **Everything else is invented** — nothing in the
 repository records the household's actual accounts, balances or grants — but it keeps the
 shapes and the round figures that CONTEXT.md and the PRD do name, so the screens are
 exercised the way real data would exercise them. It is destructive and repeatable: run it
