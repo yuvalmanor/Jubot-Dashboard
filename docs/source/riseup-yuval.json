@@ -1,0 +1,119 @@
+{
+  "person": "yuval",
+  "server": "riseup",
+  "customer": "127140",
+  "_note": [
+    "Which RiseUp row feeds which of Yuval's Personal Categories. Committed rather than",
+    "stored in the database so that a changed subscription shows up in a git diff and a",
+    "person can read it (ADR 0006).",
+    "",
+    "Rules and identities only — never an amount. Every sequenceId below was read off the",
+    "charges of 2026-09 and 2026-10 and is the same in both months, which is what makes it",
+    "the key: an envelope's own id changes every month.",
+    "",
+    "Yuval's אינטרנט and טלפון 012 are deliberately absent. They come from two Partner",
+    "commitments, 31965066-0c7b-11ef-bb57-cd50bf189b9b and 15aca9b5-a337-11ee-8217-af1dd3adc04a,",
+    "and the sheet's September and October columns imply opposite answers about which is",
+    "which (29.25/83.06 against 83/29, then 83.16/79.00 against 83/79). Nobody may assert it",
+    "from the sheet, so both stay unresolved — printed with their ids, never written — until",
+    "--map asks Yuval (Phase 34).",
+    "",
+    "Yuval's file carries no label rules: his categories are already his rows. Eden's",
+    "חשבונות needs them (Phase 31)."
+  ],
+  "incomeCategory": "הכנסות",
+  "variableCategory": "משתנות",
+  "categoryRules": [
+    {
+      "riseupCategory": "כלכלה",
+      "personalCategory": "סופר",
+      "note": "stored as כלכלה, shown in the app as סופר; it arrives as one envelope per week"
+    },
+    { "riseupCategory": "בתי קפה", "personalCategory": "בתי קפה" },
+    { "riseupCategory": "אוכל בחוץ", "personalCategory": "אוכל בחוץ" },
+    { "riseupCategory": "רכב", "personalCategory": "רכב" },
+    {
+      "riseupCategory": "תחבורה ציבורית",
+      "personalCategory": "תחבצ+ליים",
+      "note": "the grid's row is תחבצ+ליים — buses, trains and Lime together"
+    },
+    { "riseupCategory": "Aliexpress", "personalCategory": "AliExpress" },
+    { "riseupCategory": "צביקה", "personalCategory": "צביקה" },
+    {
+      "riseupCategory": "חו״ל",
+      "personalCategory": "חו\"ל",
+      "note": "RiseUp writes it with a gershayim (U+05F4), the grid with a straight quote"
+    },
+    {
+      "riseupCategory": "AIAI",
+      "personalCategory": "AIAI",
+      "note": "the category; the two AI subscriptions below are separate fixed items feeding the same row"
+    },
+    { "riseupCategory": "רפואה", "personalCategory": "רפואה" },
+    { "riseupCategory": "ביגוד והנעלה", "personalCategory": "ביגוד והנעלה" },
+    { "riseupCategory": "פנאי", "personalCategory": "פנאי" },
+    { "riseupCategory": "ספורט ובריאות", "personalCategory": "ספורט ובריאות" }
+  ],
+  "fixedItemRules": [
+    {
+      "sequenceId": "20b9e522-87a6-11f0-bfcc-bf95539fde47",
+      "merchant": "משכורת-נט",
+      "personalCategory": "הכנסות",
+      "note": "the salary charge. RiseUp's predicted salary is never used: no charge, no income"
+    },
+    {
+      "sequenceId": "82e51f27-7861-11f0-949c-3f4c6bbe6dba",
+      "merchant": "הו”ק הלואה קרן",
+      "personalCategory": "הלוואות"
+    },
+    {
+      "sequenceId": "34265102-fd9a-11ec-bc92-0b14eb251053",
+      "merchant": "קרן מכבי- חיוב",
+      "personalCategory": "מכבי"
+    },
+    {
+      "sequenceId": "8846e57a-4c23-11f1-926b-d1601014aa1a",
+      "merchant": "TELLO US",
+      "personalCategory": "Tello/Skype"
+    },
+    {
+      "sequenceId": "12046ae1-d1e8-11ec-8fa4-43a5bdf21f3b",
+      "merchant": "APPLE.COM/BILL",
+      "personalCategory": "אפל מיוזיק"
+    },
+    {
+      "sequenceId": "d41f52dd-7889-11ef-bc7c-4fa8a4ab3656",
+      "merchant": "OPENAI *CHATGPT SUBSCR",
+      "personalCategory": "AIAI",
+      "note": "one of the three lines that make AIAI, each rounded before it is added"
+    },
+    {
+      "sequenceId": "70bca879-7051-11f1-9fee-c12882392e0c",
+      "merchant": "ANTHROPIC* CLAUDE SUB",
+      "personalCategory": "AIAI"
+    },
+    {
+      "sequenceId": "7e839383-e71f-11f0-a70e-596e66efffca",
+      "merchant": "רייזאפ מומנטס בע?מ",
+      "personalCategory": "רייזאפ"
+    },
+    {
+      "sequenceId": "cc7b8d7a-e8b1-11f0-b9f6-a5f253f88ce4",
+      "merchant": "לובי 99",
+      "personalCategory": "לובי99"
+    }
+  ],
+  "labelRules": [],
+  "dispositions": [
+    {
+      "action": "never-write",
+      "riseupCategory": "__saving-hidden-category__",
+      "note": "shown in the app as השקעה וחיסכון. Money moved, not spent: the מאזן records transfers nowhere"
+    },
+    {
+      "action": "never-write",
+      "riseupGoals": true,
+      "note": "a RiseUp goal is money put aside, which the מאזן records nowhere either"
+    }
+  ]
+}

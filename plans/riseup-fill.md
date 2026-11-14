@@ -319,35 +319,35 @@ the tests use.
 
 ### Acceptance criteria
 
-- [ ] `npm run riseup:fill -- yuval 2026-10` fetches the month through the `riseup` MCP
+- [x] `npm run riseup:fill -- yuval 2026-10` fetches the month through the `riseup` MCP
       server and prints one amount per Personal Category, writing nothing to the ledger
-- [ ] `--from <saved.json>` folds a response already on disk, identically, with no network
-- [ ] The response is saved outside the repository and `git status` is clean after a run
-- [ ] The token never appears in output, in an error, in a log, or on a command line
-- [ ] A Person whose MCP server is not configured stops the run, naming the entry to add,
+- [x] `--from <saved.json>` folds a response already on disk, identically, with no network
+- [x] The response is saved outside the repository and `git status` is clean after a run
+- [x] The token never appears in output, in an error, in a log, or on a command line
+- [x] A Person whose MCP server is not configured stops the run, naming the entry to add,
       and never reads the other Person's account
-- [ ] Every printed figure for Yuval 2026-10 equals his column in
+- [x] Every printed figure for Yuval 2026-10 equals his column in
       `docs/source/maazan-sheet-export.md` to the shekel, **except** the rows a disposition
       is still owed on — חו"ל, which prints *not recorded* rather than −1,560 — and income,
       which prints 17,735 against the sheet's 17,734; the expense rows total 8,613
 - [ ] For Yuval 2026-09 the same, and the lines awaiting a credit print gross: חו"ל 3,692
       rather than 3,506, ביגוד והנעלה 140 rather than 20, income 19,053, expense rows 12,565
-- [ ] סופר prints 1,876 — the five weekly envelopes summed to 1,875.57, then rounded once
-- [ ] AIAI prints 252 for October (126 + 63 + 63, not the 251 that rounding the sum gives)
+- [x] סופר prints 1,876 — the five weekly envelopes summed to 1,875.57, then rounded once
+- [x] AIAI prints 252 for October (126 + 63 + 63, not the 251 that rounding the sum gives)
       and 169 for September (46 + 61 + 62)
-- [ ] The two Partner items are kept apart by the `sequenceId` on their charges, with the
+- [x] The two Partner items are kept apart by the `sequenceId` on their charges, with the
       envelope ids ignored, and each is printed with its id and merchant
       <!-- Which one is אינטרנט and which is טלפון 012 cannot be read off the sheet: its
            September and October columns imply opposite answers. Phase 34 asks Yuval. Until
            he answers, both are unresolved rows — printed, not written. -->
 - [ ] RiseUp's savings category and its goal are silent in every month, on both accounts
-- [ ] רפואה and ביגוד והנעלה print as *not recorded*, never as 0
+- [x] רפואה and ביגוד והנעלה print as *not recorded*, never as 0
 - [ ] Income prints 17,734 from the salary charge; the predicted salary is never used
-- [ ] The two Bit credits are reported as awaiting a disposition and change no figure
-- [ ] An excluded transaction never reaches a total
-- [ ] A RiseUp row with no rule stops the run and is named in the output; a fixed item with
+- [x] The two Bit credits are reported as awaiting a disposition and change no figure
+- [x] An excluded transaction never reaches a total
+- [x] A RiseUp row with no rule stops the run and is named in the output; a fixed item with
       no charge does not
-- [ ] `riseup-fold.ts` has no import from `pg`, `next` or the database, and its tests read
+- [x] `riseup-fold.ts` has no import from `pg`, `next` or the database, and its tests read
       only the hand-written fixture
 
 ---

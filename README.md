@@ -409,6 +409,46 @@ before anybody looked could not say afterwards what it had changed. Both scripts
 `.env.production.local`, so they describe the deployed database unless `DATABASE_URL` says
 otherwise.
 
+### Filling a month from RiseUp
+
+From 2026-10 onward a month arrives from RiseUp rather than from the sheet
+([ADR 0006](docs/adr/0006-riseup-is-the-authority-for-monthly-totals.md)). Each Person's
+account is its own MCP server — `riseup` for Yuval, `riseup-eden` for Eden — and the token
+lives in that server's `env.RISEUP_PAT` in the user's `~/.claude.json`, so "per Person"
+resolves to a server rather than to a parameter. A missing server stops the run and names
+the entry to add; it never reaches for the other account.
+
+```bash
+npm run riseup:fill -- yuval              # the last ended cashflow month
+npm run riseup:fill -- yuval 2026-10      # that month
+npm run riseup:fill -- yuval --from <saved.json>   # a response already on disk
+```
+
+The script is the MCP client: it launches that Person's server, calls `get_budget` itself
+and saves the response **outside the repository**, so no figure passes through a model on
+its way into the ledger. The arithmetic is
+[riseup-fold.ts](src/domain/import/riseup-fold.ts) — pure, framework-free and tested
+against a hand-written fixture, because one month is 70–90,000 characters and adding up
+ninety charges by eye is how a wrong figure gets into the grid.
+
+Each RiseUp line is rounded to the shekel **on its own** and then added, which is what the
+app displays and what the hand-copy wrote: Yuval's AIAI is 126 + 63 + 63 = 252, where
+rounding the sum would give 251. A weekly category is one line in the app, so its envelopes
+are summed first and rounded once. A category no RiseUp line fed reads *not recorded*,
+never 0.
+
+Which RiseUp row feeds which Personal Category lives in
+[docs/source/riseup-yuval.json](docs/source/riseup-yuval.json) — committed, so a changed
+subscription shows up in a `git diff`. A tracked category is keyed by name, a fixed item by
+the `sequenceId` on its charge (stable across months, unlike the envelope's own id, and
+unlike the merchant: two of Yuval's commitments read `חברת פרטנר תקשורת בע`). Anything
+without a rule, and any money in that is not the salary charge, is printed and resolved by
+a person — nothing is guessed and nothing is swept into משתנות.
+
+It **reports**. Nothing here writes an Entry, closes a month or touches
+`rate_watch_items`; the comparison against the database and the write itself are the phases
+after this one in [plans/riseup-fill.md](plans/riseup-fill.md).
+
 ## מיפוי
 
 `src/domain/snapshot` holds Accounts and Snapshots. An Account is *where* value is held —
