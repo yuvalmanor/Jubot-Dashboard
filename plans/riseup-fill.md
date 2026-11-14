@@ -587,23 +587,93 @@ a time.
 
 ### Acceptance criteria
 
-- [ ] `--write` without an explicit confirmation of the lines writes nothing
-- [ ] Approved lines land in `entries` as whole shekels, and the grid at `/balance` shows
+- [x] `--write` without an explicit confirmation of the lines writes nothing
+      <!-- The confirmation is a token the run prints over the lines it is offering, and a
+           write takes it back: `--write --approve <token>`. Non-interactive on purpose —
+           stdin is null under the Phase 35 skill — and bound to the figures, so an approval
+           of 1,846 cannot write 1,912 half an hour later. Live against a throwaway
+           in-memory PGlite: `--write` alone printed the five offered lines, the token, and
+           "**Nothing was written.** The lines above were not confirmed", and the nine
+           `entries` rows were byte-identical afterwards. A token that approves other
+           figures is refused by name and writes nothing either. -->
+- [x] Approved lines land in `entries` as whole shekels, and the grid at `/balance` shows
       them
-- [ ] A line the household declines is not written, and the run says what it skipped
-- [ ] Re-running the same month after a write reports an empty diff and writes nothing
-- [ ] No month before 2026-10 can be written, by any flag combination
-- [ ] **The importer gives up the other side of the boundary**: `/balance/import` and
+      <!-- Four lines approved out of five: הכנסות 18,200, סופר 1,201, בתי קפה 310,
+           משתנות 1,004 — stored as 1820000, 120100, 31000, 100400 minor units, every one a
+           whole shekel. `/balance?year=2026` then read them on the grid (October column
+           18,200.00 · 1,201.00 · 1,004.00 · 310.00) with no revalidation needed: the page
+           is `force-dynamic`. Every figure here is invented; see the note on the audit box. -->
+- [x] A line the household declines is not written, and the run says what it skipped
+      <!-- `--decline 4` left מכבי unwritten and printed "**Skipped** by `--decline`: 4 מכבי
+           (108) — not written, and the מאזן keeps whatever it already holds for it".
+           Afterwards מכבי read *not recorded* while the other four had landed. Declines are
+           given as the numbers in the write's own table rather than by name, because `חו"ל`
+           and `שכ"ד` both carry a double quote, and a quote in an argument is exactly what
+           `/balance/import`'s own comment records going wrong. -->
+- [x] Re-running the same month after a write reports an empty diff and writes nothing
+      <!-- With every line written, the next run read "**Nothing to approve.** 7 rows already
+           agree, 1 are being left alone and 14 are blank on both sides" and, in the write
+           section, "**Nothing to write.** No line differs and none is new … including on a
+           run that passed `--write`". A month with nothing on offer needs no approval and is
+           not refused either: the first attempt reported a token mismatch there, which read
+           as a failure where there is none, and that was fixed. -->
+- [x] No month before 2026-10 can be written, by any flag combination
+      <!-- Two guards, because one of them is reachable only by hand. The script refuses at
+           the comparison, keyed on the month the *fold* covers rather than on the argument:
+           `--from` a September response with `--write --approve <token>` printed the refusal
+           by name and the September Entry did not move. And `planRiseUpWrite` refuses the
+           month itself, which is what "by any flag combination" asks for — a comparison
+           built by hand for 2026-09 is refused there too, in `riseup-write.test.ts`. -->
+- [x] **The importer gives up the other side of the boundary**: `/balance/import` and
       `planWrites` refuse any month from 2026-10 onward, so the committed export's 2026-10
       column can no longer be written over a RiseUp figure. Stated in ADR 0006; this is where
       it becomes code
-- [ ] A run with anything unresolved — an unmapped row, a credit without a disposition, a
+      <!-- `planWrites` now drops every entry from the cutover onward and hands them back as
+           `plan.refused` with `refusedReason`, so a figure the importer gave up is a stated
+           refusal rather than a row that quietly did not arrive. The screen says it twice:
+           beforehand as a panel naming the months, and in the completion notice afterwards.
+           Live, in the order that matters — RiseUp's October written first, then the whole
+           import run from the page — 868 entries landed over 2024-07 – 2026-09, the notice
+           read "לא נכתבו: 2026-10", and Yuval's eight October rows were identical before and
+           after. A throw was considered and declined: the export *has* a 2026-10 column, so
+           throwing would make `/balance/import` and `db:demo` permanently fail. Dropping
+           those entries with the reason on the page is the reading that leaves the importer
+           usable. Both sides now read one constant, `RISEUP_AUTHORITY_FROM`, moved out of
+           `riseup-compare.ts` into `riseup-cutover.ts` — a module that only reads the sheet
+           has no business importing the RiseUp comparison to find where it must stop. -->
+- [x] A run with anything unresolved — an unmapped row, a credit without a disposition, a
       Partner item nobody has identified — writes nothing at all, not even the lines that
       are clear
-- [ ] No blank is ever written as a zero, and `monthClosure` reports the month exactly as it
+      <!-- Shown with a fixture carrying one unmapped tracked category beside one line that
+           differs cleanly: "1 unresolved row — so nothing is written at all, not even the
+           lines that are clear", with the correct token as well as with a wrong one, and
+           בתי קפה still reading its old figure afterwards. The refusal is
+           `comparison.approvable`, which Phase 32 already made false for a figure with
+           nowhere to land as well. The live run of Yuval's own October says the same thing
+           for the real reason: his two Partner commitments stay unresolved until Phase 34,
+           so **his October is not writable yet** — which is the plan working rather than the
+           code failing, and is why every figure proving this phase is invented. -->
+- [x] No blank is ever written as a zero, and `monthClosure` reports the month exactly as it
       did before the run for every category RiseUp was silent about
-- [ ] `rate_watch_items` is untouched — the existing guard test still passes
-- [ ] A failed write leaves the month as it was (one transaction per month)
+      <!-- Structural rather than careful: only a `differs` or `new` row is ever offered, so
+           a *left alone* or *blank* row has no path to a write, and `planRiseUpWrite` never
+           produces the `amount: null` that `saveMonthEntries` reads as "delete this Entry".
+           Live: after the write, רפואה — the one category RiseUp held an empty envelope for
+           — was still *not recorded*, and `monthClosure` for Yuval's October read `open`,
+           8 of 9, blanks: רפואה. שכ"ד, which RiseUp said nothing about at all, still read
+           its 7,000. The four blanks that *did* fill are the four lines the household
+           approved. -->
+- [x] `rate_watch_items` is untouched — the existing guard test still passes
+      <!-- `rate-watch-writes-no-ledger.test.ts` is green and untouched by this phase: it
+           reads מעקב תעריפים's own three files, none of which this phase edits. Both its
+           tables also read 0 rows after every write above. -->
+- [x] A failed write leaves the month as it was (one transaction per month)
+      <!-- `saveMonthEntries` wraps the month in `withTransaction`, and the script calls it
+           once per month with the approved lines together. Proved rather than read: a call
+           with a valid first write and a second pointing at a Personal Category id that
+           does not exist failed on the foreign key, and October's eight rows were identical
+           before and after. -->
+
 - [ ] **The advisor has audited this phase.** With the three gates green and the work
       committed, the advisor is asked to audit it; every finding is either fixed here or
       named in the report with the reason it was not. This box is checked last and the

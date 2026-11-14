@@ -6,7 +6,13 @@ import { redirect } from "next/navigation";
 import { DatabaseNotConfiguredError } from "@/db/client";
 import { SheetExportMissingError, applyImportPlan } from "@/db/import";
 import { findPersonByEmail } from "@/db/people";
-import { type ImportProposal, conflictKey, planSummary, planWrites } from "@/domain/import/sheet-importer";
+import {
+  type ImportProposal,
+  conflictKey,
+  planSummary,
+  planWrites,
+  refusedMonths,
+} from "@/domain/import/sheet-importer";
 import { monthKey } from "@/domain/time/calendar-month";
 import { requireHouseholdEmail } from "@/session";
 
@@ -110,6 +116,11 @@ export async function runImport(form: FormData): Promise<void> {
     const written = await applyImportPlan(plan);
     const span = planSummary(plan);
 
+    // The months RiseUp owns are read and not written (ADR 0006). They are named
+    // in the outcome so that a figure the importer gave up is a stated refusal
+    // rather than a row that quietly did not arrive.
+    const gaveUp = refusedMonths(plan).map(monthKey);
+
     outcome = {
       done: "1",
       categories: String(written.categories),
@@ -117,6 +128,7 @@ export async function runImport(form: FormData): Promise<void> {
       months: String(span.months),
       ...(span.from === null ? {} : { from: monthKey(span.from) }),
       ...(span.to === null ? {} : { to: monthKey(span.to) }),
+      ...(gaveUp.length === 0 ? {} : { refused: gaveUp.join(",") }),
     };
   } catch (error) {
     // `redirect` works by throwing; letting it through is how backTo returns.

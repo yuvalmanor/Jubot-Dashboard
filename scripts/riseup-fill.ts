@@ -3,19 +3,29 @@
  *
  *   npm run riseup:fill -- yuval                 # the last ended cashflow month
  *   npm run riseup:fill -- yuval 2026-10         # that month
+ *   npm run riseup:fill -- yuval 2026-10..2026-11      # month by month
  *   npm run riseup:fill -- yuval --from <saved.json>   # a response already on disk
  *   npm run riseup:fill -- yuval 2026-10 --no-db       # fold only, no comparison
+ *   npm run riseup:fill -- yuval 2026-10 --write --approve <token>
+ *   npm run riseup:fill -- yuval 2026-10 --write --approve <token> --decline 3,7
  *
- * It **reports**, like `sheet-refresh.ts`. Every statement it sends is a `select`:
- * nothing here writes an Entry and nothing here closes a month. Phase 33 adds the
- * write (see `plans/riseup-fill.md`).
+ * **It reports unless it is told to write.** With `DATABASE_URL` set it prints the
+ * side-by-side — one line per Personal Category, what the מאזן holds, what RiseUp
+ * says, the difference — and a token over the lines it is offering. Nothing is
+ * written until that token comes back with `--write --approve`, which is ADR 0006's
+ * "nothing is written without a person approving it, line by line". A figure RiseUp
+ * revises changes the token, so an approval is an approval of the lines it was
+ * printed with and never of a month that has moved since.
  *
- * With `DATABASE_URL` set it also prints the side-by-side — one line per Personal
- * Category, what the מאזן holds, what RiseUp says, the difference — which is what
- * ADR 0006 makes the precondition of any write. The comparison is refused for a
- * month before 2026-10, where the sheet importer is the authority; folding such a
- * month and printing its totals stays allowed, and is how the two months the
- * household had already copied by hand were used to prove the rules.
+ * The write goes through `saveMonthEntries` and nowhere else: one transaction per
+ * month, only the lines approved, never a `null` amount — so a category RiseUp was
+ * silent about keeps its blank and `monthClosure` reads the month exactly as it did
+ * before the run. Nothing closes a month and nothing touches `rate_watch_items`.
+ *
+ * The comparison *and* the write are refused for a month before 2026-10, where the
+ * sheet importer is the authority; folding such a month and printing its totals
+ * stays allowed, and is how the two months the household had already copied by hand
+ * were used to prove the rules.
  *
  * This script is the MCP client. It launches that Person's RiseUp server itself
  * and calls `get_budget`, so **no figure passes through a model** on its way into
@@ -46,13 +56,13 @@ import { join } from "node:path";
 
 import pg from "pg";
 
+import { saveMonthEntries } from "@/db/ledger";
 import {
   type HeldCategory,
   type RiseUpComparison,
-  RiseUpCutoverError,
   compareWithLedger,
-  isRiseUpAuthority,
 } from "@/domain/import/riseup-compare";
+import { RiseUpCutoverError, isRiseUpAuthority } from "@/domain/import/riseup-cutover";
 import {
   type RiseUpFold,
   type RiseUpMapping,
@@ -60,8 +70,19 @@ import {
   expenseTotals,
   foldRiseUpMonth,
 } from "@/domain/import/riseup-fold";
+import {
+  type RiseUpWritePlan,
+  approvalToken,
+  categoryKey,
+  planRiseUpWrite,
+} from "@/domain/import/riseup-write";
 import { type Money, isCurrency, money, toDecimalString } from "@/domain/money/money";
-import { type CalendarMonth, monthKey } from "@/domain/time/calendar-month";
+import {
+  type CalendarMonth,
+  monthKey,
+  monthRange,
+  parseMonthKey,
+} from "@/domain/time/calendar-month";
 
 const CURRENCY = "ILS" as const;
 
@@ -274,6 +295,7 @@ async function fetchBudget(server: string, date: string, configPath: string): Pr
 // --- what the מאזן already holds --------------------------------------------
 
 interface HeldRow extends Record<string, unknown> {
+  readonly id: string;
   readonly name: string;
   readonly type: string;
   readonly retired: boolean;
@@ -283,7 +305,8 @@ interface HeldRow extends Record<string, unknown> {
 
 /**
  * That Person's Personal Categories, each with whatever `entries` holds for this
- * month. **Every statement here is a `select`.**
+ * month, and each with its own id — which is what a write points at.
+ * **Every statement here is a `select`.**
  *
  * It reads all of them, not only the ones with an Entry, because "does this
  * category exist at all" is what separates a new row from a figure with nowhere
@@ -293,7 +316,7 @@ async function heldCategories(
   personId: string,
   month: CalendarMonth,
   connectionString: string,
-): Promise<{ held: HeldCategory[]; host: string }> {
+): Promise<{ held: HeldCategory[]; ids: Map<string, string>; host: string }> {
   const local = /@(localhost|127\.0\.0\.1)[:/]/.test(connectionString);
   const client = new pg.Client({
     connectionString,
@@ -303,7 +326,8 @@ async function heldCategories(
   try {
     const rows = (
       await client.query<HeldRow>(
-        `select c.name                                   as name,
+        `select c.id::text                               as id,
+                c.name                                   as name,
                 c.type                                   as type,
                 (c.active_until is not null)             as retired,
                 e.amount_minor::text                     as amount_minor,
@@ -318,30 +342,52 @@ async function heldCategories(
       )
     ).rows;
 
-    return {
-      host: new URL(connectionString).host,
-      held: rows.map((row) => {
-        if (row.type !== "income" && row.type !== "expense") {
-          throw new Error(`\`${row.name}\` has the unknown Category Type \`${row.type}\`.`);
-        }
-        if (row.amount_minor === null) {
-          return { personalCategory: row.name, type: row.type, amount: null, retired: row.retired };
-        }
-        const minorUnits = Number(row.amount_minor);
-        if (!Number.isSafeInteger(minorUnits) || !isCurrency(row.currency)) {
-          throw new Error(
-            `The Entry for \`${row.name}\` in ${monthKey(month)} is malformed ` +
-              `(${row.amount_minor} ${row.currency ?? "—"}).`,
-          );
-        }
-        return {
-          personalCategory: row.name,
-          type: row.type,
-          amount: money(minorUnits, row.currency),
-          retired: row.retired,
-        };
-      }),
-    };
+    const held = rows.map((row): HeldCategory => {
+      if (row.type !== "income" && row.type !== "expense") {
+        throw new Error(`\`${row.name}\` has the unknown Category Type \`${row.type}\`.`);
+      }
+      if (row.amount_minor === null) {
+        return { personalCategory: row.name, type: row.type, amount: null, retired: row.retired };
+      }
+      const minorUnits = Number(row.amount_minor);
+      if (!Number.isSafeInteger(minorUnits) || !isCurrency(row.currency)) {
+        throw new Error(
+          `The Entry for \`${row.name}\` in ${monthKey(month)} is malformed ` +
+            `(${row.amount_minor} ${row.currency ?? "—"}).`,
+        );
+      }
+      return {
+        personalCategory: row.name,
+        type: row.type,
+        amount: money(minorUnits, row.currency),
+        retired: row.retired,
+      };
+    });
+
+    /**
+     * The id a write points at, keyed the way the comparison keys a row. Two
+     * Personal Categories of one Person sharing a name *and* a type — a retired
+     * one beside its live replacement, say — would collapse into one row in the
+     * comparison and into one id here, and the figure would land in whichever of
+     * them the query happened to return second. That is a refusal: which one the
+     * household meant is theirs to settle in `/balance`, by renaming one.
+     */
+    const ids = new Map<string, string>();
+    for (const row of rows) {
+      if (row.type !== "income" && row.type !== "expense") continue;
+      const key = categoryKey(row.name, row.type);
+      const already = ids.get(key);
+      if (already !== undefined) {
+        throw new Error(
+          `${personId} has two Personal Categories named \`${row.name}\` of the same סוג ` +
+            `(\`${already}\` and \`${row.id}\`), so a figure for it has two places it could ` +
+            `land and this run will not choose between them. Rename one in /balance.`,
+        );
+      }
+      ids.set(key, row.id);
+    }
+
+    return { host: new URL(connectionString).host, ids, held };
   } finally {
     await client.end();
   }
@@ -368,6 +414,7 @@ function report(
   source: string,
   savedTo: string | null,
   sideBySide: () => void,
+  closing: () => void,
 ): void {
   say(`# RiseUp → מאזן: ${fold.person}, ${monthKey(fold.month)}`);
   say();
@@ -513,17 +560,7 @@ function report(
   say();
 
   sideBySide();
-
-  say(`## Nothing written`);
-  say();
-  say(`This phase reports only: no Entry is written, no month is closed, \`rate_watch_items\``);
-  say(`is untouched. Every statement this script sends is a \`select\`. Phase 33 writes.`);
-  if (fold.unresolved.length > 0) {
-    say();
-    say(
-      `A write would be blocked by **${fold.unresolved.length}** unresolved ${fold.unresolved.length === 1 ? "row" : "rows"} above.`,
-    );
-  }
+  closing();
 }
 
 /**
@@ -639,6 +676,109 @@ function reportNoComparison(why: readonly string[]): void {
   say();
 }
 
+// --- the write ---------------------------------------------------------------
+
+/**
+ * What a write is offered, approved and refused, said in the report.
+ *
+ * The token is printed whether or not `--write` was passed, because the ordinary
+ * loop is two runs: one that reads the month and prints the table, and one that
+ * approves it. Nothing is written by the first.
+ */
+function reportWrite(
+  plan: RiseUpWritePlan,
+  person: string,
+  month: string,
+  host: string | null,
+  state: { readonly writing: boolean; readonly written: number | null },
+): void {
+  say(`## The write`);
+  say();
+
+  if (plan.offered.length > 0) {
+    say(`| # | קטגוריה אישית | סוג | מאזן | RiseUp | הפרש |`);
+    say(`| ---: | --- | --- | ---: | ---: | ---: |`);
+    for (const line of plan.offered) {
+      say(
+        `| ${line.index} | ${line.personalCategory} | ${line.type === "income" ? "הכנסה" : "הוצאה"} ` +
+          `| ${line.jubot === null ? "*not recorded*" : shekels(line.jubot)} ` +
+          `| ${shekels(line.riseUp)} | ${line.difference === null ? "*new*" : shekels(line.difference)} |`,
+      );
+    }
+    say();
+  }
+
+  if (plan.declined.length > 0) {
+    say(
+      `**Skipped** by \`--decline\`: ${plan.declined
+        .map((line) => `${line.index} ${line.personalCategory} (${shekels(line.riseUp)})`)
+        .join("; ")} — not written, and the מאזן keeps whatever it already holds ` +
+        `${plan.declined.length === 1 ? "for it" : "for them"}.`,
+    );
+    say();
+  }
+
+  if (plan.refusals.length > 0) {
+    say(state.writing ? `**Nothing was written.**` : `**Nothing written** — this run reports.`);
+    say();
+    for (const refusal of plan.refusals) say(`- ${refusal}`);
+    say();
+    if (plan.offered.length > 0 && plan.awaitingApproval) {
+      say(`To write ${plan.offered.length === 1 ? "it" : "them"}:`);
+      say();
+      say("```bash");
+      say(`npm run riseup:fill -- ${person} ${month} --write --approve ${plan.token}`);
+      say("```");
+      say();
+      say(
+        `Add \`--decline <n>\` — the numbers in the table above, comma-separated — for a line ` +
+          `the household does not want written. A figure RiseUp revises changes the token, so ` +
+          `an approval is an approval of the lines it was printed with.`,
+      );
+      say();
+    }
+    return;
+  }
+
+  if (plan.offered.length === 0) {
+    say(
+      `**Nothing to write.** No line differs and none is new, so there is nothing to approve ` +
+        `and no Entry was touched. A month that already agrees writes nothing — including on a ` +
+        `run that passed \`--write\`.`,
+    );
+    say();
+    return;
+  }
+
+  if (state.written === null || state.written === 0) {
+    say(
+      state.written === 0
+        ? `**Nothing to write.** Every line offered was declined, so no Entry was touched and ` +
+            `the month stands as it did.`
+        : `Nothing written: this run reports. The ${plan.offered.length === 1 ? "line" : "lines"} ` +
+            `above ${plan.offered.length === 1 ? "is" : "are"} approved by ` +
+            `\`--write --approve ${plan.token}\`.`,
+    );
+    say();
+    return;
+  }
+
+  say(
+    `**Written.** ${state.written} ${state.written === 1 ? "Entry" : "Entries"} saved to ` +
+      `\`${host ?? "the ledger"}\` for ${month}, in one transaction, as whole shekels: ` +
+      `${plan.approved.map((entry) => `${entry.personalCategory} ${shekels(entry.amount)}`).join("; ")}.`,
+  );
+  say();
+  say(
+    `No month was closed and no blank was filled: a category RiseUp was silent about keeps its ` +
+      `blank, so \`monthClosure\` reads this month exactly as it did before the run. ` +
+      `\`rate_watch_items\` was not touched — the מאזן is all this writes.`,
+  );
+  say();
+  say(`The grid reads it at \`/balance\` and \`/balance/month?month=${month}\`.`);
+  say();
+}
+
 // --- the run -----------------------------------------------------------------
 
 const args = process.argv.slice(2);
@@ -646,6 +786,9 @@ const flagValue = (name: string): string | undefined => {
   const at = args.indexOf(name);
   return at < 0 ? undefined : args[at + 1];
 };
+/** Every occurrence, because `--approve` and `--decline` are given per month. */
+const flagValues = (name: string): string[] =>
+  args.flatMap((arg, index) => (arg === name ? [args[index + 1] ?? ""] : []));
 const positional = args.filter((arg, index) => {
   if (arg.startsWith("--")) return false;
   const previous = args[index - 1];
@@ -653,29 +796,118 @@ const positional = args.filter((arg, index) => {
 });
 
 const usage =
-  "Usage: npm run riseup:fill -- <person> [YYYY-MM] [--from <saved.json>] [--config <path>] [--no-db]\n" +
+  "Usage: npm run riseup:fill -- <person> [YYYY-MM | YYYY-MM..YYYY-MM] [--from <saved.json>]\n" +
+  "                              [--config <path>] [--no-db]\n" +
+  "                              [--write --approve <token> [--decline <n>[,<n>]]]\n" +
   `  <person> is one of ${PEOPLE.map((p) => p.id).join(", ")}.\n` +
   "  Without a month, RiseUp's own `previous` — the last ended cashflow month.\n" +
-  "  --no-db folds and prints without reading the ledger at all.";
+  "  A range runs month by month, each fetched, compared and approved on its own.\n" +
+  "  --no-db folds and prints without reading the ledger at all.\n" +
+  "  --write writes the lines the printed token approves, and nothing else.\n" +
+  "  --decline takes the line numbers the write offered; prefix them with\n" +
+  "  `YYYY-MM:` when the run covers more than one month.";
 
 const personId = positional[0];
 if (personId === undefined) throw new Error(usage);
 
-const person = PEOPLE.find((candidate) => candidate.id === personId);
-if (person === undefined) {
+const found = PEOPLE.find((candidate) => candidate.id === personId);
+if (found === undefined) {
   throw new Error(
     `\`${personId}\` is not one of the household's two People (${PEOPLE.map((p) => p.id).join(", ")}).\n${usage}`,
   );
 }
+/** Bound to a name of its own so that `runMonth` reads it as the Person it is. */
+const person = found;
 
-const monthArgument = positional[1];
-if (monthArgument !== undefined && !/^\d{4}-\d{2}$/.test(monthArgument)) {
-  throw new Error(`\`${monthArgument}\` is not a month. Write it as YYYY-MM.\n${usage}`);
+const MONTH = /^\d{4}-\d{2}$/;
+const RANGE = /^(\d{4}-\d{2})\.\.(\d{4}-\d{2})$/;
+
+/**
+ * The months this run covers, as RiseUp's own `date` argument takes them. A range
+ * is a list, run one at a time; `previous` resolves inside RiseUp, so it stays
+ * the string it is.
+ */
+function datesOf(argument: string | undefined): string[] {
+  if (argument === undefined) return ["previous"];
+  if (MONTH.test(argument)) return [argument];
+  const range = RANGE.exec(argument);
+  if (range === null) {
+    throw new Error(
+      `\`${argument}\` is not a month. Write it as YYYY-MM, or YYYY-MM..YYYY-MM for a range.\n${usage}`,
+    );
+  }
+  const [, first = "", last = ""] = range;
+  const months = monthRange(parseMonthKey(first), parseMonthKey(last));
+  if (months.length === 0) {
+    throw new Error(`\`${argument}\` runs backwards: ${first} is after ${last}.\n${usage}`);
+  }
+  return months.map(monthKey);
 }
-const date = monthArgument ?? "previous";
+
+const dates = datesOf(positional[1]);
 
 const from = flagValue("--from");
 const configPath = flagValue("--config") ?? configPathDefault();
+const writing = args.includes("--write");
+const approvals = flagValues("--approve").filter((token) => token.length > 0);
+
+/**
+ * The declined line numbers, per month. A bare number belongs to the one month a
+ * run covers; across a range it has to say which month it means, because line 2
+ * of October and line 2 of November are different lines.
+ *
+ * Numbers rather than names on purpose: `חו"ל` and `שכ"ד` both carry a double
+ * quote, and a quote in an argument is exactly what `/balance/import`'s own
+ * comment records going wrong.
+ */
+const declines = new Map<string, number[]>();
+for (const raw of flagValues("--decline")) {
+  for (const piece of raw.split(",").map((part) => part.trim()).filter((part) => part.length > 0)) {
+    const [left = "", right] = piece.split(":");
+    const scope = right === undefined ? null : left;
+    const number = Number(right === undefined ? left : right);
+    if (!Number.isInteger(number) || number < 1) {
+      throw new Error(
+        `\`${piece}\` is not a line number. --decline takes the numbers in the write's own ` +
+          `table, comma-separated, each optionally prefixed with \`YYYY-MM:\`.\n${usage}`,
+      );
+    }
+    if (scope === null && dates.length > 1) {
+      throw new Error(
+        `This run covers ${dates.length} months, so \`--decline ${piece}\` is ambiguous: line ` +
+          `${number} of which month? Write it as \`--decline <YYYY-MM>:${number}\`.\n${usage}`,
+      );
+    }
+    if (scope !== null && !MONTH.test(scope)) {
+      throw new Error(`\`${scope}\` is not a month in \`--decline ${piece}\`.\n${usage}`);
+    }
+    const key = scope ?? "*";
+    declines.set(key, [...(declines.get(key) ?? []), number]);
+  }
+}
+
+if (from !== undefined && dates.length > 1) {
+  throw new Error(
+    `\`--from\` carries one saved month, so it cannot answer a range of ${dates.length}. Run the ` +
+      `months one at a time, or drop \`--from\` and let the script fetch each of them.\n${usage}`,
+  );
+}
+
+const noDb = args.includes("--no-db");
+if (writing && noDb) {
+  throw new Error(
+    "`--write` writes from the side-by-side, and `--no-db` is what refuses to read it. Nothing " +
+      "is written over a ledger nobody looked at.",
+  );
+}
+
+const connectionString = process.env.DATABASE_URL ?? "";
+if (writing && connectionString.length === 0) {
+  throw new Error(
+    "`DATABASE_URL` is not set, so there is no ledger to write to. `.env.production.local` is " +
+      "where the household's lives.",
+  );
+}
 
 const mappingPath = MAPPING_PATH(person.id);
 let mapping: RiseUpMapping;
@@ -694,67 +926,153 @@ if (mapping.server !== person.server) {
   );
 }
 
-let raw: unknown;
-let source: string;
-let savedTo: string | null = null;
+/** One month: read it, fold it, compare it, and write it if it was approved. */
+async function runMonth(date: string): Promise<void> {
+  let raw: unknown;
+  let source: string;
+  let savedTo: string | null = null;
 
-if (from !== undefined) {
-  raw = JSON.parse(readFileSync(from, "utf8")) as unknown;
-  source = `\`${from}\` (no network)`;
-} else {
-  raw = await fetchBudget(person.server, date, configPath);
-  const directory = mkdtempSync(join(tmpdir(), "jubot-riseup-"));
-  savedTo = join(directory, `${person.id}-${date}.json`);
-  writeFileSync(savedTo, `${JSON.stringify(raw, null, 2)}\n`);
-  source = `the \`${person.server}\` MCP server, \`get_budget\` for \`${date}\``;
-}
+  if (from !== undefined) {
+    raw = JSON.parse(readFileSync(from, "utf8")) as unknown;
+    source = `\`${from}\` (no network)`;
+  } else {
+    raw = await fetchBudget(person.server, date, configPath);
+    const directory = mkdtempSync(join(tmpdir(), "jubot-riseup-"));
+    savedTo = join(directory, `${person.id}-${date}.json`);
+    writeFileSync(savedTo, `${JSON.stringify(raw, null, 2)}\n`);
+    source = `the \`${person.server}\` MCP server, \`get_budget\` for \`${date}\``;
+  }
 
-const fold = foldRiseUpMonth(raw as RiseUpMonth, mapping, { currency: CURRENCY });
+  const fold = foldRiseUpMonth(raw as RiseUpMonth, mapping, { currency: CURRENCY });
 
-/**
- * The cutover is keyed on the month the fold actually covers, not on the argument:
- * `previous` resolves inside RiseUp and `--from` carries whatever month was saved.
- * Decided before any connection is opened.
- */
-const connectionString = process.env.DATABASE_URL ?? "";
-let comparison: { comparison: RiseUpComparison; host: string } | null = null;
-let noComparison: string[] | null = null;
+  /**
+   * The cutover is keyed on the month the fold actually covers, not on the
+   * argument: `previous` resolves inside RiseUp and `--from` carries whatever
+   * month was saved. Decided before any connection is opened.
+   */
+  let compared: { comparison: RiseUpComparison; ids: Map<string, string>; host: string } | null = null;
+  let noComparison: string[] | null = null;
 
-if (args.includes("--no-db")) {
-  noComparison = ["`--no-db` was passed, so the ledger was not read and nothing is compared."];
-} else if (connectionString.length === 0) {
-  noComparison = [
-    "`DATABASE_URL` is not set, so there is nothing to compare against. The fold above is all",
-    "this run can say. Set it — `.env.production.local` is where the household's is — to get",
-    "the side-by-side.",
-  ];
-} else if (!isRiseUpAuthority(fold.month)) {
-  noComparison = [`**Refused.** ${new RiseUpCutoverError(fold.month).message}`];
-} else {
-  try {
-    const { held, host } = await heldCategories(person.id, fold.month, connectionString);
-    comparison = {
-      comparison: compareWithLedger(fold.totals, held, fold.month, {
-        unresolved: fold.unresolved.length,
-      }),
-      host,
-    };
-  } catch (cause) {
-    // The fold is the expensive half and it is already in hand. A database that
-    // cannot be reached must not take the report down with it.
+  if (noDb) {
+    noComparison = ["`--no-db` was passed, so the ledger was not read and nothing is compared."];
+  } else if (connectionString.length === 0) {
     noComparison = [
-      `**The ledger could not be read**, so nothing is compared: ${(cause as Error).message}`,
+      "`DATABASE_URL` is not set, so there is nothing to compare against. The fold above is all",
+      "this run can say. Set it — `.env.production.local` is where the household's is — to get",
+      "the side-by-side.",
     ];
+  } else if (!isRiseUpAuthority(fold.month)) {
+    noComparison = [`**Refused.** ${new RiseUpCutoverError(fold.month).message}`];
+  } else {
+    try {
+      const { held, ids, host } = await heldCategories(person.id, fold.month, connectionString);
+      compared = {
+        comparison: compareWithLedger(fold.totals, held, fold.month, {
+          unresolved: fold.unresolved.length,
+        }),
+        ids,
+        host,
+      };
+    } catch (cause) {
+      // The fold is the expensive half and it is already in hand. A database that
+      // cannot be reached must not take the report down with it.
+      noComparison = [
+        `**The ledger could not be read**, so nothing is compared: ${(cause as Error).message}`,
+      ];
+    }
   }
+
+  let plan: RiseUpWritePlan | null = null;
+  let written: number | null = null;
+  let writeFailure: string | null = null;
+
+  if (compared !== null) {
+    const declined = [...(declines.get(monthKey(fold.month)) ?? []), ...(declines.get("*") ?? [])];
+    const token = approvalToken(person.id, compared.comparison);
+    // Across a range each month carries its own token, so the one that matches
+    // this month is the approval of it. With none matching, the first is passed
+    // through so that the refusal names what was offered instead of pretending
+    // nothing was confirmed at all.
+    const approve = approvals.includes(token) ? token : approvals[0];
+    plan = planRiseUpWrite(person.id, compared.comparison, {
+      ids: compared.ids,
+      declined,
+      ...(writing && approve !== undefined ? { approve } : {}),
+    });
+
+    if (writing && plan.writable) {
+      if (plan.approved.length === 0) {
+        written = 0;
+      } else {
+        try {
+          // One transaction for the month, through the one door into `entries`
+          // (ADR 0006). A failure leaves the month exactly as it was.
+          await saveMonthEntries(
+            fold.month,
+            plan.approved.map((entry) => ({
+              personalCategoryId: entry.personalCategoryId,
+              amount: entry.amount,
+            })),
+          );
+          written = plan.approved.length;
+        } catch (cause) {
+          writeFailure = (cause as Error).message;
+        }
+      }
+    }
+  }
+
+  report(
+    fold,
+    source,
+    savedTo,
+    () => {
+      if (compared !== null) {
+        reportComparison(compared.comparison, compared.host, person.id);
+      } else if (noComparison !== null) {
+        reportNoComparison(noComparison);
+      }
+    },
+    () => {
+      if (plan === null) {
+        say(`## The write`);
+        say();
+        say(
+          `Nothing written, and nothing could be: there is no side-by-side to write from. A ` +
+            `write takes the ledger's own figures beside RiseUp's and the household's approval ` +
+            `of the difference (ADR 0006).`,
+        );
+        say();
+        return;
+      }
+      if (writeFailure !== null) {
+        say(`## The write`);
+        say();
+        say(`**The write failed and nothing was written**: ${writeFailure}`);
+        say();
+        say(
+          `The month is as it was: one transaction covers it, so a failure part-way through ` +
+            `leaves no half-written month behind.`,
+        );
+        say();
+        return;
+      }
+      reportWrite(plan, person.id, monthKey(fold.month), compared === null ? null : compared.host, {
+        writing,
+        written,
+      });
+    },
+  );
 }
 
-report(fold, source, savedTo, () => {
-  if (comparison !== null) {
-    reportComparison(comparison.comparison, comparison.host, person.id);
-  } else if (noComparison !== null) {
-    reportNoComparison(noComparison);
+for (const date of dates) {
+  if (out.length > 0) {
+    say();
+    say(`---`);
+    say();
   }
-});
+  await runMonth(date);
+}
 
 process.stdout.write(`${out.join("\n")}\n`);
 // The MCP server is a child process with a shell between us and it; nothing is

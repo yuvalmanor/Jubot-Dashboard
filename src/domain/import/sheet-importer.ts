@@ -27,12 +27,27 @@
  *   income rows to import, so `סה"כ הכנסות` becomes one income category per
  *   Person. That is the granularity the history actually has; pretending to more
  *   would be inventing it.
+ *
+ * And one fact about where it stops:
+ *
+ * - **It owns everything before 2026-10 and nothing from 2026-10 on.** RiseUp is
+ *   the authority for those months (ADR 0006), read by `/riseup-fill` and approved
+ *   line by line, and two producers writing one category-month is the thing the
+ *   cutover exists to forbid. The export reaches into 2026-10, so `planWrites`
+ *   drops every entry from the cutover onward and hands them back as `refused` for
+ *   the review screen to state. The boundary itself lives in
+ *   [riseup-cutover.ts](riseup-cutover.ts), where both sides read it.
  */
 
 import {
   type CategoryType,
   normaliseCategoryName,
 } from "@/domain/categories/categories";
+import {
+  RISEUP_AUTHORITY_FROM,
+  isRiseUpAuthority,
+  sheetImporterGaveUp,
+} from "@/domain/import/riseup-cutover";
 import {
   type SheetBlock,
   type SheetExport,
@@ -648,6 +663,15 @@ export interface ImportPlan {
   readonly households: readonly PlannedHousehold[];
   readonly categories: readonly PlannedCategory[];
   readonly entries: readonly PlannedEntry[];
+  /**
+   * Entries the sheet holds for a month RiseUp owns (2026-10 onward, ADR 0006).
+   * Kept rather than dropped silently, so the review screen can say which months
+   * the importer gave up and why — a figure going missing with no reason is the
+   * failure mode this whole module is written against.
+   */
+  readonly refused: readonly PlannedEntry[];
+  /** Why, in one sentence, when anything was refused. */
+  readonly refusedReason: string | null;
 }
 
 /** What the review screen starts from: the importer's own proposal. */
@@ -670,6 +694,13 @@ function householdKeyOf(name: string, type: CategoryType): string {
  * Turn confirmed proposals into writes. Categories the reviewer left out take
  * their entries with them, so a row that is not imported cannot leave amounts
  * behind pointing at nothing.
+ *
+ * And **no month from 2026-10 on is written**, whatever the reviewer confirmed.
+ * Those are RiseUp's (ADR 0006): the export's own 2026-10 column is the figure
+ * the hand-copy typed, `/riseup-fill` reads that month out of RiseUp and a person
+ * approves it, and the importer writing the sheet's version over it would be the
+ * second producer the cutover exists to forbid. The refused entries come back on
+ * the plan rather than vanishing.
  */
 export function planWrites(proposal: ImportProposal, selection: ImportSelection): ImportPlan {
   const categories = proposal.categories.filter((category) => selection.includedKeys.has(category.key));
@@ -698,17 +729,23 @@ export function planWrites(proposal: ImportProposal, selection: ImportSelection)
   const kept = new Set(planned.map((category) => category.key));
   const choices = selection.conflictChoices ?? new Map<string, number>();
 
+  const confirmed = proposal.entries
+    .filter((entry) => kept.has(entry.categoryKey))
+    .map((entry) => {
+      const chosen = choices.get(conflictKey(entry.categoryKey, entry.month));
+      return chosen === undefined
+        ? entry
+        : { ...entry, amount: money(chosen, entry.amount.currency) };
+    });
+
+  const refused = confirmed.filter((entry) => isRiseUpAuthority(entry.month));
+
   return {
     households: [...households.values()],
     categories: planned,
-    entries: proposal.entries
-      .filter((entry) => kept.has(entry.categoryKey))
-      .map((entry) => {
-        const chosen = choices.get(conflictKey(entry.categoryKey, entry.month));
-        return chosen === undefined
-          ? entry
-          : { ...entry, amount: money(chosen, entry.amount.currency) };
-      }),
+    entries: confirmed.filter((entry) => !isRiseUpAuthority(entry.month)),
+    refused,
+    refusedReason: refused.length === 0 ? null : sheetImporterGaveUp(RISEUP_AUTHORITY_FROM),
   };
 }
 
@@ -724,6 +761,13 @@ export function planSummary(plan: ImportPlan): {
   const from = months[0] ?? null;
   const to = months[months.length - 1] ?? null;
   return { months: months.length, from, to };
+}
+
+/** Every month the importer gave up to RiseUp, ascending, for the screen to name. */
+export function refusedMonths(plan: ImportPlan): CalendarMonth[] {
+  return [...new Map(plan.refused.map((entry) => [monthKey(entry.month), entry.month])).values()].sort(
+    compareMonths,
+  );
 }
 
 /** Every month in the plan, ascending — what the review screen lists. */

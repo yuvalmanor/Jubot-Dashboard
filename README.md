@@ -421,7 +421,9 @@ the entry to add; it never reaches for the other account.
 ```bash
 npm run riseup:fill -- yuval              # the last ended cashflow month
 npm run riseup:fill -- yuval 2026-10      # that month
+npm run riseup:fill -- yuval 2026-10..2026-11      # month by month
 npm run riseup:fill -- yuval --from <saved.json>   # a response already on disk
+npm run riseup:fill -- yuval 2026-10 --write --approve <token>
 ```
 
 The script is the MCP client: it launches that Person's server, calls `get_budget` itself
@@ -445,9 +447,24 @@ unlike the merchant: two of Yuval's commitments read `חברת פרטנר תקש
 without a rule, and any money in that is not the salary charge, is printed and resolved by
 a person — nothing is guessed and nothing is swept into משתנות.
 
-It **reports**. Nothing here writes an Entry, closes a month or touches
-`rate_watch_items`; the comparison against the database and the write itself are the phases
-after this one in [plans/riseup-fill.md](plans/riseup-fill.md).
+**It reports unless it is told to write.** Every run prints the side-by-side — one line per
+Personal Category, what the מאזן holds, what RiseUp says, the difference — and a token over
+the lines it is offering. `--write --approve <token>` writes those lines and nothing else;
+`--decline <n>` drops one by its number in the table, and the run says what it skipped. A
+figure RiseUp revises changes the token, so an approval is an approval of the lines it was
+printed with and never of a month that has moved since. A month that already agrees writes
+nothing, and anything unresolved — an unmapped row, a credit with no disposition, a figure
+with no Personal Category to land in — stops the whole write rather than part of it.
+
+The write goes through `saveMonthEntries` and nowhere else: one transaction per month, only
+the approved lines, never a cleared Entry. **No month is closed and no blank is filled** — a
+category RiseUp was silent about keeps its blank — and `rate_watch_items` is never touched.
+
+**The cutover is enforced on both sides.** RiseUp owns 2026-10 and after; the sheet importer
+owns everything before. `/riseup-fill` refuses to compare or write an earlier month, and
+`/balance/import` refuses to write 2026-10 onward and names the months it gave up, so the
+export's own 2026-10 column cannot land over an approved RiseUp figure. The boundary itself
+is [riseup-cutover.ts](src/domain/import/riseup-cutover.ts), read by both.
 
 ## מיפוי
 

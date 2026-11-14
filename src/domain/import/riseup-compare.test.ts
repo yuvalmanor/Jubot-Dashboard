@@ -248,32 +248,43 @@ describe("the cutover of ADR 0006", () => {
   });
 });
 
-describe("the script is still write-less", () => {
+describe("the script sends no SQL of its own", () => {
   /**
-   * Phase 32 builds the side-by-side and nothing else: `--write` is Phase 33.
-   * This guard is deliberately tied to that phase and goes when the write
-   * arrives — which is the point, since it is what makes "no `update` or
-   * `insert` statement exists anywhere in the script yet" checkable rather than
-   * asserted.
+   * Phase 33 gave the script its write, and the write goes through
+   * `saveMonthEntries` — the one door into `entries` (ADR 0006). So the guard
+   * that stood here while the script was write-less now stands for the other
+   * half of the same rule: **no new SQL.** No `insert`, no `update`, no
+   * `delete from` anywhere in it, which is what stops a second way into the
+   * table growing one convenient query at a time.
+   *
+   * `saveMonthEntries` was the fourth name on this list until Phase 33, and its
+   * removal is the one edit the write was allowed to make here.
    */
   const script = readFileSync(
     fileURLToPath(new URL("../../../scripts/riseup-fill.ts", import.meta.url)),
     "utf8",
   );
 
-  it.each(["insert into", "insert ", "update ", "delete from", "saveMonthEntries"])(
+  const code = () =>
+    script
+      .split("\n")
+      .filter((line) => !/^\s*(\*|\/\/|\/\*)/.test(line))
+      .join("\n")
+      .toLowerCase();
+
+  it.each(["insert into", "insert ", "update ", "delete from"])(
     "has no `%s` in scripts/riseup-fill.ts",
     (statement) => {
       // Prose is not a statement. Only the code is checked, so a line of
       // commentary saying "last updated" does not fail this.
-      const code = script
-        .split("\n")
-        .filter((line) => !/^\s*(\*|\/\/|\/\*)/.test(line))
-        .join("\n")
-        .toLowerCase();
-      expect(code).not.toContain(statement);
+      expect(code()).not.toContain(statement);
     },
   );
+
+  it("reaches `entries` only through `saveMonthEntries`", () => {
+    expect(code()).toContain("savemonthentries");
+    expect(code()).not.toMatch(/\b(insert|update|delete)\b[^\n]*\bentries\b/);
+  });
 });
 
 describe("what the fold left unresolved", () => {

@@ -32,40 +32,23 @@
  *   the household had already copied by hand were used to prove the rules.
  */
 
+import {
+  RISEUP_AUTHORITY_FROM,
+  RiseUpCutoverError,
+  assertRiseUpAuthority,
+  isRiseUpAuthority,
+} from "@/domain/import/riseup-cutover";
 import { type Money, equals, subtract } from "@/domain/money/money";
-import { type CalendarMonth, compareMonths, monthKey } from "@/domain/time/calendar-month";
+import { type CalendarMonth } from "@/domain/time/calendar-month";
 
 /**
- * The cutover of ADR 0006. RiseUp owns this month and everything after it; the
- * sheet importer owns everything before.
+ * The cutover itself lives in [riseup-cutover.ts](riseup-cutover.ts), because
+ * Phase 33 gave the sheet importer the other half of the boundary and a module
+ * that only reads the sheet has no business importing this comparison to find
+ * out where it must stop. Re-exported here, where every caller already looks
+ * for it.
  */
-export const RISEUP_AUTHORITY_FROM: CalendarMonth = { year: 2026, month: 10 };
-
-export class RiseUpCutoverError extends Error {
-  readonly month: CalendarMonth;
-
-  constructor(month: CalendarMonth) {
-    super(
-      `${monthKey(month)} is before ${monthKey(RISEUP_AUTHORITY_FROM)}, the month RiseUp becomes ` +
-        `the authority for the מאזן's totals (ADR 0006). Everything earlier was recorded from ` +
-        `the sheet and is correct, and the sheet importer is the only thing that writes it — so ` +
-        `nothing here reads the database for such a month and nothing here will write one. ` +
-        `Folding it and printing its totals is allowed and is what just happened above.`,
-    );
-    this.name = "RiseUpCutoverError";
-    this.month = month;
-  }
-}
-
-/** True when RiseUp is the authority for this month. */
-export function isRiseUpAuthority(month: CalendarMonth): boolean {
-  return compareMonths(month, RISEUP_AUTHORITY_FROM) >= 0;
-}
-
-/** Stops a comparison dead for a month the sheet importer owns. */
-export function assertRiseUpAuthority(month: CalendarMonth): void {
-  if (!isRiseUpAuthority(month)) throw new RiseUpCutoverError(month);
-}
+export { RISEUP_AUTHORITY_FROM, RiseUpCutoverError, assertRiseUpAuthority, isRiseUpAuthority };
 
 // --- what goes in ------------------------------------------------------------
 

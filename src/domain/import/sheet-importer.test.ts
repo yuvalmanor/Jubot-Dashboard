@@ -11,11 +11,20 @@ import {
   conflictKey,
   defaultSelection,
   planSheetImport,
+  plannedMonths,
   planWrites,
+  refusedMonths,
 } from "@/domain/import/sheet-importer";
+import { RISEUP_AUTHORITY_FROM } from "@/domain/import/riseup-cutover";
 import { buildLedger, householdMonthSummary } from "@/domain/ledger/ledger";
 import { type Money } from "@/domain/money/money";
-import { type CalendarMonth, calendarMonth, monthKey, monthsEqual } from "@/domain/time/calendar-month";
+import {
+  type CalendarMonth,
+  calendarMonth,
+  compareMonths,
+  monthKey,
+  monthsEqual,
+} from "@/domain/time/calendar-month";
 
 /**
  * SheetImporter against the household's real export.
@@ -359,7 +368,13 @@ describe("nothing is written without confirmation", () => {
 
   it("writes nothing at all for an empty selection", () => {
     const plan = planWrites(PROPOSAL, { includedKeys: new Set(), householdNames: new Map() });
-    expect(plan).toEqual({ households: [], categories: [], entries: [] });
+    expect(plan).toEqual({
+      households: [],
+      categories: [],
+      entries: [],
+      refused: [],
+      refusedReason: null,
+    });
   });
 
   it("drops a category's entries with the category when it is left out", () => {
@@ -447,5 +462,59 @@ describe("what the import hands to the מאזן screens", () => {
     // The sheet's own משותף block nets EPP out of both its expense and its income
     // total, so its חיסכון is comparable even though its expense figure is not.
     expect(readMonth(month as CalendarMonth).saving).toEqual(shekels(minorUnits as number));
+  });
+});
+
+describe("the importer gives up everything from 2026-10 on", () => {
+  /**
+   * The other side of ADR 0006's boundary, and the reason it is code rather than
+   * a note: the committed export *has* a 2026-10 column, so an import that
+   * happened to run after `/riseup-fill` had approved that month would write the
+   * hand-copied figure over the approved one. Two producers writing one
+   * category-month is the one thing the cutover exists to forbid.
+   */
+  const plan = planWrites(PROPOSAL, defaultSelection(PROPOSAL));
+
+  it("still reads those months, so this is a refusal and not a blind spot", () => {
+    expect(PROPOSAL.entries.some((entry) => monthsEqual(entry.month, calendarMonth(2026, 10)))).toBe(
+      true,
+    );
+  });
+
+  it("writes no entry from the cutover onward", () => {
+    expect(
+      plan.entries.filter((entry) => compareMonths(entry.month, RISEUP_AUTHORITY_FROM) >= 0),
+    ).toEqual([]);
+  });
+
+  it("hands the refused entries back rather than dropping them silently", () => {
+    expect(plan.refused.length).toBeGreaterThan(0);
+    expect(
+      plan.refused.every((entry) => compareMonths(entry.month, RISEUP_AUTHORITY_FROM) >= 0),
+    ).toBe(true);
+    expect(refusedMonths(plan).map(monthKey)).toEqual(["2026-10"]);
+  });
+
+  it("says why, naming RiseUp and the cutover", () => {
+    expect(plan.refusedReason).toContain("2026-10");
+    expect(plan.refusedReason).toContain("RiseUp");
+  });
+
+  it("keeps writing 2026-09, which is the sheet's to write", () => {
+    expect(
+      plan.entries.some((entry) => monthsEqual(entry.month, calendarMonth(2026, 9))),
+    ).toBe(true);
+  });
+
+  it("leaves the months it does write unchanged, so the span stops at the cutover", () => {
+    const months = plannedMonths(plan).map(monthKey);
+    expect(months).not.toContain("2026-10");
+    expect(months[months.length - 1]).toBe("2026-09");
+  });
+
+  it("says nothing about a refusal when the selection reaches no such month", () => {
+    const quiet = planWrites(PROPOSAL, { includedKeys: new Set(), householdNames: new Map() });
+    expect(quiet.refused).toEqual([]);
+    expect(quiet.refusedReason).toBeNull();
   });
 });

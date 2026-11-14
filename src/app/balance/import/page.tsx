@@ -4,6 +4,7 @@ import { AppHeader } from "@/components/app-header";
 import { DatabaseNotConfiguredError } from "@/db/client";
 import { SheetExportMissingError, countRecorded } from "@/db/import";
 import { type Person, findPersonByEmail } from "@/db/people";
+import { RISEUP_AUTHORITY_FROM, isRiseUpAuthority } from "@/domain/import/riseup-cutover";
 import {
   type ImportFlag,
   type ImportProposal,
@@ -40,6 +41,7 @@ interface SearchParams {
   categories?: string | string[];
   entries?: string | string[];
   months?: string | string[];
+  refused?: string | string[];
   from?: string | string[];
   to?: string | string[];
 }
@@ -141,6 +143,8 @@ function ReviewForm({
 
       <SummaryPanel proposal={proposal} recorded={recorded} />
 
+      <CutoverPanel proposal={proposal} />
+
       <TotalsPanel totals={proposal.totals} disagreeing={disagreeing} people={people} />
 
       {conflicts.length === 0 ? null : <ConflictsPanel conflicts={conflicts} people={people} />}
@@ -216,6 +220,44 @@ function SummaryPanel({
           כבר יש רישומים במערכת. ייבוא יכתוב מחדש כל חודש־קטגוריה שמופיע בגיליון, ולא ייגע בשאר.
         </p>
       )}
+    </section>
+  );
+}
+
+/**
+ * The other side of ADR 0006's boundary, said on the screen that would cross it.
+ *
+ * The export has a 2026-10 column — the figures the household copied by hand
+ * before `/riseup-fill` existed — and RiseUp is the authority for that month and
+ * every month after it. So the importer reads those months and refuses to write
+ * them, and the screen says so rather than letting a row go quietly missing.
+ */
+function CutoverPanel({ proposal }: { proposal: ImportProposal }) {
+  const refused = [
+    ...new Map(
+      proposal.entries
+        .filter((entry) => isRiseUpAuthority(entry.month))
+        .map((entry) => [monthKey(entry.month), entry.month]),
+    ).values(),
+  ].sort((left, right) => monthKey(left).localeCompare(monthKey(right)));
+
+  if (refused.length === 0) return null;
+
+  return (
+    <section className="rounded-lg bg-sky-50 p-4">
+      <p className="font-medium text-sky-900">
+        מ־{formatMonth(RISEUP_AUTHORITY_FROM)} ואילך הייבוא לא כותב
+      </p>
+      <p className="mt-1 text-sm text-sky-800">
+        רייזאפ הוא המקור לחודשים האלה, והם נקראים משם ומאושרים שורה־שורה דרך{" "}
+        <bdi className="tabular">/riseup-fill</bdi>. הגיליון עדיין מחזיק אותם, ולכן הם נקראים
+        כאן ונשארים בלי כתיבה — שני מקורות שכותבים לאותו חודש־קטגוריה הוא בדיוק מה שהגבול
+        הזה מונע.
+      </p>
+      <p className="mt-2 text-sm text-sky-800">
+        חודשים שלא ייכתבו:{" "}
+        <bdi className="tabular">{refused.map((month) => monthKey(month)).join(", ")}</bdi>
+      </p>
     </section>
   );
 }
@@ -585,6 +627,12 @@ function Notices({ params }: { params: SearchParams }) {
         <bdi className="tabular">{first(params.categories)}</bdi> קטגוריות
         {from === undefined || to === undefined ? "" : ` (${from} – ${to})`}.
       </p>
+      {first(params.refused) === undefined ? null : (
+        <p className="mt-1 text-sm text-emerald-800">
+          לא נכתבו: <bdi className="tabular">{first(params.refused)}</bdi> — רייזאפ הוא המקור
+          לחודשים האלה, ו־<bdi className="tabular">/riseup-fill</bdi> כותב אותם לאחר אישור.
+        </p>
+      )}
       <p className="mt-2 text-sm">
         <Link href="/balance" className="text-emerald-900 underline underline-offset-4">
           קריאת החודשים במאזן
