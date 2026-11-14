@@ -466,20 +466,48 @@ Category, print category / Jubot / RiseUp / difference. Still `--write`-less.
 
 ### Acceptance criteria
 
-- [ ] The report shows one line per Personal Category with both figures and the difference
-- [ ] A month already matching shows an empty diff and says so in one line
-- [ ] A row Jubot holds and RiseUp says nothing about is shown as *left alone*, never as a
+- [x] The report shows one line per Personal Category with both figures and the difference
+- [x] A month already matching shows an empty diff and says so in one line
+      <!-- Shown on 2026-11-14 against a throwaway in-memory PGlite holding exactly what the
+           fold reads for Yuval 2026-10, which is the only way to reach this branch: the
+           household's own October differs by the 1₪ of the box below, permanently, until
+           17,735 is approved. The database was seeded by folding the saved response and
+           writing its own totals, so no figure passed through anyone's hands. Output:
+           "**Nothing to approve.** 19 rows already agree, 0 are being left alone and 2 are
+           blank on both sides — so a write would change nothing." -->
+- [x] A row Jubot holds and RiseUp says nothing about is shown as *left alone*, never as a
       proposed zero
-- [ ] A row RiseUp has and Jubot never recorded is shown as *new*
-- [ ] Yuval 2026-10 against the live database shows **no difference at all** on the rows the
+      <!-- Live: Yuval's אינטרנט (83) and טלפון 012 (79), whose two Partner commitments stay
+           unresolved until Phase 34 asks him which is which, read *left alone* rather than
+           as a proposed blank. -->
+- [x] A row RiseUp has and Jubot never recorded is shown as *new*
+      <!-- Live: Eden 2026-10, which the ledger holds nothing of — twelve rows, all new. -->
+- [x] Yuval 2026-10 against the live database shows **no difference at all** on the rows the
       melt reconciled — the rounding rule of Phase 30 is what makes סופר agree rather than
       differ by a shekel — so anything that does differ is a charge that landed after the
       sheet was copied, and is named
-- [ ] The report states which month RiseUp resolved, when its cashflow was last updated,
+      <!-- Run on 2026-11-14: all eighteen expense rows agree to the shekel — סופר 1,876,
+           AIAI 252, חו"ל −1,560, משתנות 1,846 — and nothing differs that a late charge
+           explains. The one line that differs is **income, by 1₪** (17,735 against the
+           sheet's 17,734), which is not a late charge at all: it is the header's own stated
+           consequence of rounding the salary charge, written into this plan before the
+           phase was built and already excepted by Phase 30's own criterion. It is named in
+           the table like any other difference and is the household's to approve. -->
+- [x] The report states which month RiseUp resolved, when its cashflow was last updated,
       and every category still awaiting charges, by name
-- [ ] A month before 2026-10 is refused here, where the database is involved, naming the
+      <!-- The waiting section now prints in every run rather than only when it has rows, so
+           "none still waiting" is a stated fact rather than a silence. -->
+- [x] A month before 2026-10 is refused here, where the database is involved, naming the
       cutover; folding such a month report-only stays allowed
-- [ ] No `update` or `insert` statement exists anywhere in the script yet
+      <!-- The guard reads the month the *fold* covers, not the argument, because `previous`
+           resolves inside RiseUp and `--from` carries whatever month was saved. Live:
+           `riseup:fill -- yuval 2026-09` prints his September in full, totals 12,259, and
+           then refuses the comparison by name. -->
+- [x] No `update` or `insert` statement exists anywhere in the script yet
+      <!-- Guarded by a test rather than by a reading: `riseup-compare.test.ts` reads
+           `scripts/riseup-fill.ts`, strips its commentary so that prose like "last updated"
+           cannot satisfy it, and fails on `insert`, `update `, `delete from` or
+           `saveMonthEntries`. It is tied to this phase and goes when Phase 33 writes. -->
 - [ ] **The advisor has audited this phase.** With the three gates green and the work
       committed, the advisor is asked to audit it; every finding is either fixed here or
       named in the report with the reason it was not. This box is checked last and the

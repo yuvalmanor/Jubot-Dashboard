@@ -4,10 +4,18 @@
  *   npm run riseup:fill -- yuval                 # the last ended cashflow month
  *   npm run riseup:fill -- yuval 2026-10         # that month
  *   npm run riseup:fill -- yuval --from <saved.json>   # a response already on disk
+ *   npm run riseup:fill -- yuval 2026-10 --no-db       # fold only, no comparison
  *
- * It **reports**, like `sheet-refresh.ts`. Nothing here touches the database and
- * nothing here writes an Entry: Phase 32 adds the comparison and Phase 33 the
+ * It **reports**, like `sheet-refresh.ts`. Every statement it sends is a `select`:
+ * nothing here writes an Entry and nothing here closes a month. Phase 33 adds the
  * write (see `plans/riseup-fill.md`).
+ *
+ * With `DATABASE_URL` set it also prints the side-by-side — one line per Personal
+ * Category, what the מאזן holds, what RiseUp says, the difference — which is what
+ * ADR 0006 makes the precondition of any write. The comparison is refused for a
+ * month before 2026-10, where the sheet importer is the authority; folding such a
+ * month and printing its totals stays allowed, and is how the two months the
+ * household had already copied by hand were used to prove the rules.
  *
  * This script is the MCP client. It launches that Person's RiseUp server itself
  * and calls `get_budget`, so **no figure passes through a model** on its way into
@@ -36,6 +44,15 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
+import pg from "pg";
+
+import {
+  type HeldCategory,
+  type RiseUpComparison,
+  RiseUpCutoverError,
+  compareWithLedger,
+  isRiseUpAuthority,
+} from "@/domain/import/riseup-compare";
 import {
   type RiseUpFold,
   type RiseUpMapping,
@@ -43,8 +60,8 @@ import {
   expenseTotals,
   foldRiseUpMonth,
 } from "@/domain/import/riseup-fold";
-import { type Money, toDecimalString } from "@/domain/money/money";
-import { monthKey } from "@/domain/time/calendar-month";
+import { type Money, isCurrency, money, toDecimalString } from "@/domain/money/money";
+import { type CalendarMonth, monthKey } from "@/domain/time/calendar-month";
 
 const CURRENCY = "ILS" as const;
 
@@ -254,6 +271,82 @@ async function fetchBudget(server: string, date: string, configPath: string): Pr
   }
 }
 
+// --- what the מאזן already holds --------------------------------------------
+
+interface HeldRow extends Record<string, unknown> {
+  readonly name: string;
+  readonly type: string;
+  readonly retired: boolean;
+  readonly amount_minor: string | null;
+  readonly currency: string | null;
+}
+
+/**
+ * That Person's Personal Categories, each with whatever `entries` holds for this
+ * month. **Every statement here is a `select`.**
+ *
+ * It reads all of them, not only the ones with an Entry, because "does this
+ * category exist at all" is what separates a new row from a figure with nowhere
+ * to land — and the monthly run never creates a category.
+ */
+async function heldCategories(
+  personId: string,
+  month: CalendarMonth,
+  connectionString: string,
+): Promise<{ held: HeldCategory[]; host: string }> {
+  const local = /@(localhost|127\.0\.0\.1)[:/]/.test(connectionString);
+  const client = new pg.Client({
+    connectionString,
+    ssl: local ? false : { rejectUnauthorized: true },
+  });
+  await client.connect();
+  try {
+    const rows = (
+      await client.query<HeldRow>(
+        `select c.name                                   as name,
+                c.type                                   as type,
+                (c.active_until is not null)             as retired,
+                e.amount_minor::text                     as amount_minor,
+                e.currency                               as currency
+           from personal_categories c
+           left join entries e
+             on e.personal_category_id = c.id
+            and e.year  = $2
+            and e.month = $3
+          where c.person_id = $1`,
+        [personId, month.year, month.month],
+      )
+    ).rows;
+
+    return {
+      host: new URL(connectionString).host,
+      held: rows.map((row) => {
+        if (row.type !== "income" && row.type !== "expense") {
+          throw new Error(`\`${row.name}\` has the unknown Category Type \`${row.type}\`.`);
+        }
+        if (row.amount_minor === null) {
+          return { personalCategory: row.name, type: row.type, amount: null, retired: row.retired };
+        }
+        const minorUnits = Number(row.amount_minor);
+        if (!Number.isSafeInteger(minorUnits) || !isCurrency(row.currency)) {
+          throw new Error(
+            `The Entry for \`${row.name}\` in ${monthKey(month)} is malformed ` +
+              `(${row.amount_minor} ${row.currency ?? "—"}).`,
+          );
+        }
+        return {
+          personalCategory: row.name,
+          type: row.type,
+          amount: money(minorUnits, row.currency),
+          retired: row.retired,
+        };
+      }),
+    };
+  } finally {
+    await client.end();
+  }
+}
+
 // --- the report --------------------------------------------------------------
 
 const out: string[] = [];
@@ -270,7 +363,12 @@ function shekels(amount: Money): string {
   return `${negative ? "−" : ""}${grouped}${exact}`;
 }
 
-function report(fold: RiseUpFold, source: string, savedTo: string | null): void {
+function report(
+  fold: RiseUpFold,
+  source: string,
+  savedTo: string | null,
+  sideBySide: () => void,
+): void {
   say(`# RiseUp → מאזן: ${fold.person}, ${monthKey(fold.month)}`);
   say();
   say(`- Month RiseUp resolved: **${fold.budgetDate}** (a cashflow month need not start on the 1st)`);
@@ -391,14 +489,17 @@ function report(fold: RiseUpFold, source: string, savedTo: string | null): void 
     say();
   }
 
-  if (fold.waiting.length > 0) {
-    say(`## Still waiting for charges`);
-    say();
-    say(`RiseUp has not stopped waiting for these, so their figures may still move.`);
+  say(`## Still waiting for charges`);
+  say();
+  if (fold.waiting.length === 0) {
+    say(`None. RiseUp has stopped waiting for every category this month.`);
+  } else {
+    say(`RiseUp has not stopped waiting for these, so their figures may still move. The run`);
+    say(`proceeds on the household's say-so rather than refusing.`);
     say();
     for (const row of fold.waiting) say(`- ${row.label} — waits until ${row.balanceDate}`);
-    say();
   }
+  say();
 
   say(`## Excluded, and therefore counted nowhere`);
   say();
@@ -411,16 +512,102 @@ function report(fold: RiseUpFold, source: string, savedTo: string | null): void 
   }
   say();
 
+  sideBySide();
+
   say(`## Nothing written`);
   say();
   say(`This phase reports only: no Entry is written, no month is closed, \`rate_watch_items\``);
-  say(`is untouched. Phase 32 compares this against the database; Phase 33 writes.`);
+  say(`is untouched. Every statement this script sends is a \`select\`. Phase 33 writes.`);
   if (fold.unresolved.length > 0) {
     say();
     say(
       `A write would be blocked by **${fold.unresolved.length}** unresolved ${fold.unresolved.length === 1 ? "row" : "rows"} above.`,
     );
   }
+}
+
+/**
+ * The side-by-side. One line per Personal Category, what Jubot holds against what
+ * RiseUp says, and the difference — which is what a person approves, line by line,
+ * before anything is written (ADR 0006).
+ */
+function reportComparison(comparison: RiseUpComparison, host: string, person: string): void {
+  say(`## מאזן against RiseUp`);
+  say();
+  say(`- Host: \`${host}\``);
+  say(`- Month compared: **${monthKey(comparison.month)}**, ${person}'s Personal Categories only`);
+  say();
+
+  if (comparison.identical) {
+    say(
+      `**Nothing to approve.** ${comparison.counts.same} ${comparison.counts.same === 1 ? "row" : "rows"} ` +
+        `already agree, ${comparison.counts["left-alone"]} are being left alone and ` +
+        `${comparison.counts.blank} are blank on both sides — so a write would change nothing.`,
+    );
+    say();
+  } else {
+    say(
+      `**${comparison.changes.length}** ${comparison.changes.length === 1 ? "line" : "lines"} would be ` +
+        `offered for approval: ${comparison.counts.differs} changed, ${comparison.counts.new} new. ` +
+        `${comparison.counts.same} already agree; ${comparison.counts["left-alone"]} are left alone.`,
+    );
+    say();
+  }
+
+  say(`| קטגוריה אישית | סוג | מאזן | RiseUp | הפרש | |`);
+  say(`| --- | --- | ---: | ---: | ---: | --- |`);
+  for (const row of comparison.rows) {
+    const state =
+      row.state === "same"
+        ? "agrees"
+        : row.state === "differs"
+          ? "**differs**"
+          : row.state === "new"
+            ? "**new**"
+            : row.state === "left-alone"
+              ? `left alone${row.handTyped ? ", hand-typed" : ""}`
+              : row.state === "blank"
+                ? "neither"
+                : "**no such Personal Category**";
+    say(
+      `| ${row.personalCategory}${row.retired ? " *(retired)*" : ""} ` +
+        `| ${row.type === "income" ? "הכנסה" : "הוצאה"} ` +
+        `| ${row.jubot === null ? "*not recorded*" : shekels(row.jubot)} ` +
+        `| ${row.riseUp === null ? "*not recorded*" : shekels(row.riseUp)} ` +
+        `| ${row.difference === null ? "—" : shekels(row.difference)} | ${state} |`,
+    );
+  }
+  say();
+
+  say(
+    `*Left alone* is a row the מאזן holds and RiseUp said nothing about — each Person's grid ` +
+      `holds rows the other one actually pays, and three of Yuval's were typed as a literal 0. ` +
+      `None of them is proposed as a zero and none of them counts as a difference.`,
+  );
+  say();
+
+  if (comparison.blocked.length > 0) {
+    say(`### Nowhere to land`);
+    say();
+    say(
+      `RiseUp has a figure for ${comparison.blocked.length === 1 ? "a Personal Category" : "Personal Categories"} ` +
+        `${person} does not have. **This blocks the write**: the monthly run never creates a category — ` +
+        `\`--map\` (Phase 34) proposes one and a person answers.`,
+    );
+    say();
+    for (const row of comparison.blocked) {
+      say(`- ${row.personalCategory} (${row.type === "income" ? "הכנסה" : "הוצאה"}) — ${shekels(row.riseUp as Money)}`);
+    }
+    say();
+  }
+}
+
+/** Why there is no side-by-side, said in the report rather than thrown away. */
+function reportNoComparison(why: readonly string[]): void {
+  say(`## מאזן against RiseUp`);
+  say();
+  for (const line of why) say(line);
+  say();
 }
 
 // --- the run -----------------------------------------------------------------
@@ -437,9 +624,10 @@ const positional = args.filter((arg, index) => {
 });
 
 const usage =
-  "Usage: npm run riseup:fill -- <person> [YYYY-MM] [--from <saved.json>] [--config <path>]\n" +
+  "Usage: npm run riseup:fill -- <person> [YYYY-MM] [--from <saved.json>] [--config <path>] [--no-db]\n" +
   `  <person> is one of ${PEOPLE.map((p) => p.id).join(", ")}.\n` +
-  "  Without a month, RiseUp's own `previous` — the last ended cashflow month.";
+  "  Without a month, RiseUp's own `previous` — the last ended cashflow month.\n" +
+  "  --no-db folds and prints without reading the ledger at all.";
 
 const personId = positional[0];
 if (personId === undefined) throw new Error(usage);
@@ -492,7 +680,47 @@ if (from !== undefined) {
   source = `the \`${person.server}\` MCP server, \`get_budget\` for \`${date}\``;
 }
 
-report(foldRiseUpMonth(raw as RiseUpMonth, mapping, { currency: CURRENCY }), source, savedTo);
+const fold = foldRiseUpMonth(raw as RiseUpMonth, mapping, { currency: CURRENCY });
+
+/**
+ * The cutover is keyed on the month the fold actually covers, not on the argument:
+ * `previous` resolves inside RiseUp and `--from` carries whatever month was saved.
+ * Decided before any connection is opened.
+ */
+const connectionString = process.env.DATABASE_URL ?? "";
+let comparison: { comparison: RiseUpComparison; host: string } | null = null;
+let noComparison: string[] | null = null;
+
+if (args.includes("--no-db")) {
+  noComparison = ["`--no-db` was passed, so the ledger was not read and nothing is compared."];
+} else if (connectionString.length === 0) {
+  noComparison = [
+    "`DATABASE_URL` is not set, so there is nothing to compare against. The fold above is all",
+    "this run can say. Set it — `.env.production.local` is where the household's is — to get",
+    "the side-by-side.",
+  ];
+} else if (!isRiseUpAuthority(fold.month)) {
+  noComparison = [`**Refused.** ${new RiseUpCutoverError(fold.month).message}`];
+} else {
+  try {
+    const { held, host } = await heldCategories(person.id, fold.month, connectionString);
+    comparison = { comparison: compareWithLedger(fold.totals, held, fold.month), host };
+  } catch (cause) {
+    // The fold is the expensive half and it is already in hand. A database that
+    // cannot be reached must not take the report down with it.
+    noComparison = [
+      `**The ledger could not be read**, so nothing is compared: ${(cause as Error).message}`,
+    ];
+  }
+}
+
+report(fold, source, savedTo, () => {
+  if (comparison !== null) {
+    reportComparison(comparison.comparison, comparison.host, person.id);
+  } else if (noComparison !== null) {
+    reportNoComparison(noComparison);
+  }
+});
 
 process.stdout.write(`${out.join("\n")}\n`);
 // The MCP server is a child process with a shell between us and it; nothing is
