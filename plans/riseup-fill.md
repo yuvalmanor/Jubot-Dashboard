@@ -392,17 +392,20 @@ fold.
       carry `net:` — the 186.07 ferry credit to חו"ל (3,506) and the 120.25 store credit to
       ביגוד והנעלה (20); the three rows the sheet typed as 0 are excepted, as in Phase 30,
       and neither they nor the sheet's zeros move the total
-- [ ] `riseup:fill -- eden 2026-09` matches her sheet column row by row and totals **16,224**,
-      which is her sheet's 16,231 less the 7₪ רכב line that does not reconcile; the output
-      states that difference rather than absorbing it
-      <!-- Left unchecked on 2026-11-14. The figures are verified: her September folds row
-           by row to her sheet column and totals exactly 16,224, with nothing adjusted and
-           no balancing row. What is not built is the last clause — the output naming the
-           sheet's 16,231 — because nothing in this phase reads the sheet, and the header
-           forbids a sheet amount in the mapping file. Two ways out, and it is the
-           household's call: reword this box and the רכב one the way Phase 30's boxes were
-           reworded, or let a report-only run read `docs/source/maazan-sheet-export.md` and
-           print a third column. -->
+- [x] `riseup:fill -- eden 2026-09` matches her sheet column row by row and totals
+      **16,224** — her sheet's 16,231 less the 7₪ רכב line that does not reconcile — with no
+      row adjusted and no balancing figure added to reach either total
+      <!-- Reworded 2026-11-14, on the household's say-so, after the audit found the box
+           was being read generously rather than met. It asked the output to state the
+           difference against the sheet's 16,231, and nothing in this feature reads the
+           sheet: the script reads RiseUp and the mapping file, and the header forbids a
+           sheet amount in the mapping file. The alternative considered and declined was
+           letting a report-only run read `docs/source/maazan-sheet-export.md` and print a
+           third column — declined because the sheet is the thing this feature retires,
+           and Phase 32's comparison against `entries` is the one the household will act
+           on every month. So the box now asks for what this phase can show: the figures,
+           and the absence of any fudge. The 7₪ itself is evidence recorded above, in
+           *Eden, 2026-09*, and it is on Phase 32 to say whether the database agrees. -->
 - [x] סופר prints 617, from `כלכלה` (203.95) and `השלמות` (412.86) together
 - [x] ארנונה prints 471 and שכ"ד prints 7,000, both drawn out of `חשבונות` by label
 - [x] ביגוד והנעלה prints 249 and חיות מחמד prints 1,466, each net of its credit
@@ -412,11 +415,12 @@ fold.
       `income` lands in the Person's income category
 - [x] Yuval's חו"ל prints −1,560 once its Bit credit carries `net:חו"ל`, bringing his
       October expense rows to the sheet's 7,053
-- [ ] רכב prints 2,562 and the output says so plainly against the sheet's 2,569; the
-      difference is reported, not reconciled away
-      <!-- Left unchecked on 2026-11-14, for the reason on the רכב-bearing box above. The
-           row prints **2,562** beside its exact 2,562.25 and is reconciled away nowhere;
-           the sheet's 2,569 appears in no output because no output reads the sheet. -->
+- [x] רכב prints **2,562** with its exact 2,562.25 beside it, and nothing nudges it
+      towards the sheet's 2,569
+      <!-- Reworded 2026-11-14 with the box above, and for its reason. What it is for is
+           the clause that survives: the one line of the melt that did not reconcile is
+           printed as RiseUp holds it, so the gap stays visible instead of being closed by
+           a figure nobody can source. -->
 - [x] A fixture built from an untidied month — no salary charge, an excluded salary, a rent
       cheque in the *other spending* bucket — reports that it found no salary, names the
       excluded amount and writes no income
@@ -438,8 +442,10 @@ fold.
       committed, the advisor is asked to audit it; every finding is either fixed here or
       named in the report with the reason it was not. This box is checked last and the
       branch is pushed after it — a phase is not finished until its audit is.
-      <!-- Audited 2026-11-14. Fixed: the two boxes above were unchecked rather than read
-           generously; a `net:` destination no rule feeds is now refused instead of
+      <!-- Audited 2026-11-14. Fixed: the two sheet-comparison boxes above were unchecked
+           rather than read generously, and then reworded on the household's say-so to ask
+           for what this phase can show; a `net:` destination no rule feeds is now refused
+           instead of
            inventing a row; the plan file and the test file were restored to LF after a
            script rewrote them as CRLF, and `riseup-yuval.json` to its own formatting; the
            fixture's one real merchant and amount were replaced with invented ones per
