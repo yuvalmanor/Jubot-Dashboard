@@ -11,13 +11,14 @@
     "charges of 2026-09 and 2026-10 and is the same in both months, which is what makes it",
     "the key: an envelope's own id changes every month.",
     "",
-    "Yuval's אינטרנט and טלפון 012 are deliberately absent. They come from two Partner",
-    "commitments, 31965066-0c7b-11ef-bb57-cd50bf189b9b and 15aca9b5-a337-11ee-8217-af1dd3adc04a,",
-    "and the sheet's September and October columns imply opposite answers about which is",
-    "which — see 'The two Partner items cannot be resolved from the sheet' in",
-    "plans/riseup-fill.md, which is where that evidence lives. Nobody may assert it from the",
-    "sheet, so both stay unresolved — printed with their ids, never written — until --map",
-    "asks Yuval (Phase 34).",
+    "Yuval's אינטרנט and טלפון 012 come from two Partner commitments that read the same",
+    "merchant and carry the same תקשורת label, so only the sequenceId tells them apart. The",
+    "sheet could not settle which was which — its September and October columns imply",
+    "opposite answers, see 'The two Partner items cannot be resolved from the sheet' in",
+    "plans/riseup-fill.md — and nobody was allowed to assert it from the sheet. Yuval",
+    "answered on 2026-11-15 and --map wrote both rules above by id. What distinguishes them",
+    "is the billing day, which is stable where the amounts are not: 31965066 (טלפון 012)",
+    "bills early in the month, 15aca9b5 (אינטרנט) on the 25th.",
     "",
     "Yuval's file carries no label rules: his categories are already his rows. Eden's",
     "חשבונות needs them (Phase 31).",
@@ -133,6 +134,18 @@
       "sequenceId": "cc7b8d7a-e8b1-11f0-b9f6-a5f253f88ce4",
       "merchant": "לובי 99",
       "personalCategory": "לובי99"
+    },
+    {
+      "sequenceId": "31965066-0c7b-11ef-bb57-cd50bf189b9b",
+      "merchant": "חברת פרטנר תקשורת בע",
+      "personalCategory": "טלפון 012",
+      "note": "identified by the Person through --map: the merchant is a label, the sequenceId is the key"
+    },
+    {
+      "sequenceId": "15aca9b5-a337-11ee-8217-af1dd3adc04a",
+      "merchant": "חברת פרטנר תקשורת בע",
+      "personalCategory": "אינטרנט",
+      "note": "identified by the Person through --map: the merchant is a label, the sequenceId is the key"
     }
   ],
   "labelRules": [],
@@ -146,6 +159,11 @@
       "action": "never-write",
       "riseupGoals": true,
       "note": "a RiseUp goal is money put aside, which the מאזן records nowhere either"
+    },
+    {
+      "action": "hand-typed",
+      "personalCategory": "שכ\"ד",
+      "note": "no RiseUp row feeds it: this row of the grid is typed by hand"
     }
   ],
   "transactionDispositions": [

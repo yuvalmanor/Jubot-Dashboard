@@ -783,7 +783,7 @@ Category it joins — where RiseUp has a category the grid lacks.
            exists: a caution printed over a proposal that was approvable as it stood would
            have left the wrong row one `--approve` away. Which answer each of her two rows
            gets is hers. -->
-- [ ] Yuval is asked which Partner commitment is אינטרנט and which is טלפון 012, with both
+- [x] Yuval is asked which Partner commitment is אינטרנט and which is טלפון 012, with both
       months' charges shown, and the answer is written into his file by id
       <!-- Left unchecked on 2026-11-15: the asking half is done and the answer has not come.
            The live run over `2026-09..2026-10` prints both commitments by id with both
@@ -803,13 +803,29 @@ Category it joins — where RiseUp has a category the grid lacks.
            the same merchant and the same `תקשורת` label and neither envelope has a
            customer comment, which is why the sheet could not settle it.
 
-           Checking this box needs
-           `riseup:fill -- yuval 2026-09..2026-10 --map --assign <012>:<n> --assign <net>:<n> --approve <token>`,
-           and that run reads the grid: the household's Neon database refused every
-           connection that afternoon — DNS resolves, TCP to 5432 times out after 20s from
-           this machine — so it has not been run. The same commit must also edit the
-           `_note` paragraph in his mapping file, which says both items are deliberately
-           absent until `--map` asks him. -->
+           **Asked and answered, and written.** The run over `2026-09..2026-10` printed both
+           commitments by id with both months' charges and refused to write while they were
+           undecided; `--assign 1:10 --assign 2:2 --approve <token>` then wrote two
+           `fixedItemRules` keyed by `sequenceId`, with the merchant beside each as a label,
+           and one `hand-typed` disposition for שכ"ד — the row Eden's cheque pays, blank on
+           his side every month, which only became markable once the two Partner rows had
+           destinations. Three lines in the file's diff, nothing else touched, no Entry
+           written and no category created. His `_note` paragraph, which said both items
+           were deliberately absent until `--map` asked him, was rewritten in the same
+           commit to record the answer and the billing days behind it.
+
+           It had to wait for the network: outbound 5432 was blocked on the household's
+           Wi-Fi for a stretch that afternoon — the same Neon host answered on 443 in 91ms
+           — which is worth recording only because `--map` is useless without the grid and
+           says so rather than guessing.
+
+           **And the answer corrected the sheet.** The report-only run of his 2026-10 now
+           leaves *nothing* unresolved and offers three lines: the 1₪ income rounding this
+           plan predicted, and אינטרנט and טלפון 012 differing by **∓4** — the sheet's
+           October column has the two of them the wrong way round, which is exactly the
+           "the hand-copy was reading amounts, not identities" this phase was told not to
+           resolve from the sheet. Eighteen rows agree and none is left alone. Approving
+           those three is a `--write` run and the household's own decision. -->
 - [x] A created Personal Category lands with its Household Category assignment in one
       transaction, so the deferred trigger never fires
       <!-- Through `planPersonalCategoryCreation` and `insertPersonalCategory`, which already
