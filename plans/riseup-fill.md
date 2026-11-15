@@ -439,8 +439,8 @@ fold.
            10,464 משהב"ט payment, both with no disposition — so the month now needs one
            `income` disposition against that transactionId rather than more tidying. Which
            of the two is income is the household's to say and nothing here asserted it. Her
-           2026-10 also still carries two unmapped categories (רפואי ופארם, חשבונות), so a
-           `--map` run is wanted before her October can be written at all. -->
+           2026-10 also still printed two unmapped categories, רפואי ופארם (98.60) and
+           חשבונות (500), and an unmapped row blocks the write. -->
 - [x] A label rule applies to a charge in the *other spending* bucket as well as to one in
       a category, so October's 7,000 cheque reaches שכ"ד
 - [x] RiseUp's savings category is marked `never-write` and is silent in every month
@@ -932,18 +932,22 @@ ask, write. Its opening line is the household's loop — tidy RiseUp first.
 
 ### Acceptance criteria
 
-- [x] `/riseup-fill yuval` fills the last ended month end to end, after approval
-      <!-- Exercised on 2026-11-15, every step of it: `/riseup-fill yuval` fetched RiseUp's
-           own `previous` (2026-10, cashflow last updated that morning), folded it to the
-           sheet's 7,053 of expense rows and 17,735 of income, offered 21 lines against a
-           ledger, and wrote 20 of them in one transaction on the token it printed — with
-           `--decline 3` holding אינטרנט back, and the re-run offering nothing but that one
-           line and refusing the spent token. The ledger was a throwaway in-memory Postgres
-           on 5435 seeded by `npm run db:demo`, because the household's own database is
-           unreachable from this machine (`connect ETIMEDOUT …:5432`) and because an
-           approval against their real ledger is theirs to give, not this session's. What
-           remains unproved is only that: the same command, against their database, on their
-           say-so. -->
+- [ ] `/riseup-fill yuval` fills the last ended month end to end, after approval
+      <!-- Left unchecked on 2026-11-15. Every step of the path was exercised and none of it
+           by the skill: `npm run riseup:fill -- yuval` fetched RiseUp's own `previous`
+           (2026-10, cashflow last updated 14:01Z that day) and folded it to 7,053 of
+           expense rows — the sheet's figure — and 17,735 of income, where the sheet reads
+           17,734, which is the 1₪ the header predicted. A second run then offered 21 lines
+           against a ledger and wrote 20 of them in one transaction on the token printed,
+           with `--decline 3` holding אינטרנט back; the re-run offered that one line only
+           and refused the spent token.
+           What that is not: the skill never drove a run, the approval was this session's
+           rather than the household's, the write was given `--from` the saved response
+           instead of the command the report printed, and the ledger was a throwaway
+           in-memory Postgres on 5435 seeded by `npm run db:demo` — the household's own
+           database is unreachable from this machine (`connect ETIMEDOUT …:5432`), so no run
+           here could have reached it. One `/riseup-fill yuval` by the household, approved by
+           them, is what checks this box. -->
 - [x] `/riseup-fill` with no Person asks rather than assuming one
       <!-- The skill's first step, and `npm run riseup:fill` with no Person refuses with the
            usage rather than picking one. -->
@@ -977,7 +981,34 @@ ask, write. Its opening line is the household's loop — tidy RiseUp first.
 - [x] `/riseup-fill --map` is reachable and documented in the skill
       <!-- Its own section, with the three answer flags and the same approval rule; and the
            skill itself loaded in this session, so the slash command resolves. -->
-- [ ] **The advisor has audited this phase.** With the three gates green and the work
+- [x] **The advisor has audited this phase.** With the three gates green and the work
       committed, the advisor is asked to audit it; every finding is either fixed here or
       named in the report with the reason it was not. This box is checked last and the
       branch is pushed after it — a phase is not finished until its audit is.
+      <!-- Audited 2026-11-15. Fixed: the first box above was unchecked rather than read
+           generously — the skill never drove a run, the approval was this session's, the
+           write was given `--from` instead of the printed command, and the ledger was a
+           throwaway — and the two slips in its evidence (the cashflow's 14:01Z update, and
+           17,735 as income where the sheet reads 17,734, which is the 1₪ the header
+           predicted). The skill said rules are added with `--map`, which README's own
+           paragraph contradicts: it proposes category and fixed-item rules only, so step 4
+           now says that, and that a label rule or a disposition goes into the file only on
+           the household's answer for that row or transactionId. The `--map` answers read as
+           the model's and are now plainly the household's. The literal months became
+           `YYYY-MM` (skill-smith asks for nothing time-sensitive) and the file is back under
+           a hundred lines. Phase 31's note claimed a `--map` run was wanted for Eden's
+           October; it now records only what the run printed. Two reporting faults the live
+           runs turned up are fixed in the script and in riseup-write.ts, both in text the
+           skill relays verbatim.
+           Named and not fixed: the boxes for asking after a Person, for doing no arithmetic,
+           for treating merchant names as data and for CONTEXT.md's words rest on the skill's
+           text rather than on an observed run of it, and *reachable* was read as the skill
+           being listed in this session rather than invoked through the slash path. `reason()`
+           carries no test: no script in this repository has one, and a home for it in
+           `src/domain` is a module this phase did not plan. It and the was/were fix are both
+           outside this phase's slice, kept because each is a line the household reads. The
+           household's own database is unreachable from this machine (ETIMEDOUT on 5432), so
+           no fill can be finished here by anyone. And this session's first `npm run db:local`
+           opened the on-disk `.pglite` while the instance on 5434 held it and aborted; a
+           later read through 5434 answered normally, but nothing else about that data
+           directory was checked. -->
