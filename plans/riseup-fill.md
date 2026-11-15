@@ -741,8 +741,11 @@ Category it joins — where RiseUp has a category the grid lacks.
            files already carry the חו״ל rule and a mapped row is never proposed again. A test
            asserts `normaliseCategoryName` does *not* equate the two, so a fold later changed
            to fold quote characters fails there by name rather than making this pile silently
-           unreachable. A name near two rows of the grid is left undecided instead of
-           chosen. -->
+           unreachable. A name near two rows of the grid is left undecided instead of chosen,
+           and so is a name merely *contained* in a row's — `אוכל בחוץ - קפה` contains
+           `אוכל בחוץ`, and Eden's file sends it to `בתי קפה`. The three reasons that mean
+           *one name, two spellings* carry a destination; containment is shown with the row
+           beside it and answered. -->
 - [x] A fixed item is offered with merchant, amount and id, and never auto-matched by
       merchant alone
       <!-- Structural: a fixed item has no name, so every one of them is **undecided** and
@@ -766,17 +769,20 @@ Category it joins — where RiseUp has a category the grid lacks.
            what avoids it, and the disposition is one line to delete. -->
 - [x] `רפואי ופארם` is offered as a new Personal Category for Eden, with its Household
       Category, and is created only on approval
-      <!-- Live: offered as a new Personal Category joining a new Household Category of the
-           same name, with `--join <n>:<h>` offered against her existing ones and
-           `--assign <n>:<m>` to say it is a row she already has after all. **Nothing was
-           created**: the run was given no token, and her database is untouched. The creation
-           itself is proved on a throwaway PGlite with invented rows.
+      <!-- Live: offered as a new Personal Category with the Household Category it would
+           join named, against her existing ones by number. **Nothing was created**, and
+           more than for want of a token: a row is created only by `--create <n>` — or
+           `--create <n>:<h>` to join an existing Household Category — and until that answer
+           comes the proposal reads *undecided* and nothing in it is written at all. The
+           creation itself is proved on a throwaway PGlite with invented rows.
 
-           Her live run also offers `חשבונות` as a new row, which it should not become: her
-           five label rules split it, and one October charge carried a label no rule claims.
-           A new row is the wrong answer there and a label rule is the right one — `--map`
-           does not propose label rules, so the report now says so over the pile, and
-           `--decline` stops the write. Which it is is hers to decide. -->
+           Her live run also offers `חשבונות` as a row that could be created, which it must
+           not become: her five label rules split it, and one October charge carried a label
+           no rule claims. A label rule is the answer and `--map` does not propose one — it
+           is a line edited into `labelRules` by hand. The audit's reading is why `--create`
+           exists: a caution printed over a proposal that was approvable as it stood would
+           have left the wrong row one `--approve` away. Which answer each of her two rows
+           gets is hers. -->
 - [ ] Yuval is asked which Partner commitment is אינטרנט and which is טלפון 012, with both
       months' charges shown, and the answer is written into his file by id
       <!-- Left unchecked on 2026-11-15: the asking half is done and the answer has not come.
@@ -801,7 +807,14 @@ Category it joins — where RiseUp has a category the grid lacks.
            row behind, so the trigger is real and one transaction is what keeps it quiet. Two
            categories proposed in one run are created one at a time, each in its own
            transaction, the second planned against a snapshot the first is already in, so two
-           new Household Categories cannot collide on a name. -->
+           new Household Categories cannot collide on a name.
+
+           A created row is active from the earliest month surveyed, **never earlier than the
+           cutover**. A category active in a month is a blank in it until something is
+           recorded and a month with a blank reads `open` in `month-closure.ts`, so a row
+           created from a `--map` over 2026-09 would have re-opened a month the sheet
+           importer owns just by existing. Found by the audit; `activeFrom` is clamped to
+           `RISEUP_AUTHORITY_FROM` and a test pins both directions. -->
 - [x] The monthly run never creates a category, in any mode, under any flag
       <!-- Guarded by a test rather than by a reading, beside Phase 32's no-SQL guard:
            `insertPersonalCategory` appears once in the script, inside `runMap` and before
@@ -809,8 +822,13 @@ Category it joins — where RiseUp has a category the grid lacks.
            `--map` with `--write` is refused outright ("they are two runs, not one"), as is
            `--map --no-db` — a mapping proposed without the grid would be guessing what the
            grid holds. The monthly run's own refusal is unchanged from Phase 33: a figure
-           whose Personal Category the database does not hold is named and blocks the
-           write. -->
+           whose Personal Category the database does not hold is named and blocks the write.
+
+           An answer naming a proposal the run did not make is refused rather than ignored,
+           which the audit found: the token covers the proposals and not the answers, so a
+           `--decline 8` meant for row 7 would have written row 7 anyway. `--create` on a
+           proposal that is not a new row, and `--assign` on a row with no RiseUp source,
+           are refused by name too. Phase 33's audit found the same class in the write. -->
 - [x] Re-running `--map` on an unchanged account proposes no change to the file
       <!-- Almost free, and deliberately so: the proposal reads `fold.unresolved` rather than
            walking the envelopes again, so a row that already has a rule never reaches it —
@@ -821,10 +839,46 @@ Category it joins — where RiseUp has a category the grid lacks.
            RiseUp row this run read already has a rule and every active row of the grid is
            fed or marked `hand-typed`, so the file is left exactly as it is", with all four
            piles printing "None" by name and the file untouched. -->
-- [ ] **The advisor has audited this phase.** With the three gates green and the work
+- [x] **The advisor has audited this phase.** With the three gates green and the work
       committed, the advisor is asked to audit it; every finding is either fixed here or
       named in the report with the reason it was not. This box is checked last and the
       branch is pushed after it — a phase is not finished until its audit is.
+      <!-- Audited 2026-11-15. Fixed: a new Personal Category was approvable as proposed, so
+           Eden's `חשבונות` was one `--approve` away from being created in her own grid —
+           creating a row now takes `--create <n>`, which replaced `--join` and is the whole
+           of the yes; an answer naming a proposal that does not exist was silently ignored,
+           so a `--decline` one out would have written the row it meant to stop; a near-match
+           by *containment* carried a destination, which would have proposed Eden's
+           `אוכל בחוץ - קפה` into `אוכל בחוץ` where her file says `בתי קפה` — containment is
+           now a suggestion left undecided; `activeFrom` could put a created row in an
+           importer-owned month and re-open it, and is clamped to the cutover; `retired` was
+           computed as "not active in the earliest month surveyed", so a row starting later
+           read *(retired)* and refused an `--assign`, and now means a lifespan with an end
+           on it; four figures in `riseup-map.test.ts` were the plan's own Partner table
+           rounded despite the file's header, and were replaced with invented ones, as three
+           previous audits had to do; and the fold-to-map contract had no test, so a
+           regression in `riseupCategory` would have emptied every pile with the suite green
+           — `riseup-fold.test.ts` now pins it from both sides.
+
+           Named and not fixed:
+           - **The header's command section still lacks `--map`'s flags**, and `--mapping`
+             and `--no-db` with it. Phase 33's audit named the same omission and left it for
+             the same reason: the plan's own command list is a header edit, not an
+             implementation detail. The README documents all of them.
+           - **Both `_note` blocks go stale on the first real write.** Yuval's says his two
+             Partner items are "deliberately absent … until --map asks Yuval (Phase 34)", and
+             Eden's says `רפואי ופארם` is left unmapped because proposing it is `--map`'s job.
+             Both sentences stop being true the moment their answer lands, and `--map` does
+             not rewrite prose. Whoever runs the approving command edits those two paragraphs
+             in the same commit.
+           - **`--map` surfaces money in but records no disposition for it.** Eden's two
+             October credits print under *Nothing to key a rule on* with a pointer to
+             `transactionDispositions`, and writing one there is still a hand edit. The
+             header settles that dispositions live in the file; no phase's criteria ask for
+             `--map` to write them.
+           - **`--map` cannot propose a label rule**, which is the right answer for a charge
+             in Eden's `חשבונות`. The four piles do not include one, so the report names the
+             gap and `--create` is what stops a wrong row being made instead. -->
 
 ---
 

@@ -12,6 +12,7 @@ import {
   planPersonalCategoryCreation,
 } from "@/domain/categories/categories";
 import { type RiseUpMapping, type Unresolved } from "@/domain/import/riseup-fold";
+import { RISEUP_AUTHORITY_FROM } from "@/domain/import/riseup-cutover";
 import {
   type MappedMonth,
   nearReason,
@@ -150,7 +151,7 @@ const plan = (
     readonly mapping?: RiseUpMapping | null;
     readonly categories?: Categories;
     readonly assign?: readonly [number, number][];
-    readonly join?: readonly [number, number][];
+    readonly create?: readonly [number, number | null][];
     readonly declined?: readonly number[];
   } = {},
 ) =>
@@ -162,7 +163,7 @@ const plan = (
     categories: options.categories ?? grid(),
     answers: {
       assign: new Map(options.assign ?? []),
-      join: new Map(options.join ?? []),
+      create: new Map(options.create ?? []),
       declined: options.declined ?? [],
     },
   });
@@ -177,11 +178,11 @@ describe("the four piles", () => {
    */
   const everything = plan([
     month(OCTOBER, [
-      category("AliExpress", 42),
-      category("חו״ל", 1_317),
-      fixedItem("seq-line-a", "חברת תקשורת", 83),
-      fixedItem("seq-line-b", "חברת תקשורת", 79),
-      category("רפואי ופארם", 268),
+      category("AliExpress", 42.5),
+      category("חו״ל", 1_317.25),
+      fixedItem("seq-line-a", "חברת תקשורת", 51.9),
+      fixedItem("seq-line-b", "חברת תקשורת", 64.4),
+      category("רפואי ופארם", 268.4),
     ]),
   ]);
 
@@ -246,16 +247,41 @@ describe("the four piles", () => {
 // --- a near-match says why ---------------------------------------------------
 
 describe("why a near-match is proposed", () => {
-  it("names the quote characters", () => {
-    expect(nearReason("חו״ל", 'חו"ל')).toContain("U+05F4");
+  it("names the quote characters, and calls it the same name", () => {
+    expect(nearReason("חו״ל", 'חו"ל')).toEqual({
+      reason: expect.stringContaining("U+05F4"),
+      weak: false,
+    });
   });
 
   it("names letter case", () => {
-    expect(nearReason("Aliexpress", "AliExpress")).toContain("letter case");
+    expect(nearReason("Aliexpress", "AliExpress")?.reason).toContain("letter case");
+    expect(nearReason("Aliexpress", "AliExpress")?.weak).toBe(false);
   });
 
   it("names punctuation", () => {
-    expect(nearReason("תחבצ + ליים", "תחבצ+ליים")).toContain("punctuation");
+    expect(nearReason("תחבצ + ליים", "תחבצ+ליים")?.reason).toContain("punctuation");
+  });
+
+  it("calls one name inside another a weaker claim, and leaves it undecided", () => {
+    // Eden's `אוכל בחוץ - קפה` contains `אוכל בחוץ`, and her file sends it to
+    // `בתי קפה`. Containment is a suggestion, never a destination.
+    const nearness = nearReason("אוכל בחוץ - קפה", "אוכל בחוץ");
+    expect(nearness?.weak).toBe(true);
+    const suggested = plan([month(OCTOBER, [category("אוכל בחוץ - קפה", 182.9)])], {
+      categories: grid([
+        { name: "הכנסות", type: "income" },
+        { name: "משתנות" },
+        { name: "אוכל בחוץ" },
+        { name: "בתי קפה" },
+      ]),
+      mapping: { ...MAPPING, categoryRules: [], fixedItemRules: [], dispositions: [] },
+    });
+    const row = suggested.piles.near[0];
+    expect(row?.state).toBe("undecided");
+    expect(row?.personalCategory).toBeNull();
+    expect(row?.plausible.map((candidate) => candidate.personalCategory)).toContain("בתי קפה");
+    expect(suggested.writable).toBe(false);
   });
 
   it("says nothing about two names that are simply different", () => {
@@ -267,7 +293,7 @@ describe("why a near-match is proposed", () => {
   });
 
   it("leaves a name near two rows undecided rather than choosing", () => {
-    const twoWays = plan([month(OCTOBER, [category("מכבי ", 90)])], {
+    const twoWays = plan([month(OCTOBER, [category("מכבי ", 91.4)])], {
       categories: grid([{ name: "מכבי" }, { name: "מכבי זהב" }, { name: "הכנסות", type: "income" }]),
       mapping: { ...MAPPING, categoryRules: [], fixedItemRules: [] },
     });
@@ -275,7 +301,7 @@ describe("why a near-match is proposed", () => {
     // the exact pile, not the near one. The near pile is for the other case.
     expect(twoWays.piles.exact).toHaveLength(1);
 
-    const ambiguous = plan([month(OCTOBER, [category("מכבי-", 90)])], {
+    const ambiguous = plan([month(OCTOBER, [category("מכבי-", 91.4)])], {
       categories: grid([{ name: "מכבי" }, { name: "מכבי זהב" }, { name: "הכנסות", type: "income" }]),
       mapping: { ...MAPPING, categoryRules: [], fixedItemRules: [] },
     });
@@ -293,8 +319,8 @@ describe("why a near-match is proposed", () => {
 
 describe("a fixed item", () => {
   const twoLines = [
-    month(SEPTEMBER, [fixedItem("seq-line-a", "חברת תקשורת", 29), fixedItem("seq-line-b", "חברת תקשורת", 83)]),
-    month(OCTOBER, [fixedItem("seq-line-a", "חברת תקשורת", 83), fixedItem("seq-line-b", "חברת תקשורת", 79)]),
+    month(SEPTEMBER, [fixedItem("seq-line-a", "חברת תקשורת", 64.4), fixedItem("seq-line-b", "חברת תקשורת", 51.9)]),
+    month(OCTOBER, [fixedItem("seq-line-a", "חברת תקשורת", 51.9), fixedItem("seq-line-b", "חברת תקשורת", 64.4)]),
   ];
 
   it("is offered with its merchant, its id and every month's charge", () => {
@@ -302,18 +328,20 @@ describe("a fixed item", () => {
     expect(proposals).toHaveLength(2);
     expect(proposals[0]?.merchant).toBe("חברת תקשורת");
     expect(proposals[0]?.sequenceId).toBe("seq-line-a");
+    // The two months imply opposite answers, which is the shape of the real
+    // question and the reason nothing here may decide it.
     expect(proposals[0]?.charges.map((charge) => [charge.month, charge.amount.minorUnits])).toEqual([
-      ["2026-09", 2_900],
-      ["2026-10", 8_300],
+      ["2026-09", 6_440],
+      ["2026-10", 5_190],
     ]);
     expect(proposals[1]?.charges.map((charge) => [charge.month, charge.amount.minorUnits])).toEqual([
-      ["2026-09", 8_300],
-      ["2026-10", 7_900],
+      ["2026-09", 5_190],
+      ["2026-10", 6_440],
     ]);
   });
 
   it("is never auto-matched, even when its merchant is a row of the grid", () => {
-    const named = plan([month(OCTOBER, [fixedItem("seq-health", "מכבי", 90)])], {
+    const named = plan([month(OCTOBER, [fixedItem("seq-health", "מכבי", 91.4)])], {
       mapping: { ...MAPPING, fixedItemRules: [] },
     });
     const proposal = named.piles["fixed-item"][0];
@@ -361,7 +389,7 @@ describe("a fixed item", () => {
           label: "חברת תקשורת",
           merchant: "חברת תקשורת",
           envelopeId: "env-no-sequence",
-          amount: shekels(61),
+          amount: shekels(61.3),
           side: "expense",
           detail: "the charge carries no sequenceId, so this item cannot be identified",
         },
@@ -377,8 +405,8 @@ describe("a fixed item", () => {
 describe("the rows of the grid with no RiseUp source", () => {
   const lines = [
     month(OCTOBER, [
-      fixedItem("seq-line-a", "חברת תקשורת", 83),
-      fixedItem("seq-line-b", "חברת תקשורת", 79),
+      fixedItem("seq-line-a", "חברת תקשורת", 51.9),
+      fixedItem("seq-line-b", "חברת תקשורת", 64.4),
     ]),
   ];
   const rows = plan(lines).candidates;
@@ -442,7 +470,17 @@ describe("the rows of the grid with no RiseUp source", () => {
 // --- a new Personal Category -------------------------------------------------
 
 describe("a Personal Category the grid lacks", () => {
-  const proposal = plan([month(OCTOBER, [category("רפואי ופארם", 268)])]);
+  const unanswered = plan([month(OCTOBER, [category("רפואי ופארם", 268.4)])]);
+  const proposal = plan([month(OCTOBER, [category("רפואי ופארם", 268.4)])], { create: [[1, null]] });
+
+  it("is never created without `--create`, however plainly it reads", () => {
+    // Eden's `חשבונות` is the reason: it turns up here the moment one charge in it
+    // carries a label no rule claims, and a new row is the wrong answer there.
+    expect(unanswered.piles["new-category"][0]?.state).toBe("undecided");
+    expect(unanswered.piles["new-category"][0]?.why).toContain("--create 1");
+    expect(unanswered.creations).toEqual([]);
+    expect(unanswered.writable).toBe(false);
+  });
 
   it("is proposed with the Household Category it would join", () => {
     expect(proposal.creations).toEqual([
@@ -457,7 +495,7 @@ describe("a Personal Category the grid lacks", () => {
   });
 
   it("joins an existing Household Category of the same name rather than making a second", () => {
-    const sharing = plan([month(OCTOBER, [category("רפואה", 268)])], {
+    const sharing = plan([month(OCTOBER, [category("רפואה", 268.4)])], {
       categories: buildCategories({
         personal: [
           {
@@ -473,6 +511,7 @@ describe("a Personal Category the grid lacks", () => {
         assignments: [{ personalCategoryId: "pc-1", householdCategoryId: "hc-1" }],
       }),
       mapping: { ...MAPPING, categoryRules: [], fixedItemRules: [], dispositions: [] },
+      create: [[1, null]],
     });
     expect(sharing.piles["new-category"][0]?.household).toEqual({
       kind: "existing",
@@ -481,10 +520,10 @@ describe("a Personal Category the grid lacks", () => {
     });
   });
 
-  it("is redirected to another Household Category by `--join`", () => {
+  it("is redirected to another Household Category by `--create <n>:<h>`", () => {
     const health = numberOf([...proposal.households], "מכבי");
-    const joined = plan([month(OCTOBER, [category("רפואי ופארם", 268)])], {
-      join: [[1, health]],
+    const joined = plan([month(OCTOBER, [category("רפואי ופארם", 268.4)])], {
+      create: [[1, health]],
     });
     expect(joined.creations[0]?.household).toEqual({
       kind: "existing",
@@ -494,7 +533,7 @@ describe("a Personal Category the grid lacks", () => {
   });
 
   it("is turned into a row the grid already has by `--assign`", () => {
-    const instead = plan([month(OCTOBER, [category("רפואי ופארם", 268)])], {
+    const instead = plan([month(OCTOBER, [category("רפואי ופארם", 268.4)])], {
       assign: [[1, numberOf([...proposal.candidates], "מכבי")]],
     });
     expect(instead.creations).toEqual([]);
@@ -528,7 +567,7 @@ describe("a Personal Category the grid lacks", () => {
   });
 
   it("is refused where the grid holds a retired row of that very name", () => {
-    const retired = plan([month(OCTOBER, [category("פנאי", 268)])]);
+    const retired = plan([month(OCTOBER, [category("פנאי", 268.4)])]);
     expect(retired.creations).toEqual([]);
     expect(retired.piles.near[0]?.state).toBe("undecided");
     expect(retired.piles.near[0]?.reason).toContain("retired");
@@ -536,7 +575,7 @@ describe("a Personal Category the grid lacks", () => {
   });
 
   it("refuses an `--assign` into a retired row", () => {
-    const into = plan([month(OCTOBER, [category("רפואי ופארם", 268)])], {
+    const into = plan([month(OCTOBER, [category("רפואי ופארם", 268.4)])], {
       assign: [[1, numberOf([...proposal.candidates], "פנאי")]],
     });
     expect(into.refusals.join(" ")).toContain("retired");
@@ -544,7 +583,7 @@ describe("a Personal Category the grid lacks", () => {
   });
 
   it("refuses an `--assign` that crosses הכנסה and הוצאה", () => {
-    const crossed = plan([month(OCTOBER, [category("רפואי ופארם", 268)])], {
+    const crossed = plan([month(OCTOBER, [category("רפואי ופארם", 268.4)])], {
       assign: [[1, numberOf([...proposal.candidates], "הכנסות")]],
     });
     expect(crossed.refusals.join(" ")).toContain("route one into the other");
@@ -552,7 +591,7 @@ describe("a Personal Category the grid lacks", () => {
   });
 
   it("refuses an `--assign` naming no row at all", () => {
-    const nowhere = plan([month(OCTOBER, [category("רפואי ופארם", 268)])], { assign: [[1, 99]] });
+    const nowhere = plan([month(OCTOBER, [category("רפואי ופארם", 268.4)])], { assign: [[1, 99]] });
     expect(nowhere.refusals.join(" ")).toContain("names no row");
     expect(nowhere.writable).toBe(false);
   });
@@ -586,10 +625,10 @@ describe("an unchanged account", () => {
   });
 
   it("re-reads the same months without proposing them twice", () => {
-    const first = plan([month(OCTOBER, [category("AliExpress", 42)])], {
+    const first = plan([month(OCTOBER, [category("AliExpress", 42.5)])], {
       mapping: { ...MAPPING, categoryRules: MAPPING.categoryRules },
     });
-    const second = plan([month(OCTOBER, [category("AliExpress", 42)])], {
+    const second = plan([month(OCTOBER, [category("AliExpress", 42.5)])], {
       mapping: first.mapping,
     });
     expect(first.changed).toBe(true);
@@ -604,7 +643,7 @@ describe("an unchanged account", () => {
 // --- the token ---------------------------------------------------------------
 
 describe("the approval token", () => {
-  const rows = [month(OCTOBER, [category("AliExpress", 42), fixedItem("seq-line-a", "חברת תקשורת", 83)])];
+  const rows = [month(OCTOBER, [category("AliExpress", 42.5), fixedItem("seq-line-a", "חברת תקשורת", 51.9)])];
 
   it("moves when an answer changes the proposal", () => {
     const a = plan(rows, { assign: [[2, 6]] });
@@ -615,7 +654,7 @@ describe("the approval token", () => {
   it("moves when a RiseUp row appears", () => {
     const a = plan(rows, { assign: [[2, 6]] });
     const b = plan(
-      [month(OCTOBER, [category("AliExpress", 42), category("נגאנו", 12), fixedItem("seq-line-a", "חברת תקשורת", 83)])],
+      [month(OCTOBER, [category("AliExpress", 42.5), category("נגאנו", 12.9), fixedItem("seq-line-a", "חברת תקשורת", 51.9)])],
       { assign: [[3, 6]] },
     );
     expect(a.token).not.toBe(b.token);
@@ -631,7 +670,7 @@ describe("the approval token", () => {
 describe("the file as it is written", () => {
   it("keeps the `_note` the file explains itself with", () => {
     const base = { ...MAPPING, _note: ["why this file exists"] } as RiseUpMapping;
-    const written = plan([month(OCTOBER, [category("AliExpress", 42)])], { mapping: base });
+    const written = plan([month(OCTOBER, [category("AliExpress", 42.5)])], { mapping: base });
     expect(JSON.parse(serialiseMapping(written.mapping))._note).toEqual(["why this file exists"]);
   });
 
@@ -644,10 +683,10 @@ describe("the file as it is written", () => {
 
   it("carries no amount", () => {
     const written = plan(
-      [month(OCTOBER, [category("AliExpress", 42), fixedItem("seq-line-a", "חברת תקשורת", 83)])],
+      [month(OCTOBER, [category("AliExpress", 42.5), fixedItem("seq-line-a", "חברת תקשורת", 51.9)])],
       { assign: [[2, 6]] },
     );
-    expect(serialiseMapping(written.mapping)).not.toMatch(/\b(42|83)\b/);
+    expect(serialiseMapping(written.mapping)).not.toMatch(/42|64|51/);
   });
 });
 
@@ -663,7 +702,7 @@ describe("a mapping file being born", () => {
     amount: fromMajorUnits(18_200, ILS),
     side: "income",
   };
-  const birth = [month(OCTOBER, [category("AliExpress", 42), salary])];
+  const birth = [month(OCTOBER, [category("AliExpress", 42.5), salary])];
   const asked = plan(birth, { mapping: null });
   const born = plan(birth, {
     mapping: null,
@@ -692,7 +731,7 @@ describe("a mapping file being born", () => {
   });
 
   it("refuses where there is no row for the salary to land in", () => {
-    const noIncome = plan([month(OCTOBER, [category("AliExpress", 42)])], {
+    const noIncome = plan([month(OCTOBER, [category("AliExpress", 42.5)])], {
       mapping: null,
       categories: grid([{ name: "משתנות" }]),
     });
@@ -701,7 +740,7 @@ describe("a mapping file being born", () => {
   });
 
   it("refuses where there is no row for the other-spending bucket", () => {
-    const noBucket = plan([month(OCTOBER, [category("AliExpress", 42)])], {
+    const noBucket = plan([month(OCTOBER, [category("AliExpress", 42.5)])], {
       mapping: null,
       categories: grid([{ name: "הכנסות", type: "income" }]),
     });
@@ -727,7 +766,7 @@ describe("money in", () => {
           kind: "credit-without-disposition",
           label: "העברת כסף",
           transactionId: "tx-made-up",
-          amount: shekels(310),
+          amount: shekels(311.4),
           side: "income",
           date: "2026-10-04",
           detail: "money in, within the other-spending bucket",
@@ -784,5 +823,128 @@ describe("the monthly run never creates a Personal Category", () => {
 
   it("refuses `--map` and `--write` in one run", () => {
     expect(code).toContain("writing && mappingMode");
+  });
+});
+
+// --- an answer that names nothing -------------------------------------------
+
+describe("an answer naming a proposal this run did not make", () => {
+  /**
+   * The token covers the proposals, not the answers, so nothing else would catch
+   * a number that is one out. Silently ignoring one is how a `--decline 8` meant
+   * for row 7 writes row 7 anyway; Phase 33's audit found the same class in the
+   * write's own `--decline`.
+   */
+  const rows = [month(OCTOBER, [category("AliExpress", 42.5)])];
+
+  it("refuses a `--decline` that is one out", () => {
+    const settled = plan(rows);
+    const last = settled.proposals[settled.proposals.length - 1];
+    expect(last).toBeDefined();
+    const off = plan(rows, { declined: [(last as { index: number }).index + 1] });
+    expect(off.refusals.join(" ")).toContain("did not make");
+    expect(off.writable).toBe(false);
+    expect(off.mapping).toEqual(MAPPING);
+  });
+
+  it("refuses an `--assign` and a `--create` that name nothing", () => {
+    expect(plan(rows, { assign: [[99, 1]] }).refusals.join(" ")).toContain("did not make");
+    expect(plan(rows, { create: [[99, null]] }).refusals.join(" ")).toContain("did not make");
+  });
+
+  it("refuses a `--create` on a proposal that is not a new Personal Category", () => {
+    const wrong = plan(rows, { create: [[1, null]] });
+    expect(wrong.refusals.join(" ")).toContain("not a new Personal Category");
+    expect(wrong.writable).toBe(false);
+  });
+
+  it("refuses an `--assign` on a row the grid holds that nothing feeds", () => {
+    const settled = plan(rows);
+    const sourceless = settled.piles.sourceless[0];
+    expect(sourceless).toBeDefined();
+    const wrong = plan(rows, {
+      assign: [[(sourceless as { index: number }).index, 1]],
+    });
+    expect(wrong.refusals.join(" ")).toContain("nothing to assign");
+    expect(wrong.writable).toBe(false);
+  });
+});
+
+// --- a created row never re-opens a month the importer owns -----------------
+
+describe("what a new Personal Category is active from", () => {
+  /**
+   * A category active in a month is a **blank** in it until something is
+   * recorded, and a month with a blank reads `open` in `month-closure.ts`. So a
+   * row created active from 2026-09 would re-open a month the sheet importer
+   * owns, just by existing (ADR 0006).
+   */
+  it("is never earlier than the cutover, however early the months surveyed", () => {
+    const early = plan([month(SEPTEMBER, [category("רפואי ופארם", 268.4)])], {
+      create: [[1, null]],
+    });
+    expect(early.months).toEqual(["2026-09"]);
+    expect(early.activeFrom).toEqual(RISEUP_AUTHORITY_FROM);
+    expect(early.creations[0]?.activeFrom).toEqual(RISEUP_AUTHORITY_FROM);
+  });
+
+  it("is the earliest month surveyed once that month is RiseUp's", () => {
+    const later = plan(
+      [month(OCTOBER, [category("רפואי ופארם", 268.4)]), month({ year: 2026, month: 11 }, [])],
+      { create: [[1, null]] },
+    );
+    expect(later.activeFrom).toEqual(OCTOBER);
+  });
+});
+
+// --- a row that is live but starts later ------------------------------------
+
+describe("a row of the grid that starts later", () => {
+  it("is offered like any other, and is not called retired", () => {
+    const future = buildCategories({
+      personal: [
+        {
+          id: "pc-1",
+          personId: PERSON,
+          name: "משתנות",
+          type: "expense",
+          activeFrom: { year: 2024, month: 1 },
+          activeUntil: null,
+        },
+        {
+          id: "pc-2",
+          personId: PERSON,
+          name: "הכנסות",
+          type: "income",
+          activeFrom: { year: 2024, month: 1 },
+          activeUntil: null,
+        },
+        {
+          id: "pc-3",
+          personId: PERSON,
+          name: "מנויים",
+          type: "expense",
+          activeFrom: { year: 2027, month: 1 },
+          activeUntil: null,
+        },
+      ],
+      household: [
+        { id: "hc-1", name: "משתנות", type: "expense", watched: false, group: null },
+        { id: "hc-2", name: "הכנסות", type: "income", watched: false, group: null },
+        { id: "hc-3", name: "מנויים", type: "expense", watched: false, group: null },
+      ],
+      assignments: [
+        { personalCategoryId: "pc-1", householdCategoryId: "hc-1" },
+        { personalCategoryId: "pc-2", householdCategoryId: "hc-2" },
+        { personalCategoryId: "pc-3", householdCategoryId: "hc-3" },
+      ],
+    });
+    const run = plan([month(OCTOBER, [category("מנויים", 37.4)])], {
+      categories: future,
+      mapping: { ...MAPPING, categoryRules: [], fixedItemRules: [], dispositions: [] },
+    });
+    expect(run.candidates.find((row) => row.personalCategory === "מנויים")?.retired).toBe(false);
+    expect(run.piles.exact.map((row) => row.personalCategory)).toEqual(["מנויים"]);
+    expect(run.refusals).toEqual([]);
   });
 });

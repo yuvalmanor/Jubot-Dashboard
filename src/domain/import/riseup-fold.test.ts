@@ -431,6 +431,23 @@ describe("what blocks a write", () => {
     expect(figure(fold(), "משתנות")).toBe("1000.00");
   });
 
+  it("carries the RiseUp name of an unmapped tracked category, which is what `--map` keys a rule on", () => {
+    // The contract between this module and `riseup-map.ts`: `label` is for
+    // printing and may be prose — "(a tracked category with no name)" — so a row
+    // that can be *keyed* by a name says so in `riseupCategory` and nowhere else.
+    // Without it every pile of the proposal empties out with these tests green.
+    const unmapped = fold().unresolved.filter((item) => item.kind === "unmapped-category");
+    expect(unmapped.map((item) => item.riseupCategory)).toEqual(["חיות"]);
+  });
+
+  it("gives no RiseUp name to a row there is nothing to key a rule on", () => {
+    const nameless = fold().unresolved.filter(
+      (item) => item.kind === "unmapped-fixed-item" || item.kind === "credit-without-disposition",
+    );
+    expect(nameless.length).toBeGreaterThan(0);
+    expect(nameless.every((item) => item.riseupCategory === undefined)).toBe(true);
+  });
+
   it("keeps unresolved expense lines out of the recorded total and still shows them in it", () => {
     const totals = expenseTotals(fold());
     // 1,876 + 252 + 1,000 + 409 + 83 recorded; 79 + 33 still unresolved.

@@ -456,13 +456,19 @@ items only a Person can identify, and the rows of the grid no RiseUp line feeds,
 the `hand-typed` disposition. A RiseUp category the grid has no row for is proposed as a new
 Personal Category with the Household Category it would join. Answers are given by the numbers
 the proposal printed — `--assign <n>:<m>` places a RiseUp row in row *m* of the grid,
-`--join <n>:<h>` picks a different Household Category, `--decline <n>` rejects a proposal — and
-the file is written, and a proposed category created, only by `--approve <token>`. **Nothing is
-written while anything is undecided**, and the rows with no RiseUp source are held rather than
-marked `hand-typed` until then: a row silenced while another RiseUp line is still unplaced
-could be the very row that line feeds. A range surveys every month at once, which is what puts
-both months' charges beside a fixed item's id. The monthly run creates no category in any mode
-under any flag.
+`--create <n>` creates the row proposal *n* names (`--create <n>:<h>` to join Household
+Category *h*), `--decline <n>` rejects a proposal — and the file is written, and an approved
+category created, only by `--approve <token>`. **Nothing is written while anything is
+undecided**: a fixed item nobody has identified, a name near two rows at once, a row waiting
+for `--create`, and the rows with no RiseUp source are held rather than marked `hand-typed`
+until then — a row silenced while another RiseUp line is still unplaced could be the very row
+that line feeds. A range surveys every month at once, which is what puts both months' charges
+beside a fixed item's id. The monthly run creates no category in any mode under any flag.
+
+`--map` does not propose a label rule, and a RiseUp category whose charges a label rule ought
+to split — Eden's `חשבונות` — therefore turns up as a row that *could* be created. It is not
+created unless `--create` says so, and the right answer there is a line edited into
+`labelRules` by hand.
 
 **It reports unless it is told to write.** Every run prints the side-by-side — one line per
 Personal Category, what the מאזן holds, what RiseUp says, the difference — and a token over

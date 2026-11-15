@@ -10,7 +10,7 @@
  *   npm run riseup:fill -- yuval 2026-10 --write --approve <token> --decline 3,7
  *   npm run riseup:fill -- eden --map                   # propose the mapping file
  *   npm run riseup:fill -- yuval 2026-09..2026-10 --map --assign 3:12 --assign 4:14
- *   npm run riseup:fill -- eden --map --join 5:7 --approve <token>
+ *   npm run riseup:fill -- eden --map --create 1:28 --decline 2 --approve <token>
  *
  * **`--map` proposes the mapping file**, which is the other half of the feature:
  * it reads what the fold could not place and sorts it into piles — exact name
@@ -821,7 +821,7 @@ const usage =
   "Usage: npm run riseup:fill -- <person> [YYYY-MM | YYYY-MM..YYYY-MM] [--from <saved.json>]\n" +
   "                              [--config <path>] [--no-db] [--mapping <path>]\n" +
   "                              [--write --approve <token> [--decline <n>[,<n>]]]\n" +
-  "                              [--map [--assign <n>:<m>] [--join <n>:<h>]\n" +
+  "                              [--map [--assign <n>:<m>] [--create <n>[:<h>]]\n" +
   "                                     [--decline <n>] [--approve <token>]]\n" +
   `  <person> is one of ${PEOPLE.map((p) => p.id).join(", ")}.\n` +
   "  Without a month, RiseUp's own `previous` — the last ended cashflow month.\n" +
@@ -831,10 +831,10 @@ const usage =
   "  --decline takes the line numbers the write offered; prefix them with\n" +
   "  `YYYY-MM:` when the run covers more than one month.\n" +
   "  --map proposes the mapping file instead: --assign <n>:<m> places a RiseUp row\n" +
-  "  in row <m> of the grid, --join <n>:<h> joins a new Personal Category to\n" +
-  "  Household Category <h>, --decline <n> rejects a proposal, and --approve\n" +
-  "  <token> writes the file and creates what was proposed. A range surveys every\n" +
-  "  month at once, and --from may be repeated, one saved month each.\n" +
+  "  in row <m> of the grid, --create <n> creates the row proposal <n> names (with\n" +
+  "  :<h> to join Household Category <h>), --decline <n> rejects a proposal, and\n" +
+  "  --approve <token> writes the file and creates what was approved. A range\n" +
+  "  surveys every month at once, and --from may be repeated, one saved month each.\n" +
   "  --mapping <path> reads and writes that file instead of docs/source/.";
 
 const personId = positional[0];
@@ -919,9 +919,43 @@ function numberPairs(name: string): Map<number, number> {
   return pairs;
 }
 
+/**
+ * `--create <n>` creates the row proposal *n* names, with a Household Category of
+ * its own; `--create <n>:<h>` joins an existing one. Creating a row is never the
+ * default, so this flag is the whole of the yes.
+ */
+function creations(): Map<number, number | null> {
+  const asked = new Map<number, number | null>();
+  for (const raw of flagValues("--create")) {
+    for (const piece of raw.split(",").map((part) => part.trim()).filter((part) => part.length > 0)) {
+      const [left = "", right] = piece.split(":");
+      const proposal = Number(left);
+      const household = right === undefined ? null : Number(right);
+      if (
+        !Number.isInteger(proposal) ||
+        proposal < 1 ||
+        (household !== null && (!Number.isInteger(household) || household < 1))
+      ) {
+        throw new Error(
+          `\`--create ${piece}\` is not a proposal number, optionally followed by a Household ` +
+            `Category number — both from the tables the proposal printed.\n${usage}`,
+        );
+      }
+      if (asked.has(proposal) && asked.get(proposal) !== household) {
+        throw new Error(
+          `\`--create\` answers proposal ${proposal} twice, so one of the two would be ignored. ` +
+            `The run stops instead.\n${usage}`,
+        );
+      }
+      asked.set(proposal, household);
+    }
+  }
+  return asked;
+}
+
 const assigns = mappingMode ? numberPairs("--assign") : new Map<number, number>();
-const joins = mappingMode ? numberPairs("--join") : new Map<number, number>();
-for (const flag of ["--assign", "--join"]) {
+const creates = mappingMode ? creations() : new Map<number, number | null>();
+for (const flag of ["--assign", "--create"]) {
   if (!mappingMode && flagValues(flag).length > 0) {
     throw new Error(`\`${flag}\` answers a \`--map\` proposal, and this run is not one.\n${usage}`);
   }
@@ -1169,12 +1203,13 @@ function reportMap(plan: RiseUpMapPlan, sources: readonly string[], savedTo: rea
   );
   if (plan.piles["new-category"].length > 0) {
     say(
-      `**A new row is not the only answer.** A RiseUp category the file deliberately has no ` +
-        `rule for — Eden's \`חשבונות\`, whose charges her five label rules split across ` +
+      `**Nothing here is created without \`--create\`.** A RiseUp category the file deliberately ` +
+        `has no rule for — Eden's \`חשבונות\`, whose charges her five label rules split across ` +
         `שכ"ד, ארנונה, מים, חשמל and גז — shows up here the moment one charge in it carries a ` +
         `label no rule claims. The answer there is a **label rule**, which \`--map\` does not ` +
-        `propose: it is one line edited into \`labelRules\` by hand. \`--decline\` such a ` +
-        `proposal and nothing is written, which is the refusal doing its job.`,
+        `propose: it is one line edited into \`labelRules\` by hand. So each row below waits ` +
+        `for a \`--create\`, an \`--assign\` or a \`--decline\`, and until one comes nothing in ` +
+        `this whole proposal is written.`,
     );
     say();
   }
@@ -1188,8 +1223,9 @@ function reportMap(plan: RiseUpMapPlan, sources: readonly string[], savedTo: rea
             : household.kind === "new"
               ? `**${household.name}**, itself new`
               : `\`${household.name}\`, which already exists`
-        }. \`--join ${proposal.index}:<h>\` joins a different one; \`--assign ${proposal.index}:<n>\` ` +
-        `says it is a row the grid already has after all.`,
+        }. \`--create ${proposal.index}\` creates it as proposed, \`--create ${proposal.index}:<h>\` ` +
+        `joins a different Household Category, and \`--assign ${proposal.index}:<n>\` says it is ` +
+        `a row the grid already has after all.`,
     );
   }
   if (plan.piles["new-category"].length > 0) say();
@@ -1274,7 +1310,7 @@ function reportMap(plan: RiseUpMapPlan, sources: readonly string[], savedTo: rea
   if (plan.piles["new-category"].length > 0) {
     say(`## The Household Categories, by number`);
     say();
-    say(`What \`--join <n>:<h>\` names.`);
+    say(`What \`--create <n>:<h>\` names.`);
     say();
     say(
       plan.households
@@ -1351,7 +1387,11 @@ function reportMapOutcome(
         `${flagValue("--mapping") === undefined ? "" : ` --mapping ${flagValue("--mapping")}`}` +
         `${flagValue("--config") === undefined ? "" : ` --config ${flagValue("--config")}`}` +
         `${[...assigns].map(([proposal, row]) => ` --assign ${proposal}:${row}`).join("")}` +
-        `${[...joins].map(([proposal, household]) => ` --join ${proposal}:${household}`).join("")}` +
+        `${[...creates]
+          .map(([proposal, household]) =>
+            household === null ? ` --create ${proposal}` : ` --create ${proposal}:${household}`,
+          )
+          .join("")}` +
         `${[...(declines.get("*") ?? [])].map((proposal) => ` --decline ${proposal}`).join("")}` +
         ` --approve ${plan.token}`,
     );
@@ -1360,7 +1400,7 @@ function reportMapOutcome(
     say(
       `The token covers every proposal above, so a RiseUp row that appears or moves between the ` +
         `two runs changes it and the approval is refused rather than landing on a shifted table. ` +
-        `Repeat the \`--assign\` and \`--join\` answers with it.`,
+        `Repeat the \`--assign\` and \`--create\` answers with it.`,
     );
     say();
     return;
@@ -1427,7 +1467,7 @@ async function runMap(): Promise<void> {
     months: folds,
     mapping,
     categories,
-    answers: { assign: assigns, join: joins, declined: declines.get("*") ?? [] },
+    answers: { assign: assigns, create: creates, declined: declines.get("*") ?? [] },
   });
 
   const approved = plan.writable && approvals.includes(plan.token);

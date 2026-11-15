@@ -56,6 +56,7 @@ import {
   type HouseholdCategory,
   type PersonalCategory,
   householdCategoriesFor,
+  isRetired,
   normaliseCategoryName,
   personalCategoriesFor,
 } from "@/domain/categories/categories";
@@ -66,6 +67,7 @@ import {
   type RowDisposition,
   type Unresolved,
 } from "@/domain/import/riseup-fold";
+import { RISEUP_AUTHORITY_FROM, isRiseUpAuthority } from "@/domain/import/riseup-cutover";
 import { digestLines } from "@/domain/import/riseup-write";
 import { type Money, toDecimalString } from "@/domain/money/money";
 import { type CalendarMonth, compareMonths, monthKey } from "@/domain/time/calendar-month";
@@ -114,8 +116,14 @@ export interface HouseholdOption {
 export interface MapAnswers {
   /** Proposal number → candidate number: this RiseUp row feeds that row of the grid. */
   readonly assign?: ReadonlyMap<number, number>;
-  /** Proposal number → Household Category number, for a new Personal Category. */
-  readonly join?: ReadonlyMap<number, number>;
+  /**
+   * Proposal number → the Household Category number a **new** Personal Category
+   * joins, or `null` for one of its own name. Creating a row is never the default:
+   * Eden's `חשבונות` is proposed here the moment one charge in it carries a label
+   * no rule claims, and a new row is the wrong answer there. So a new-category
+   * proposal is undecided until this says otherwise.
+   */
+  readonly create?: ReadonlyMap<number, number | null>;
   /** Proposal numbers the Person does not want. */
   readonly declined?: readonly number[];
 }
@@ -150,7 +158,7 @@ export type HouseholdProposal =
   | { readonly kind: "existing"; readonly id: string; readonly name: string };
 
 export interface MapProposal {
-  /** 1-based, and what `--assign`, `--join` and `--decline` name. */
+  /** 1-based, and what `--assign`, `--create` and `--decline` name. */
   readonly index: number;
   readonly pile: MapPile;
   /** What RiseUp calls the row — a category name, or a fixed item's merchant. */
@@ -234,28 +242,57 @@ function isExact(riseup: string, candidate: string): boolean {
 }
 
 /**
- * Why these two might be one row, or `null` when nothing honest can be said.
- * The reason is printed with the proposal, so each one is a sentence a Person can
+ * Why these two might be one row, or `null` when nothing honest can be said. The
+ * reason is printed with the proposal, so each one is a sentence a Person can
  * agree or disagree with rather than a similarity score.
+ *
+ * `weak` separates *the same name, spelled differently* from *one name inside
+ * another*, which is a different claim and a weaker one: Eden's
+ * `אוכל בחוץ - קפה` contains `אוכל בחוץ`, and her file sends it to `בתי קפה`.
+ * A weak match is shown with its reason and left **undecided**, so it is a
+ * suggestion to answer rather than a destination to approve.
  */
-export function nearReason(riseup: string, candidate: string): string | null {
+export interface Nearness {
+  readonly reason: string;
+  readonly weak: boolean;
+}
+
+export function nearReason(riseup: string, candidate: string): Nearness | null {
   const left = key(riseup);
   const right = key(candidate);
   if (left === right) return null;
   if (foldQuotes(left) === foldQuotes(right)) {
-    return "the same name in different quote characters — RiseUp's gershayim (U+05F4) against the grid's straight quote";
+    return {
+      reason:
+        "the same name in different quote characters — RiseUp's gershayim (U+05F4) against the grid's straight quote",
+      weak: false,
+    };
   }
   if (left.toLocaleLowerCase() === right.toLocaleLowerCase()) {
-    return "the same name in different letter case";
+    return { reason: "the same name in different letter case", weak: false };
   }
   if (stripPunctuation(left).toLocaleLowerCase() === stripPunctuation(right).toLocaleLowerCase()) {
-    return "the same name once punctuation and spacing are set aside";
+    return { reason: "the same name once punctuation and spacing are set aside", weak: false };
   }
-  const shorter = stripPunctuation(left).toLocaleLowerCase();
-  const longer = stripPunctuation(right).toLocaleLowerCase();
-  if (shorter.length >= 3 && longer.length >= 3) {
-    if (shorter.includes(longer)) return `RiseUp's name contains the grid's \`${candidate}\``;
-    if (longer.includes(shorter)) return `the grid's \`${candidate}\` contains RiseUp's name`;
+  const riseupName = stripPunctuation(left).toLocaleLowerCase();
+  const gridName = stripPunctuation(right).toLocaleLowerCase();
+  if (riseupName.length >= 3 && gridName.length >= 3) {
+    if (riseupName.includes(gridName)) {
+      return {
+        reason:
+          `RiseUp's name contains the grid's \`${candidate}\` — which is a weaker claim than ` +
+          `one name spelled two ways, so nobody here decides it`,
+        weak: true,
+      };
+    }
+    if (gridName.includes(riseupName)) {
+      return {
+        reason:
+          `the grid's \`${candidate}\` contains RiseUp's name — which is a weaker claim than ` +
+          `one name spelled two ways, so nobody here decides it`,
+        weak: true,
+      };
+    }
   }
   return null;
 }
@@ -394,19 +431,32 @@ export function planRiseUpMapping(input: MapInput): RiseUpMapPlan {
   }
 
   const months = [...input.months].sort((left, right) => compareMonths(left.month, right.month));
-  const activeFrom = (months[0] as MappedMonth).month;
+  /**
+   * The earliest month surveyed — but never earlier than the cutover. A category
+   * active in a month is a **blank** in it until something is recorded, and a
+   * month with a blank reads `open` in `month-closure.ts`. A row created active
+   * from 2026-09 would therefore re-open a month the sheet importer owns and this
+   * feature may not touch, just by existing (ADR 0006).
+   */
+  const surveyedFrom = (months[0] as MappedMonth).month;
+  const activeFrom = isRiseUpAuthority(surveyedFrom) ? surveyedFrom : RISEUP_AUTHORITY_FROM;
   const base = input.mapping ?? skeletonMapping(input.person, input.server);
   const birth = input.mapping === null;
 
+  /**
+   * Retired means **retired** — a lifespan with an end on it — and not "not active
+   * in the month surveyed". A row created to start next month is live and a rule
+   * into it is perfectly ordinary; its own `activeFrom` is what decides which
+   * months offer it for entry, and nothing here may take that decision over.
+   */
   const everyCategory = personalCategoriesFor(input.categories, input.person);
-  const active = personalCategoriesFor(input.categories, input.person, { activeIn: activeFrom });
-  const isActive = (category: PersonalCategory) => active.some((live) => live.id === category.id);
+  const active = everyCategory.filter((category) => !isRetired(category));
   const candidates: Candidate[] = everyCategory.map((category, position) => ({
     number: position + 1,
     personalCategory: category.name,
     type: category.type,
     id: category.id,
-    retired: !isActive(category),
+    retired: isRetired(category),
   }));
   const households: HouseholdOption[] = householdCategoriesFor(input.categories).map(
     (household: HouseholdCategory, position) => ({
@@ -440,7 +490,7 @@ export function planRiseUpMapping(input: MapInput): RiseUpMapPlan {
 
   const answers = input.answers ?? {};
   const assign = answers.assign ?? new Map<number, number>();
-  const join = answers.join ?? new Map<number, number>();
+  const create = answers.create ?? new Map<number, number | null>();
   const declined = new Set(answers.declined ?? []);
 
   const refusals: string[] = [];
@@ -525,20 +575,22 @@ export function planRiseUpMapping(input: MapInput): RiseUpMapPlan {
     }
 
     const nearly = sameType.flatMap((candidate) => {
-      const reason = nearReason(row.name, candidate.personalCategory);
-      return reason === null ? [] : [{ candidate, reason }];
+      const nearness = nearReason(row.name, candidate.personalCategory);
+      return nearness === null ? [] : [{ candidate, ...nearness }];
     });
     if (nearly.length === 1) {
-      const only = nearly[0] as { candidate: Candidate; reason: string };
+      const only = nearly[0] as { candidate: Candidate; reason: string; weak: boolean };
+      // A weak match is a suggestion, not a destination: it is shown with the
+      // candidate beside it and answered, never approved as it stands.
       near.push({
         row: {
           ...common,
           pile: "near",
           reason: only.reason,
-          personalCategory: only.candidate.personalCategory,
-          plausible: [only.candidate],
+          personalCategory: only.weak ? null : only.candidate.personalCategory,
+          plausible: only.weak ? sameType : [only.candidate],
         },
-        needsAnswer: false,
+        needsAnswer: only.weak,
       });
       continue;
     }
@@ -547,7 +599,9 @@ export function planRiseUpMapping(input: MapInput): RiseUpMapPlan {
         row: {
           ...common,
           pile: "near",
-          reason: `${nearly.length} rows of the grid are near this name, so nothing here chooses between them`,
+          reason:
+            `${nearly.length} rows of the grid are near this name, so nothing here chooses ` +
+            `between them: ${nearly.map((match) => `\`${match.candidate.personalCategory}\``).join(", ")}`,
           personalCategory: null,
           plausible: nearly.map((match) => match.candidate),
         },
@@ -703,14 +757,31 @@ export function planRiseUpMapping(input: MapInput): RiseUpMapPlan {
 
     if (draft.row.pile === "new-category") {
       const name = draft.row.personalCategory as string;
-      const asJoined = join.get(index);
+      // Creating a row is never the default. Eden's `חשבונות` is proposed here
+      // the moment one charge in it carries a label no rule claims, and a new row
+      // is the wrong answer to that — a label rule is. So the proposal names the
+      // row it *would* create and waits.
+      if (!create.has(index)) {
+        undecided += 1;
+        decided.push({
+          ...draft.row,
+          index,
+          state: "undecided",
+          why:
+            `a new row is created only on the Person's own say-so: \`--create ${index}\` for ` +
+            `one with a Household Category of its own, \`--create ${index}:<h>\` to join an ` +
+            `existing one, or \`--assign ${index}:<n>\` if it is a row the grid already has`,
+        });
+        return;
+      }
+      const asJoined = create.get(index) ?? null;
       const option =
-        asJoined === undefined
+        asJoined === null
           ? undefined
           : households.find((household) => household.number === asJoined);
-      if (asJoined !== undefined && option === undefined) {
+      if (asJoined !== null && option === undefined) {
         refusals.push(
-          `\`--join ${index}:${asJoined}\` names no Household Category ` +
+          `\`--create ${index}:${asJoined}\` names no Household Category ` +
             `(1–${households.length}), so nothing is written.`,
         );
       }
@@ -745,11 +816,10 @@ export function planRiseUpMapping(input: MapInput): RiseUpMapPlan {
         ...draft.row,
         index,
         household,
-        ...(option === undefined
-          ? {}
-          : {
-              reason: `a new Personal Category joining the Household Category \`${option.name}\`, chosen by the Person`,
-            }),
+        reason:
+          option === undefined
+            ? `a new Personal Category with a Household Category of its own, chosen by the Person: \`--create ${index}\``
+            : `a new Personal Category joining the Household Category \`${option.name}\`, chosen by the Person`,
         state: "proposed",
       });
       return;
@@ -844,6 +914,56 @@ export function planRiseUpMapping(input: MapInput): RiseUpMapPlan {
     transactionDispositions: base.transactionDispositions ?? [],
   };
 
+  const proposals: readonly MapProposal[] = [...decided, ...sourceless];
+
+  /**
+   * An answer naming a proposal that is not there. Silently ignoring one is how a
+   * `--decline 8` meant for row 7 writes row 7 anyway: the token covers the
+   * proposals, not the answers, so nothing else would catch it. Phase 33's audit
+   * found the same class in the write's own `--decline`.
+   */
+  const numbers = new Set(proposals.map((row) => row.index));
+  const byNumber = new Map(proposals.map((row) => [row.index, row]));
+  for (const [flag, named] of [
+    ["--assign", [...assign.keys()]],
+    ["--create", [...create.keys()]],
+    ["--decline", [...declined]],
+  ] as const) {
+    const strangers = named.filter((number) => !numbers.has(number));
+    if (strangers.length > 0) {
+      refusals.push(
+        `${strangers.map((number) => `\`${flag} ${number}\``).join(", ")} ` +
+          `${strangers.length === 1 ? "names a proposal" : "name proposals"} this run did not ` +
+          `make${proposals.length === 0 ? " (it made none)" : ` (1–${proposals.length})`}, so ` +
+          `the answers do not line up with the tables and nothing is written.`,
+      );
+    }
+  }
+  for (const number of create.keys()) {
+    const row = byNumber.get(number);
+    if (row !== undefined && row.pile !== "new-category") {
+      refusals.push(
+        `\`--create ${number}\` answers a proposal that is not a new Personal Category — ` +
+          `${number} is ${row.pile === "sourceless" ? "a row of the grid with no RiseUp source" : `a ${row.pile} proposal`}. ` +
+          `A Household Category is only ever chosen for a row being created.`,
+      );
+    }
+  }
+  for (const number of assign.keys()) {
+    const row = byNumber.get(number);
+    if (row !== undefined && row.pile === "sourceless") {
+      refusals.push(
+        `\`--assign ${number}:…\` answers a row of the grid with no RiseUp source, which has ` +
+          `nothing to assign: it is fed by nothing, which is what \`hand-typed\` records. ` +
+          `\`--decline ${number}\` is what leaves it unmarked.`,
+      );
+    }
+  }
+
+  // --- the token, and what is in the way -------------------------------------
+
+  // Decided last, after every refusal above: the file handed back when anything
+  // is in the way is the file there already was.
   const mapping = refusals.length === 0 ? proposed : base;
   const changed =
     refusals.length === 0 &&
@@ -851,10 +971,6 @@ export function planRiseUpMapping(input: MapInput): RiseUpMapPlan {
       addedCategoryRules.length > 0 ||
       addedFixedItems.length > 0 ||
       addedDispositions.length > 0);
-
-  const proposals: readonly MapProposal[] = [...decided, ...sourceless];
-
-  // --- the token, and what is in the way -------------------------------------
 
   const token = digestLines([
     input.person,
