@@ -425,6 +425,7 @@ npm run riseup:fill -- yuval 2026-10      # that month
 npm run riseup:fill -- yuval 2026-10..2026-11      # month by month
 npm run riseup:fill -- yuval --from <saved.json>   # a response already on disk
 npm run riseup:fill -- yuval 2026-10 --write --approve <token>
+npm run riseup:fill -- eden --map                  # propose the mapping file
 ```
 
 The script is the MCP client: it launches that Person's server, calls `get_budget` itself
@@ -447,6 +448,21 @@ the `sequenceId` on its charge (stable across months, unlike the envelope's own 
 unlike the merchant: two of Yuval's commitments read `חברת פרטנר תקשורת בע`). Anything
 without a rule, and any money in that is not the salary charge, is printed and resolved by
 a person — nothing is guessed and nothing is swept into משתנות.
+
+**`--map` is how that file is written.** It reads what the fold could not place and sorts it
+into four piles — RiseUp categories that carry a row's own name, near-matches with the reason
+shown (RiseUp's `חו״ל` against the grid's `חו"ל`, a gershayim against a straight quote), fixed
+items only a Person can identify, and the rows of the grid no RiseUp line feeds, which become
+the `hand-typed` disposition. A RiseUp category the grid has no row for is proposed as a new
+Personal Category with the Household Category it would join. Answers are given by the numbers
+the proposal printed — `--assign <n>:<m>` places a RiseUp row in row *m* of the grid,
+`--join <n>:<h>` picks a different Household Category, `--decline <n>` rejects a proposal — and
+the file is written, and a proposed category created, only by `--approve <token>`. **Nothing is
+written while anything is undecided**, and the rows with no RiseUp source are held rather than
+marked `hand-typed` until then: a row silenced while another RiseUp line is still unplaced
+could be the very row that line feeds. A range surveys every month at once, which is what puts
+both months' charges beside a fixed item's id. The monthly run creates no category in any mode
+under any flag.
 
 **It reports unless it is told to write.** Every run prints the side-by-side — one line per
 Personal Category, what the מאזן holds, what RiseUp says, the difference — and a token over

@@ -127,6 +127,15 @@ function digest(text: string): string {
 }
 
 /**
+ * A token over any list of statements, so that an approval is an approval of
+ * *those* statements. Exported because `--map` approves a proposal the same way
+ * a write approves figures (Phase 34) and one implementation of this is enough.
+ */
+export function digestLines(parts: readonly string[]): string {
+  return digest(parts.join("|"));
+}
+
+/**
  * The approval token for one month of one Person. It covers the Person, the
  * month and every offered line's category, type and both figures — so a figure
  * RiseUp revised, a line that appeared, and a line that went away all change it.
@@ -137,7 +146,7 @@ export function approvalToken(person: string, comparison: RiseUpComparison): str
       `${line.type}:${line.personalCategory}=${toDecimalString(line.riseUp)}` +
       `<${line.jubot === null ? "" : toDecimalString(line.jubot)}`,
   );
-  return digest([person, monthKey(comparison.month), ...lines].join("|"));
+  return digestLines([person, monthKey(comparison.month), ...lines]);
 }
 
 // --- the plan ----------------------------------------------------------------

@@ -251,6 +251,14 @@ export interface Unresolved {
   readonly label: string;
   readonly amount: Money;
   readonly side: "income" | "expense";
+  /**
+   * RiseUp's own name for the tracked category, where the row has one. `label` is
+   * for printing and may be prose — "(a tracked category with no name)" — so a
+   * row that can actually be *keyed* by a name says so here and nowhere else.
+   * This is what `--map` proposes a rule for (Phase 34); a row without it has
+   * nothing to key a rule on.
+   */
+  readonly riseupCategory?: string;
   readonly sequenceId?: string;
   readonly envelopeId?: string;
   readonly merchant?: string;
@@ -733,6 +741,7 @@ export function foldRiseUpMonth(
       unresolved.push({
         kind: "unmapped-category",
         label: name,
+        riseupCategory: name,
         amount: slot.exact,
         side: "expense",
         detail:

@@ -8,6 +8,17 @@
  *   npm run riseup:fill -- yuval 2026-10 --no-db       # fold only, no comparison
  *   npm run riseup:fill -- yuval 2026-10 --write --approve <token>
  *   npm run riseup:fill -- yuval 2026-10 --write --approve <token> --decline 3,7
+ *   npm run riseup:fill -- eden --map                   # propose the mapping file
+ *   npm run riseup:fill -- yuval 2026-09..2026-10 --map --assign 3:12 --assign 4:14
+ *   npm run riseup:fill -- eden --map --join 5:7 --approve <token>
+ *
+ * **`--map` proposes the mapping file**, which is the other half of the feature:
+ * it reads what the fold could not place and sorts it into piles — exact name
+ * matches, near-matches with the reason shown, fixed items only a Person can
+ * identify, and the rows of the grid no RiseUp line feeds. It writes the file
+ * and creates a proposed Personal Category only against the token it printed,
+ * and only when nothing is undecided. The monthly run creates nothing, in any
+ * mode, under any flag.
  *
  * **It reports unless it is told to write.** With `DATABASE_URL` set it prints the
  * side-by-side — one line per Personal Category, what the מאזן holds, what RiseUp
@@ -50,13 +61,24 @@
  */
 
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 import pg from "pg";
 
+import { insertPersonalCategory, loadCategories } from "@/db/categories";
 import { saveMonthEntries } from "@/db/ledger";
+import { applyCreation, planPersonalCategoryCreation } from "@/domain/categories/categories";
+import {
+  type MapProposal,
+  type RiseUpMapPlan,
+  chargeLabel,
+  planRiseUpMapping,
+  serialiseMapping,
+  skeletonMapping,
+} from "@/domain/import/riseup-map";
 import {
   type HeldCategory,
   type RiseUpComparison,
@@ -797,15 +819,23 @@ const positional = args.filter((arg, index) => {
 
 const usage =
   "Usage: npm run riseup:fill -- <person> [YYYY-MM | YYYY-MM..YYYY-MM] [--from <saved.json>]\n" +
-  "                              [--config <path>] [--no-db]\n" +
+  "                              [--config <path>] [--no-db] [--mapping <path>]\n" +
   "                              [--write --approve <token> [--decline <n>[,<n>]]]\n" +
+  "                              [--map [--assign <n>:<m>] [--join <n>:<h>]\n" +
+  "                                     [--decline <n>] [--approve <token>]]\n" +
   `  <person> is one of ${PEOPLE.map((p) => p.id).join(", ")}.\n` +
   "  Without a month, RiseUp's own `previous` — the last ended cashflow month.\n" +
   "  A range runs month by month, each fetched, compared and approved on its own.\n" +
   "  --no-db folds and prints without reading the ledger at all.\n" +
   "  --write writes the lines the printed token approves, and nothing else.\n" +
   "  --decline takes the line numbers the write offered; prefix them with\n" +
-  "  `YYYY-MM:` when the run covers more than one month.";
+  "  `YYYY-MM:` when the run covers more than one month.\n" +
+  "  --map proposes the mapping file instead: --assign <n>:<m> places a RiseUp row\n" +
+  "  in row <m> of the grid, --join <n>:<h> joins a new Personal Category to\n" +
+  "  Household Category <h>, --decline <n> rejects a proposal, and --approve\n" +
+  "  <token> writes the file and creates what was proposed. A range surveys every\n" +
+  "  month at once, and --from may be repeated, one saved month each.\n" +
+  "  --mapping <path> reads and writes that file instead of docs/source/.";
 
 const personId = positional[0];
 if (personId === undefined) throw new Error(usage);
@@ -847,9 +877,55 @@ function datesOf(argument: string | undefined): string[] {
 const dates = datesOf(positional[1]);
 
 const from = flagValue("--from");
+const saved = flagValues("--from").filter((path) => path.length > 0);
 const configPath = flagValue("--config") ?? configPathDefault();
 const writing = args.includes("--write");
+const mappingMode = args.includes("--map");
 const approvals = flagValues("--approve").filter((token) => token.length > 0);
+
+if (writing && mappingMode) {
+  throw new Error(
+    "`--map` proposes the mapping file and `--write` writes the מאזן. They are two runs, not " +
+      "one: the file has to say where a figure goes before a figure can be written.\n" + usage,
+  );
+}
+
+/**
+ * `<proposal>:<answer>` pairs, both numbers. Numbers rather than names because
+ * `חו"ל` and `שכ"ד` both carry a double quote, exactly as `--decline` does.
+ */
+function numberPairs(name: string): Map<number, number> {
+  const pairs = new Map<number, number>();
+  for (const raw of flagValues(name)) {
+    for (const piece of raw.split(",").map((part) => part.trim()).filter((part) => part.length > 0)) {
+      const [left = "", right] = piece.split(":");
+      const proposal = Number(left);
+      const answer = Number(right);
+      if (!Number.isInteger(proposal) || proposal < 1 || !Number.isInteger(answer) || answer < 1) {
+        throw new Error(
+          `\`${name} ${piece}\` is not a pair of numbers. It takes <proposal>:<row>, both from ` +
+            `the tables the proposal printed.\n${usage}`,
+        );
+      }
+      if (pairs.has(proposal) && pairs.get(proposal) !== answer) {
+        throw new Error(
+          `\`${name}\` answers proposal ${proposal} twice, with ${pairs.get(proposal)} and ` +
+            `${answer}. One of them would be ignored, so the run stops instead.\n${usage}`,
+        );
+      }
+      pairs.set(proposal, answer);
+    }
+  }
+  return pairs;
+}
+
+const assigns = mappingMode ? numberPairs("--assign") : new Map<number, number>();
+const joins = mappingMode ? numberPairs("--join") : new Map<number, number>();
+for (const flag of ["--assign", "--join"]) {
+  if (!mappingMode && flagValues(flag).length > 0) {
+    throw new Error(`\`${flag}\` answers a \`--map\` proposal, and this run is not one.\n${usage}`);
+  }
+}
 
 /**
  * The declined line numbers, per month. A bare number belongs to the one month a
@@ -864,6 +940,15 @@ const declines = new Map<string, number[]>();
 for (const raw of flagValues("--decline")) {
   for (const piece of raw.split(",").map((part) => part.trim()).filter((part) => part.length > 0)) {
     const [left = "", right] = piece.split(":");
+    // A `--map` proposal covers every month surveyed at once, so its numbers are
+    // not per month and a scoped decline would be naming something that is not
+    // there. The write's own form is unchanged.
+    if (mappingMode && right !== undefined) {
+      throw new Error(
+        `\`--decline ${piece}\` scopes a decline to a month, and a \`--map\` proposal covers ` +
+          `every month surveyed at once. Give the proposal's own number.\n${usage}`,
+      );
+    }
     const scope = right === undefined ? null : left;
     const number = Number(right === undefined ? left : right);
     if (!Number.isInteger(number) || number < 1) {
@@ -872,7 +957,7 @@ for (const raw of flagValues("--decline")) {
           `table, comma-separated, each optionally prefixed with \`YYYY-MM:\`.\n${usage}`,
       );
     }
-    if (scope === null && dates.length > 1) {
+    if (scope === null && dates.length > 1 && !mappingMode) {
       throw new Error(
         `This run covers ${dates.length} months, so \`--decline ${piece}\` is ambiguous: line ` +
           `${number} of which month? Write it as \`--decline <YYYY-MM>:${number}\`.\n${usage}`,
@@ -899,10 +984,18 @@ for (const raw of flagValues("--decline")) {
   }
 }
 
-if (from !== undefined && dates.length > 1) {
+// A `--map` run surveys every month at once rather than one at a time, so it is
+// the one run that may be handed several saved responses.
+if (from !== undefined && dates.length > 1 && !mappingMode) {
   throw new Error(
     `\`--from\` carries one saved month, so it cannot answer a range of ${dates.length}. Run the ` +
       `months one at a time, or drop \`--from\` and let the script fetch each of them.\n${usage}`,
+  );
+}
+if (!mappingMode && saved.length > 1) {
+  throw new Error(
+    `\`--from\` was given ${saved.length} times, and a run of the מאזן reads one month at a ` +
+      `time. Only \`--map\`, which surveys several months at once, takes more than one.\n${usage}`,
   );
 }
 
@@ -913,6 +1006,12 @@ if (writing && noDb) {
       "is written over a ledger nobody looked at.",
   );
 }
+if (mappingMode && noDb) {
+  throw new Error(
+    "`--map` proposes rules against the rows of the grid, and `--no-db` is what refuses to read " +
+      "them. A mapping proposed without them would be guessing what the grid holds.",
+  );
+}
 
 const connectionString = process.env.DATABASE_URL ?? "";
 if (writing && connectionString.length === 0) {
@@ -921,22 +1020,462 @@ if (writing && connectionString.length === 0) {
       "where the household's lives.",
   );
 }
+if (mappingMode && connectionString.length === 0) {
+  throw new Error(
+    "`DATABASE_URL` is not set, so that Person's Personal Categories cannot be read and there " +
+      "is nothing to map a RiseUp row onto. `.env.production.local` is where the household's lives.",
+  );
+}
 
-const mappingPath = MAPPING_PATH(person.id);
-let mapping: RiseUpMapping;
+const mappingPath = flagValue("--mapping") ?? MAPPING_PATH(person.id);
+/** `null` only under `--map`: a file being born is what that mode is for. */
+let mapping: RiseUpMapping | null;
 try {
   mapping = JSON.parse(readFileSync(mappingPath, "utf8")) as RiseUpMapping;
 } catch {
-  throw new Error(
-    `${person.id} has no mapping file at \`${mappingPath}\`, so there is no way to say which ` +
-      `RiseUp row feeds which Personal Category. \`--map\` (Phase 34) proposes one.`,
-  );
+  if (!mappingMode) {
+    throw new Error(
+      `${person.id} has no mapping file at \`${mappingPath}\`, so there is no way to say which ` +
+        `RiseUp row feeds which Personal Category. \`--map\` proposes one.`,
+    );
+  }
+  mapping = null;
 }
-if (mapping.server !== person.server) {
+if (mapping !== null && mapping.server !== person.server) {
   throw new Error(
     `\`${mappingPath}\` names the server \`${mapping.server}\`, but ${person.id}'s account is ` +
       `reached through \`${person.server}\`. One Person, one account: fix the file rather than the table.`,
   );
+}
+
+/**
+ * The monthly run's rules. `--map` is the only mode that may run without a file,
+ * so everything below this reads a file that is there.
+ */
+function rulesOrStop(): RiseUpMapping {
+  if (mapping === null) {
+    throw new Error(
+      `${person.id} has no mapping file at \`${mappingPath}\`, so there is no way to say which ` +
+        `RiseUp row feeds which Personal Category. \`--map\` proposes one.`,
+    );
+  }
+  return mapping;
+}
+
+// --- --map: proposing the file ----------------------------------------------
+
+/** One proposal, as a row of its pile's table. */
+function proposalRow(proposal: MapProposal): string {
+  const charges =
+    proposal.charges.length === 0 ? "—" : proposal.charges.map(chargeLabel).join("; ");
+  const destination =
+    proposal.personalCategory === null
+      ? "**nobody has said**"
+      : proposal.pile === "new-category"
+        ? `**new:** ${proposal.personalCategory}`
+        : proposal.personalCategory;
+  const state =
+    proposal.state === "proposed"
+      ? "proposed"
+      : proposal.state === "declined"
+        ? "declined"
+        : "**undecided**";
+  return (
+    `| ${proposal.index} | ${proposal.riseupRow} | ${destination} | ${charges} | ${state} | ` +
+    `${proposal.why ?? proposal.reason} |`
+  );
+}
+
+function proposalTable(title: string, proposals: readonly MapProposal[], empty: string): void {
+  say(`## ${title}`);
+  say();
+  if (proposals.length === 0) {
+    say(empty);
+    say();
+    return;
+  }
+  say(`| # | RiseUp | קטגוריה אישית | charges | | why |`);
+  say(`| ---: | --- | --- | --- | --- | --- |`);
+  for (const proposal of proposals) say(proposalRow(proposal));
+  say();
+}
+
+/**
+ * The proposal, said in full. Every pile prints even when empty, so "no fixed
+ * item is waiting on you" is a stated fact rather than a silence.
+ */
+function reportMap(plan: RiseUpMapPlan, sources: readonly string[], savedTo: readonly string[]): void {
+  say(`# RiseUp → מאזן: ${plan.person}, the mapping file proposed`);
+  say();
+  say(`- Months surveyed: **${plan.months.join(", ")}**`);
+  say(
+    `- Mapping file: \`${mappingPath}\`` +
+      (mapping === null
+        ? " — **it does not exist yet**, so this is the file's birth"
+        : ` — ${plan.alreadyMapped} rules in it already`),
+  );
+  say(`- Read from: ${sources.join("; ")}`);
+  for (const path of savedTo) say(`- Response saved outside the repository: \`${path}\``);
+  say(
+    `- A new Personal Category would be active from **${monthKey(plan.activeFrom)}**, the ` +
+      `earliest month surveyed`,
+  );
+  say();
+  say(
+    `Only what the fold could not place is here. A RiseUp row that already has a rule, a ` +
+      `category whose every charge a label rule claims, the savings category, a goal and the ` +
+      `salary slot are all absent — which is why a re-run on an unchanged account proposes ` +
+      `nothing. **No amount is ever written into the file**: the charges below are there so a ` +
+      `Person can recognise a row.`,
+  );
+  say();
+
+  proposalTable(
+    "1. Exact name matches",
+    plan.piles.exact,
+    "None. No RiseUp category without a rule carries a name the grid already has.",
+  );
+  proposalTable(
+    "2. Near-matches, with the reason",
+    plan.piles.near,
+    "None. No RiseUp category without a rule is near a row of the grid without being equal to it.",
+  );
+  proposalTable(
+    "3. Fixed items needing a decision",
+    plan.piles["fixed-item"],
+    "None. Every fixed item that carries a `sequenceId` already has a rule.",
+  );
+  if (plan.piles["fixed-item"].length > 0) {
+    say(
+      `A fixed item has no name of its own, so it is **never** matched by merchant: two of ` +
+        `Yuval's commitments read the same merchant and are told apart only by ` +
+        `\`sequenceId\`. Each is listed with its id below and placed by a Person.`,
+    );
+    say();
+  }
+  for (const proposal of plan.piles["fixed-item"]) {
+    say(
+      `- ${proposal.index}. **${proposal.merchant ?? proposal.riseupRow}** — ` +
+        `\`${proposal.sequenceId ?? "—"}\` — ${proposal.charges.map(chargeLabel).join("; ")}` +
+        `${proposal.detail === undefined ? "" : ` — ${proposal.detail}`}`,
+    );
+  }
+  if (plan.piles["fixed-item"].length > 0) say();
+
+  proposalTable(
+    "A קטגוריה אישית the grid lacks",
+    plan.piles["new-category"],
+    "None. Every RiseUp category without a rule is a row the grid already has.",
+  );
+  if (plan.piles["new-category"].length > 0) {
+    say(
+      `**A new row is not the only answer.** A RiseUp category the file deliberately has no ` +
+        `rule for — Eden's \`חשבונות\`, whose charges her five label rules split across ` +
+        `שכ"ד, ארנונה, מים, חשמל and גז — shows up here the moment one charge in it carries a ` +
+        `label no rule claims. The answer there is a **label rule**, which \`--map\` does not ` +
+        `propose: it is one line edited into \`labelRules\` by hand. \`--decline\` such a ` +
+        `proposal and nothing is written, which is the refusal doing its job.`,
+    );
+    say();
+  }
+  for (const proposal of plan.piles["new-category"]) {
+    const household = proposal.household;
+    say(
+      `- ${proposal.index}. **${proposal.personalCategory}** (${proposal.type === "income" ? "הכנסה" : "הוצאה"}) → ` +
+        `קטגוריה משותפת ${
+          household === undefined
+            ? "—"
+            : household.kind === "new"
+              ? `**${household.name}**, itself new`
+              : `\`${household.name}\`, which already exists`
+        }. \`--join ${proposal.index}:<h>\` joins a different one; \`--assign ${proposal.index}:<n>\` ` +
+        `says it is a row the grid already has after all.`,
+    );
+  }
+  if (plan.piles["new-category"].length > 0) say();
+
+  say(`## 4. Rows of the grid with no RiseUp source`);
+  say();
+  if (plan.heldSourceless.length > 0) {
+    say(
+      `**Held.** ${plan.heldSourceless.length} ${plan.heldSourceless.length === 1 ? "row" : "rows"} ` +
+        `of the grid are fed by nothing so far — but something above is undecided, and a row ` +
+        `marked \`hand-typed\` while a RiseUp line is still unplaced could be the very row that ` +
+        `line feeds. They are named and nothing is written for them: ` +
+        `${plan.heldSourceless.join(", ")}.`,
+    );
+    say();
+  } else if (plan.piles.sourceless.length === 0) {
+    say(`None. Every active row of ${plan.person}'s grid is fed or already marked \`hand-typed\`.`);
+    say();
+  } else {
+    say(
+      `Each of these is written as the \`hand-typed\` disposition, which is what stops it being ` +
+        `flagged again. It is still typed by hand in \`/balance/month\`, exactly as today.`,
+    );
+    say();
+    say(
+      `**Read this list before approving it.** A fixed item that charged nothing in the months ` +
+        `surveyed carries no \`sequenceId\` and is invisible to RiseUp's own response, so a row ` +
+        `fed only by such an item lands here. Surveying two months is what avoids it — and a ` +
+        `\`hand-typed\` disposition is one line to delete if a row turns out to have a source ` +
+        `after all.`,
+    );
+    say();
+    say(`| # | קטגוריה אישית | סוג | | why |`);
+    say(`| ---: | --- | --- | --- | --- |`);
+    for (const proposal of plan.piles.sourceless) {
+      say(
+        `| ${proposal.index} | ${proposal.personalCategory} | ` +
+          `${proposal.type === "income" ? "הכנסה" : "הוצאה"} | ` +
+          `${proposal.state === "declined" ? "declined" : "proposed"} | ` +
+          `${proposal.why ?? proposal.reason} |`,
+      );
+    }
+    say();
+  }
+
+  say(`## Nothing to key a rule on`);
+  say();
+  if (plan.notMappable.length === 0) {
+    say(`Nothing. Every row the fold left unresolved can be keyed by a name or a \`sequenceId\`.`);
+  } else {
+    say(
+      `These are reported and never proposed: a rule needs something stable to key on, and ` +
+        `money in is decided by \`transactionId\` rather than by a row's mapping.`,
+    );
+    say();
+    say(`| מה | שם | סכום | id | פרטים |`);
+    say(`| --- | --- | ---: | --- | --- |`);
+    for (const row of plan.notMappable) {
+      say(`| ${row.kind} | ${row.label} | ${shekels(row.amount)} | \`${row.id ?? "—"}\` | ${row.detail} |`);
+    }
+  }
+  say();
+
+  say(`## The rows of ${plan.person}'s grid, by number`);
+  say();
+  say(
+    `What \`--assign <n>:<m>\` names. Numbers rather than names because \`חו"ל\` and \`שכ"ד\` ` +
+      `both carry a double quote.`,
+  );
+  say();
+  say(
+    plan.candidates
+      .map(
+        (candidate) =>
+          `${candidate.number}. ${candidate.personalCategory}` +
+          `${candidate.type === "income" ? " (הכנסה)" : ""}${candidate.retired ? " *(retired)*" : ""}`,
+      )
+      .join(" · "),
+  );
+  say();
+
+  if (plan.piles["new-category"].length > 0) {
+    say(`## The Household Categories, by number`);
+    say();
+    say(`What \`--join <n>:<h>\` names.`);
+    say();
+    say(
+      plan.households
+        .map(
+          (household) =>
+            `${household.number}. ${household.name}${household.type === "income" ? " (הכנסה)" : ""}`,
+        )
+        .join(" · "),
+    );
+    say();
+  }
+}
+
+/** What the proposal would do, and what it will not. */
+function reportMapOutcome(
+  plan: RiseUpMapPlan,
+  state: {
+    readonly approved: boolean;
+    readonly created: readonly string[];
+    readonly written: boolean;
+    readonly failure: string | null;
+    /** A stale token, which is about this run rather than about the proposal. */
+    readonly alsoRefused: readonly string[];
+  },
+): void {
+  const refusals = [...plan.refusals, ...state.alsoRefused];
+  say(`## The proposal`);
+  say();
+
+  if (state.failure !== null) {
+    say(`**It failed part-way and the file was not written**: ${state.failure}`);
+    say();
+    if (state.created.length > 0) {
+      say(
+        `These Personal Categories were created before it failed, each with its Household ` +
+          `Category in one transaction: ${state.created.join("; ")}. The file still says nothing ` +
+          `about them, so the next \`--map\` will propose the rules again against a grid that ` +
+          `now holds them.`,
+      );
+      say();
+    }
+    return;
+  }
+
+  if (refusals.length > 0) {
+    say(`**Nothing was written.**`);
+    say();
+    for (const refusal of refusals) say(`- ${refusal}`);
+    say();
+    return;
+  }
+
+  if (!plan.changed) {
+    say(
+      `**Nothing to propose.** Every RiseUp row this run read already has a rule and every ` +
+        `active row of the grid is fed or marked \`hand-typed\`, so the file is left exactly as ` +
+        `it is. This is what an unchanged account looks like.`,
+    );
+    say();
+    return;
+  }
+
+  if (!state.approved) {
+    say(`The file is **not** written by this run. To write it:`);
+    say();
+    say("```bash");
+    // Every flag this run was given is repeated, `--from` and `--mapping`
+    // included: a command that quietly dropped them would reach the household's
+    // own file and the network instead of the one the proposal was read from.
+    say(
+      `npm run riseup:fill -- ${person.id}` +
+        `${positional[1] === undefined ? "" : ` ${positional[1]}`} --map` +
+        `${saved.map((path) => ` --from ${path}`).join("")}` +
+        `${flagValue("--mapping") === undefined ? "" : ` --mapping ${flagValue("--mapping")}`}` +
+        `${flagValue("--config") === undefined ? "" : ` --config ${flagValue("--config")}`}` +
+        `${[...assigns].map(([proposal, row]) => ` --assign ${proposal}:${row}`).join("")}` +
+        `${[...joins].map(([proposal, household]) => ` --join ${proposal}:${household}`).join("")}` +
+        `${[...(declines.get("*") ?? [])].map((proposal) => ` --decline ${proposal}`).join("")}` +
+        ` --approve ${plan.token}`,
+    );
+    say("```");
+    say();
+    say(
+      `The token covers every proposal above, so a RiseUp row that appears or moves between the ` +
+        `two runs changes it and the approval is refused rather than landing on a shifted table. ` +
+        `Repeat the \`--assign\` and \`--join\` answers with it.`,
+    );
+    say();
+    return;
+  }
+
+  if (state.created.length > 0) {
+    say(
+      state.created.length === 1
+        ? `**Created.** One Personal Category, with its Household Category assignment in one ` +
+            `transaction: ${state.created.join("; ")}.`
+        : `**Created.** ${state.created.length} Personal Categories, each with its Household ` +
+            `Category assignment in one transaction: ${state.created.join("; ")}.`,
+    );
+    say();
+  }
+  say(
+    `**Written.** \`${mappingPath}\` now carries ` +
+      `${plan.mapping.categoryRules.length} category rules, ` +
+      `${plan.mapping.fixedItemRules.length} fixed items, ` +
+      `${(plan.mapping.labelRules ?? []).length} label rules and ` +
+      `${(plan.mapping.dispositions ?? []).length} dispositions. Read the diff before committing ` +
+      `it — the file is in the repository so that a changed subscription shows up in one.`,
+  );
+  say();
+  say(
+    `No Entry was touched and no month was closed: \`--map\` writes rules, never figures. The ` +
+      `next \`riseup:fill -- ${person.id} <month>\` is what reads the מאזן against RiseUp.`,
+  );
+  say();
+}
+
+/** The whole of `--map`: survey the months, propose, and write only on approval. */
+async function runMap(): Promise<void> {
+  const rules = mapping ?? skeletonMapping(person.id, person.server);
+  const folds: RiseUpFold[] = [];
+  const sources: string[] = [];
+  const savedTo: string[] = [];
+
+  if (saved.length > 0) {
+    for (const path of saved) {
+      folds.push(
+        foldRiseUpMonth(JSON.parse(readFileSync(path, "utf8")) as RiseUpMonth, rules, {
+          currency: CURRENCY,
+        }),
+      );
+      sources.push(`\`${path}\` (no network)`);
+    }
+  } else {
+    for (const date of dates) {
+      const raw = await fetchBudget(person.server, date, configPath);
+      const directory = mkdtempSync(join(tmpdir(), "jubot-riseup-"));
+      const path = join(directory, `${person.id}-${date}.json`);
+      writeFileSync(path, `${JSON.stringify(raw, null, 2)}\n`);
+      savedTo.push(path);
+      folds.push(foldRiseUpMonth(raw as RiseUpMonth, rules, { currency: CURRENCY }));
+      sources.push(`the \`${person.server}\` MCP server, \`get_budget\` for \`${date}\``);
+    }
+  }
+
+  const categories = await loadCategories();
+  const plan = planRiseUpMapping({
+    person: person.id,
+    server: person.server,
+    months: folds,
+    mapping,
+    categories,
+    answers: { assign: assigns, join: joins, declined: declines.get("*") ?? [] },
+  });
+
+  const approved = plan.writable && approvals.includes(plan.token);
+  const created: string[] = [];
+  let written = false;
+  let failure: string | null = null;
+
+  // A stale token is a fact about this run, not a flaw in the proposal — and a
+  // proposal with nothing to write needs no approval, so it is not a mismatch
+  // there either.
+  const alsoRefused =
+    approvals.length > 0 && !approvals.includes(plan.token) && plan.changed
+      ? [
+          `\`${approvals[0]}\` approves a different proposal from the one above, whose token is ` +
+            `\`${plan.token}\`. A proposal is approved as it was printed — read this run's tables ` +
+            `and approve them, rather than carrying a token across runs.`,
+        ]
+      : [];
+
+  if (approved) {
+    try {
+      let snapshot = categories;
+      for (const request of plan.creations) {
+        const creation = planPersonalCategoryCreation(snapshot, request, {
+          personalCategoryId: randomUUID(),
+          householdCategoryId: randomUUID(),
+        });
+        // One transaction per creation, and the assignment is inside it: the
+        // deferred constraint in db/schema.sql checks at commit that no Personal
+        // Category is left unassigned, so a half-written creation cannot commit.
+        await insertPersonalCategory(creation);
+        snapshot = applyCreation(snapshot, creation);
+        created.push(
+          `${creation.personal.name} → ${creation.household.name}` +
+            `${creation.householdIsNew ? " (new)" : ""}`,
+        );
+      }
+      writeFileSync(mappingPath, serialiseMapping(plan.mapping));
+      written = true;
+    } catch (cause) {
+      failure = (cause as Error).message;
+    }
+  }
+
+  reportMap(plan, sources, savedTo);
+  reportMapOutcome(plan, { approved, created, written, failure, alsoRefused });
+  process.stdout.write(`${out.join("\n")}\n`);
+  out.length = 0;
 }
 
 /** One month: read it, fold it, compare it, and write it if it was approved. */
@@ -956,7 +1495,7 @@ async function runMonth(date: string): Promise<void> {
     source = `the \`${person.server}\` MCP server, \`get_budget\` for \`${date}\``;
   }
 
-  const fold = foldRiseUpMonth(raw as RiseUpMonth, mapping, { currency: CURRENCY });
+  const fold = foldRiseUpMonth(raw as RiseUpMonth, rulesOrStop(), { currency: CURRENCY });
 
   /**
    * The cutover is keyed on the month the fold actually covers, not on the
@@ -1086,6 +1625,16 @@ async function runMonth(date: string): Promise<void> {
  * what landed must already be out. Holding the whole run in `out` and printing
  * once would lose it.
  */
+if (mappingMode) {
+  // `--map` is one proposal over every month surveyed, not a month at a time:
+  // which row a fixed item belongs to is a question about the account, and
+  // Yuval's two Partner commitments need both months' charges on one line.
+  await runMap();
+  // The MCP server is a child process with a shell between us and it; nothing
+  // is left to wait for once the report is out.
+  process.exit(0);
+}
+
 let printed = 0;
 for (const date of dates) {
   await runMonth(date);

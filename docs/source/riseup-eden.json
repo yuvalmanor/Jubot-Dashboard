@@ -51,7 +51,10 @@
       "riseupCategory": "אוכל בחוץ - וולט",
       "personalCategory": "אוכל בחוץ"
     },
-    { "riseupCategory": "רכב", "personalCategory": "רכב" },
+    {
+      "riseupCategory": "רכב",
+      "personalCategory": "רכב"
+    },
     {
       "riseupCategory": "תחבורה ציבורית",
       "personalCategory": "תחבצ+ליים",
@@ -62,11 +65,26 @@
       "personalCategory": "חו\"ל",
       "note": "RiseUp writes it with a gershayim (U+05F4), the grid with a straight quote"
     },
-    { "riseupCategory": "ביגוד והנעלה", "personalCategory": "ביגוד והנעלה" },
-    { "riseupCategory": "חיות מחמד", "personalCategory": "חיות מחמד" },
-    { "riseupCategory": "נגאנו", "personalCategory": "נגאנו" },
-    { "riseupCategory": "העברות EPP", "personalCategory": "העברות EPP" },
-    { "riseupCategory": "כושר", "personalCategory": "כושר" }
+    {
+      "riseupCategory": "ביגוד והנעלה",
+      "personalCategory": "ביגוד והנעלה"
+    },
+    {
+      "riseupCategory": "חיות מחמד",
+      "personalCategory": "חיות מחמד"
+    },
+    {
+      "riseupCategory": "נגאנו",
+      "personalCategory": "נגאנו"
+    },
+    {
+      "riseupCategory": "העברות EPP",
+      "personalCategory": "העברות EPP"
+    },
+    {
+      "riseupCategory": "כושר",
+      "personalCategory": "כושר"
+    }
   ],
   "fixedItemRules": [
     {
@@ -93,10 +111,22 @@
       "personalCategory": "שכ\"ד",
       "note": "the rent is paid by cheque, and RiseUp labels the charge שיק wherever it lands"
     },
-    { "label": "ארנונה", "personalCategory": "ארנונה" },
-    { "label": "מים", "personalCategory": "מים" },
-    { "label": "חשמל", "personalCategory": "חשמל" },
-    { "label": "גז", "personalCategory": "גז" }
+    {
+      "label": "ארנונה",
+      "personalCategory": "ארנונה"
+    },
+    {
+      "label": "מים",
+      "personalCategory": "מים"
+    },
+    {
+      "label": "חשמל",
+      "personalCategory": "חשמל"
+    },
+    {
+      "label": "גז",
+      "personalCategory": "גז"
+    }
   ],
   "dispositions": [
     {

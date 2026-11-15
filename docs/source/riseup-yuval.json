@@ -34,16 +34,31 @@
       "personalCategory": "סופר",
       "note": "stored as כלכלה, shown in the app as סופר; it arrives as one envelope per week"
     },
-    { "riseupCategory": "בתי קפה", "personalCategory": "בתי קפה" },
-    { "riseupCategory": "אוכל בחוץ", "personalCategory": "אוכל בחוץ" },
-    { "riseupCategory": "רכב", "personalCategory": "רכב" },
+    {
+      "riseupCategory": "בתי קפה",
+      "personalCategory": "בתי קפה"
+    },
+    {
+      "riseupCategory": "אוכל בחוץ",
+      "personalCategory": "אוכל בחוץ"
+    },
+    {
+      "riseupCategory": "רכב",
+      "personalCategory": "רכב"
+    },
     {
       "riseupCategory": "תחבורה ציבורית",
       "personalCategory": "תחבצ+ליים",
       "note": "the grid's row is תחבצ+ליים — buses, trains and Lime together"
     },
-    { "riseupCategory": "Aliexpress", "personalCategory": "AliExpress" },
-    { "riseupCategory": "צביקה", "personalCategory": "צביקה" },
+    {
+      "riseupCategory": "Aliexpress",
+      "personalCategory": "AliExpress"
+    },
+    {
+      "riseupCategory": "צביקה",
+      "personalCategory": "צביקה"
+    },
     {
       "riseupCategory": "חו״ל",
       "personalCategory": "חו\"ל",
@@ -54,10 +69,22 @@
       "personalCategory": "AIAI",
       "note": "the category; the two AI subscriptions below are separate fixed items feeding the same row"
     },
-    { "riseupCategory": "רפואה", "personalCategory": "רפואה" },
-    { "riseupCategory": "ביגוד והנעלה", "personalCategory": "ביגוד והנעלה" },
-    { "riseupCategory": "פנאי", "personalCategory": "פנאי" },
-    { "riseupCategory": "ספורט ובריאות", "personalCategory": "ספורט ובריאות" }
+    {
+      "riseupCategory": "רפואה",
+      "personalCategory": "רפואה"
+    },
+    {
+      "riseupCategory": "ביגוד והנעלה",
+      "personalCategory": "ביגוד והנעלה"
+    },
+    {
+      "riseupCategory": "פנאי",
+      "personalCategory": "פנאי"
+    },
+    {
+      "riseupCategory": "ספורט ובריאות",
+      "personalCategory": "ספורט ובריאות"
+    }
   ],
   "fixedItemRules": [
     {

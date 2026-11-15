@@ -721,21 +721,106 @@ Category it joins — where RiseUp has a category the grid lacks.
 
 ### Acceptance criteria
 
-- [ ] `--map` for either Person prints the four piles and writes nothing unprompted
-- [ ] A near-match states why it is proposed, including RiseUp's `חו״ל` against the grid's
+- [x] `--map` for either Person prints the four piles and writes nothing unprompted
+      <!-- Live against both accounts and the household's own database, 2026-11-15, over
+           `2026-09..2026-10`. Yuval: the four piles printed, pile 3 holding his two Partner
+           commitments, and "**Nothing was written** — 2 rows are undecided". Eden: pile 3
+           empty by name, two rows offered as new Personal Categories, two of her rows
+           proposed as `hand-typed`, and nothing written either — neither run was given a
+           token. `git status` was clean afterwards and both responses were saved outside
+           the repository. A fifth section prints beside the four, for a RiseUp category the
+           grid has no row for; the plan's own sentence after the pile list is what asks for
+           it. -->
+- [x] A near-match states why it is proposed, including RiseUp's `חו״ל` against the grid's
       `חו"ל`, which differ by the quote character and are not equal under
       `normaliseCategoryName`
-- [ ] A fixed item is offered with merchant, amount and id, and never auto-matched by
+      <!-- Four named reasons, never a similarity score: the quote characters, letter case,
+           punctuation and spacing, and one name containing the other. The live case prints
+           "the same name in different quote characters — RiseUp's gershayim (U+05F4) against
+           the grid's straight quote", shown on a throwaway PGlite because both committed
+           files already carry the חו״ל rule and a mapped row is never proposed again. A test
+           asserts `normaliseCategoryName` does *not* equate the two, so a fold later changed
+           to fold quote characters fails there by name rather than making this pile silently
+           unreachable. A name near two rows of the grid is left undecided instead of
+           chosen. -->
+- [x] A fixed item is offered with merchant, amount and id, and never auto-matched by
       merchant alone
-- [ ] Rows with no RiseUp source are written as `hand-typed` and never flagged again
-- [ ] `רפואי ופארם` is offered as a new Personal Category for Eden, with its Household
+      <!-- Structural: a fixed item has no name, so every one of them is **undecided** and
+           carries no destination at all until an `--assign` arrives — there is no code path
+           that reads a merchant as an identity. Shown with a fixture whose merchant is
+           exactly a row of the grid: still undecided, still nothing written. Live, Yuval's
+           two Partner commitments print as two rows reading the same merchant, each with
+           its own `sequenceId` and both months' charges beside it. -->
+- [x] Rows with no RiseUp source are written as `hand-typed` and never flagged again
+      <!-- And computed **last**, after every answer: a row is sourceless only once every
+           RiseUp row has a destination. Computed before the Partner answer, Yuval's אינטרנט
+           and טלפון 012 would be marked hand-typed and silenced for good — so while
+           anything is undecided the pile is *held*, named in the report and written nowhere.
+           The live Yuval run holds three rows; the live Eden run, with nothing undecided,
+           proposes two. On PGlite the approved run wrote the disposition and the re-run read
+           "None. Every active row of the grid is fed or already marked `hand-typed`".
+
+           One hazard, stated in the report over the pile rather than fixed: a fixed item
+           that charged nothing in the months surveyed carries no `sequenceId` and is
+           invisible, so a row fed only by such an item lands here. Surveying two months is
+           what avoids it, and the disposition is one line to delete. -->
+- [x] `רפואי ופארם` is offered as a new Personal Category for Eden, with its Household
       Category, and is created only on approval
+      <!-- Live: offered as a new Personal Category joining a new Household Category of the
+           same name, with `--join <n>:<h>` offered against her existing ones and
+           `--assign <n>:<m>` to say it is a row she already has after all. **Nothing was
+           created**: the run was given no token, and her database is untouched. The creation
+           itself is proved on a throwaway PGlite with invented rows.
+
+           Her live run also offers `חשבונות` as a new row, which it should not become: her
+           five label rules split it, and one October charge carried a label no rule claims.
+           A new row is the wrong answer there and a label rule is the right one — `--map`
+           does not propose label rules, so the report now says so over the pile, and
+           `--decline` stops the write. Which it is is hers to decide. -->
 - [ ] Yuval is asked which Partner commitment is אינטרנט and which is טלפון 012, with both
       months' charges shown, and the answer is written into his file by id
-- [ ] A created Personal Category lands with its Household Category assignment in one
+      <!-- Left unchecked on 2026-11-15: the asking half is done and the answer has not come.
+           The live run over `2026-09..2026-10` prints both commitments by id with both
+           months' charges — `31965066` reading 29.25 then 83.16, `15aca9b5` reading 83.06
+           then 79.00, the very table this plan recorded from the sheet — and refuses to
+           write anything while they are undecided. Which is which is Yuval's to say and no
+           phase may assert it from the sheet. Writing it by id is proved on PGlite with two
+           invented commitments sharing a merchant: `--assign` put each into its own row,
+           keyed by `sequenceId`, with the merchant kept beside it as a label. Checking this
+           box needs one `--map … --assign <n>:<m> --approve <token>` run after he
+           answers. -->
+- [x] A created Personal Category lands with its Household Category assignment in one
       transaction, so the deferred trigger never fires
-- [ ] The monthly run never creates a category, in any mode, under any flag
-- [ ] Re-running `--map` on an unchanged account proposes no change to the file
+      <!-- Through `planPersonalCategoryCreation` and `insertPersonalCategory`, which already
+           wrap the three rows in one transaction — no new SQL and no second door into
+           `personal_categories`. Live on a throwaway PGlite: the approved run created one
+           Personal Category, its Household Category and the assignment between them, and
+           the row reads back joined to its household. Proved rather than read: inserting a
+           Personal Category *without* an assignment, in a transaction of its own, was
+           refused at commit — "personal category … has no household category" — and left no
+           row behind, so the trigger is real and one transaction is what keeps it quiet. Two
+           categories proposed in one run are created one at a time, each in its own
+           transaction, the second planned against a snapshot the first is already in, so two
+           new Household Categories cannot collide on a name. -->
+- [x] The monthly run never creates a category, in any mode, under any flag
+      <!-- Guarded by a test rather than by a reading, beside Phase 32's no-SQL guard:
+           `insertPersonalCategory` appears once in the script, inside `runMap` and before
+           `runMonth` begins, and nothing after `runMonth` writes the mapping file either.
+           `--map` with `--write` is refused outright ("they are two runs, not one"), as is
+           `--map --no-db` — a mapping proposed without the grid would be guessing what the
+           grid holds. The monthly run's own refusal is unchanged from Phase 33: a figure
+           whose Personal Category the database does not hold is named and blocks the
+           write. -->
+- [x] Re-running `--map` on an unchanged account proposes no change to the file
+      <!-- Almost free, and deliberately so: the proposal reads `fold.unresolved` rather than
+           walking the envelopes again, so a row that already has a rule never reaches it —
+           which is also why Eden's deliberately rule-less `חשבונות` category rule, the
+           savings category, a goal and the salary slot are absent by construction. The belt
+           beside it: a row the file already keys is filtered out even if it ever did arrive.
+           Live on PGlite, the run after the approved one read "**Nothing to propose.** Every
+           RiseUp row this run read already has a rule and every active row of the grid is
+           fed or marked `hand-typed`, so the file is left exactly as it is", with all four
+           piles printing "None" by name and the file untouched. -->
 - [ ] **The advisor has audited this phase.** With the three gates green and the work
       committed, the advisor is asked to audit it; every finding is either fixed here or
       named in the report with the reason it was not. This box is checked last and the
