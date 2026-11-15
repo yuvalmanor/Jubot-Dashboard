@@ -792,9 +792,24 @@ Category it joins — where RiseUp has a category the grid lacks.
            write anything while they are undecided. Which is which is Yuval's to say and no
            phase may assert it from the sheet. Writing it by id is proved on PGlite with two
            invented commitments sharing a merchant: `--assign` put each into its own row,
-           keyed by `sequenceId`, with the merchant kept beside it as a label. Checking this
-           box needs one `--map … --assign <n>:<m> --approve <token>` run after he
-           answers. -->
+           keyed by `sequenceId`, with the merchant kept beside it as a label.
+
+           **Yuval answered on 2026-11-15**, and the answer is recorded here because the
+           run that writes it could not be made: `31965066-0c7b-11ef-bb57-cd50bf189b9b` is
+           **טלפון 012** and `15aca9b5-a337-11ee-8217-af1dd3adc04a` is **אינטרנט**. What
+           told them apart was neither amount nor merchant but the billing day, which is
+           stable where the amounts are not: `31965066` bills early in the month (the 6th
+           in 2026-09 and 2026-10, the 9th in 2026-11), `15aca9b5` on the 25th. Both carry
+           the same merchant and the same `תקשורת` label and neither envelope has a
+           customer comment, which is why the sheet could not settle it.
+
+           Checking this box needs
+           `riseup:fill -- yuval 2026-09..2026-10 --map --assign <012>:<n> --assign <net>:<n> --approve <token>`,
+           and that run reads the grid: the household's Neon database refused every
+           connection that afternoon — DNS resolves, TCP to 5432 times out after 20s from
+           this machine — so it has not been run. The same commit must also edit the
+           `_note` paragraph in his mapping file, which says both items are deliberately
+           absent until `--map` asks him. -->
 - [x] A created Personal Category lands with its Household Category assignment in one
       transaction, so the deferred trigger never fires
       <!-- Through `planPersonalCategoryCreation` and `insertPersonalCategory`, which already
