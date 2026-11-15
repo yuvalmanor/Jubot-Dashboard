@@ -84,6 +84,16 @@
     {
       "riseupCategory": "כושר",
       "personalCategory": "כושר"
+    },
+    {
+      "riseupCategory": "רפואי ופארם",
+      "personalCategory": "סופר",
+      "note": "Eden's grid has no health row; the household's answer of 2026-11-15 was to route it to סופר for now. A category rule is standing, not per-month — change it here when a row of its own exists"
+    },
+    {
+      "riseupCategory": "חשבונות",
+      "personalCategory": "שכ\"ד",
+      "note": "her five label rules win over this, so שכ\"ד, ארנונה, מים, חשמל and גז are unchanged; this catches what no label claims — the ועד בית payment, by the household's answer of 2026-11-15 — rather than letting it fall out of the month"
     }
   ],
   "fixedItemRules": [
@@ -161,6 +171,20 @@
       "merchant": "כל בו לחתול ולכלב",
       "date": "2026-09-15",
       "note": "a pet-shop credit against the same month's charge from that shop"
+    },
+    {
+      "transactionId": "209a2bf0-d0ec-11f1-a941-457fa2a19897",
+      "action": "income",
+      "merchant": "משהב”ט",
+      "date": "2026-10-25",
+      "note": "a one-off earning the household counts as income (answered 2026-11-15), summed into הכנסות with the salary"
+    },
+    {
+      "transactionId": "30afe990-d352-11f1-bfb0-5575e487892a",
+      "action": "income",
+      "merchant": "משכורת",
+      "date": "2026-10-28",
+      "note": "salary and bonus, which arrived outside the salary slot rather than as its charge; income by the household's answer of 2026-11-15, not by guesswork"
     }
   ]
 }
