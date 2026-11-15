@@ -248,7 +248,7 @@ export function planRiseUpWrite(
   } else if (request.approve === undefined) {
     awaitingApproval = refusals.length === 0;
     refusals.push(
-      `The ${offered.length === 1 ? "line" : "lines"} above were not confirmed. A write ` +
+      `The ${offered.length === 1 ? "line above was" : "lines above were"} not confirmed. A write ` +
         `takes the token this run printed: --write --approve ${token}`,
     );
   } else if (request.approve !== token) {

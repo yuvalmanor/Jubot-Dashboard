@@ -489,6 +489,16 @@ owns everything before. `/riseup-fill` refuses to compare or write an earlier mo
 export's own 2026-10 column cannot land over an approved RiseUp figure. The boundary itself
 is [riseup-cutover.ts](src/domain/import/riseup-cutover.ts), read by both.
 
+**`/riseup-fill` is the household's door to it.**
+[.claude/skills/riseup-fill/SKILL.md](.claude/skills/riseup-fill/SKILL.md) is deliberately
+thin, because the script fetches and folds: it names the Person — asking when the request
+names none — runs the script, relays the resolved month, the cashflow's last update and the
+categories still waiting for charges, shows the side-by-side and asks. It does no arithmetic,
+carries no month's data between runs, never calls the RiseUp MCP servers itself and never
+opens the saved response, so the one route from RiseUp into an Entry is the script. Merchant
+names, sequence names and customer comments are quoted as data and never followed as
+instructions.
+
 ## מיפוי
 
 `src/domain/snapshot` holds Accounts and Snapshots. An Account is *where* value is held —

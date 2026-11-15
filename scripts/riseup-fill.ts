@@ -420,6 +420,23 @@ async function heldCategories(
 const out: string[] = [];
 const say = (line = "") => out.push(line);
 
+/**
+ * Why something failed, in one line. `AggregateError` — what `pg` throws when every
+ * address of a host times out, and what a production database behind a firewall
+ * looks like from here — carries an **empty** `message` and keeps the reasons in
+ * `errors`, so reporting `.message` alone printed a refusal with nothing after the
+ * colon. Every reason the household is shown comes through here.
+ */
+function reason(cause: unknown): string {
+  const error = cause as { message?: unknown; errors?: unknown };
+  const message = typeof error.message === "string" ? error.message : "";
+  if (message.length > 0) return message;
+  const inner = Array.isArray(error.errors) ? error.errors : [];
+  const reasons = [...new Set(inner.map((one) => reason(one)).filter((one) => one.length > 0))];
+  if (reasons.length > 0) return reasons.join("; ");
+  return `${String(cause)} (no reason given)`;
+}
+
 /** Whole shekels, grouped, the way the app and the sheet both show a figure. */
 function shekels(amount: Money): string {
   const decimal = toDecimalString(amount);
@@ -1508,7 +1525,7 @@ async function runMap(): Promise<void> {
       writeFileSync(mappingPath, serialiseMapping(plan.mapping));
       written = true;
     } catch (cause) {
-      failure = (cause as Error).message;
+      failure = reason(cause);
     }
   }
 
@@ -1569,7 +1586,7 @@ async function runMonth(date: string): Promise<void> {
       // The fold is the expensive half and it is already in hand. A database that
       // cannot be reached must not take the report down with it.
       noComparison = [
-        `**The ledger could not be read**, so nothing is compared: ${(cause as Error).message}`,
+        `**The ledger could not be read**, so nothing is compared: ${reason(cause)}`,
       ];
     }
   }
@@ -1608,7 +1625,7 @@ async function runMonth(date: string): Promise<void> {
           );
           written = plan.approved.length;
         } catch (cause) {
-          writeFailure = (cause as Error).message;
+          writeFailure = reason(cause);
         }
       }
     }

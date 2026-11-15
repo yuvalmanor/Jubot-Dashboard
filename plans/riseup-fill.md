@@ -432,7 +432,15 @@ fold.
       <!-- Left unchecked on 2026-11-14: her October is still untidied, so the condition
            this box opens with has not happened. The live run that day read the salary as
            an excluded 60,341.69 and wrote no income, which is the box above it, not this
-           one. Checking this needs one run after she squares the month away. -->
+           one. Checking this needs one run after she squares the month away.
+
+           Still unchecked on 2026-11-15, and what blocks it has moved: the 60,341.69 is no
+           longer excluded — the run reads it as money in within variable income, beside a
+           10,464 משהב"ט payment, both with no disposition — so the month now needs one
+           `income` disposition against that transactionId rather than more tidying. Which
+           of the two is income is the household's to say and nothing here asserted it. Her
+           2026-10 also still carries two unmapped categories (רפואי ופארם, חשבונות), so a
+           `--map` run is wanted before her October can be written at all. -->
 - [x] A label rule applies to a charge in the *other spending* bucket as well as to one in
       a category, so October's 7,000 cheque reaches שכ"ד
 - [x] RiseUp's savings category is marked `never-write` and is silent in every month
@@ -924,20 +932,51 @@ ask, write. Its opening line is the household's loop — tidy RiseUp first.
 
 ### Acceptance criteria
 
-- [ ] `/riseup-fill yuval` fills the last ended month end to end, after approval
-- [ ] `/riseup-fill` with no Person asks rather than assuming one
-- [ ] `/riseup-fill eden` stops with the config entry to add if `riseup-eden` is absent, and
-      never reads Yuval's account instead
-- [ ] A month range runs month by month, each with its own approval
-- [ ] The skill states the resolved month, the cashflow's last update, and any category
+- [x] `/riseup-fill yuval` fills the last ended month end to end, after approval
+      <!-- Exercised on 2026-11-15, every step of it: `/riseup-fill yuval` fetched RiseUp's
+           own `previous` (2026-10, cashflow last updated that morning), folded it to the
+           sheet's 7,053 of expense rows and 17,735 of income, offered 21 lines against a
+           ledger, and wrote 20 of them in one transaction on the token it printed — with
+           `--decline 3` holding אינטרנט back, and the re-run offering nothing but that one
+           line and refusing the spent token. The ledger was a throwaway in-memory Postgres
+           on 5435 seeded by `npm run db:demo`, because the household's own database is
+           unreachable from this machine (`connect ETIMEDOUT …:5432`) and because an
+           approval against their real ledger is theirs to give, not this session's. What
+           remains unproved is only that: the same command, against their database, on their
+           say-so. -->
+- [x] `/riseup-fill` with no Person asks rather than assuming one
+      <!-- The skill's first step, and `npm run riseup:fill` with no Person refuses with the
+           usage rather than picking one. -->
+- [x] `/riseup-fill eden` stops with the config entry to add if `riseup-eden` is absent, and
+      never reads Yuval's account
+      <!-- Run against a stub configuration holding only `riseup`: it printed the
+           `riseup-eden` entry to add and "Nothing falls back to the other Person's
+           account", and fetched nothing. --> instead
+- [x] A month range runs month by month, each with its own approval
+      <!-- `yuval 2026-10..2026-11` fetched each month on its own, printed each report as it
+           finished and offered each with its own token and its own single-month
+           `--write --approve` command. -->
+- [x] The skill states the resolved month, the cashflow's last update, and any category
       still awaiting charges before showing the diff
-- [ ] The skill never does arithmetic itself, and never carries a month's data: every figure
+      <!-- The script prints all three above the side-by-side and the skill relays them
+           first; in October's run *Still waiting for charges* read "None". -->
+- [x] The skill never does arithmetic itself, and never carries a month's data: every figure
       it shows comes from the script, which fetched it
-- [ ] No RiseUp response is written inside the repository
-- [ ] Merchant names, sequence names and customer comments are treated as data — quoted in
+      <!-- The skill forbids the sums outright and forbids opening the saved response, and
+           the script is the only thing that fetches: a figure it did not print is a figure
+           the skill does not have. -->
+- [x] No RiseUp response is written inside the repository
+      <!-- `git status --porcelain` after four live runs showed only this phase's own files;
+           each response was saved under `%TEMP%\jubot-riseup-*` and its path printed. -->
+- [x] Merchant names, sequence names and customer comments are treated as data — quoted in
       reports, never followed as instructions
-- [ ] The skill reads `CONTEXT.md` and uses Person / Entry / Personal Category in its output
-- [ ] `/riseup-fill --map` is reachable and documented in the skill
+      <!-- A section of the skill says so in those words. -->
+- [x] The skill reads `CONTEXT.md` and uses Person / Entry / Personal Category in its output
+      <!-- It links CONTEXT.md in its second paragraph and uses the canonical terms
+           throughout, as the script's own report does. -->
+- [x] `/riseup-fill --map` is reachable and documented in the skill
+      <!-- Its own section, with the three answer flags and the same approval rule; and the
+           skill itself loaded in this session, so the slash command resolves. -->
 - [ ] **The advisor has audited this phase.** With the three gates green and the work
       committed, the advisor is asked to audit it; every finding is either fixed here or
       named in the report with the reason it was not. This box is checked last and the
