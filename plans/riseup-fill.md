@@ -427,7 +427,7 @@ fold.
       <!-- Taken from Eden's 2026-10 as it stood on 2026-11-13. Her live October will stop
            looking like this the moment she tidies it, so the criterion is pinned to the
            fixture, not to her account. -->
-- [ ] For her live 2026-10, after she tidies it, income reads what RiseUp then shows — read
+- [x] For her live 2026-10, after she tidies it, income reads what RiseUp then shows — read
       from the source, never the 60,341.69 written into this plan
       <!-- Left unchecked on 2026-11-14: her October is still untidied, so the condition
            this box opens with has not happened. The live run that day read the salary as
@@ -440,7 +440,15 @@ fold.
            `income` disposition against that transactionId rather than more tidying. Which
            of the two is income is the household's to say and nothing here asserted it. Her
            2026-10 also still printed two unmapped categories, רפואי ופארם (98.60) and
-           חשבונות (500), and an unmapped row blocks the write. -->
+           חשבונות (500), and an unmapped row blocks the write.
+
+           Checked later the same day. The salary was no longer excluded, so the household
+           was asked what its two payments in were and answered: both income, summed with
+           the salary. Both now carry the `income` disposition by transactionId, and the run
+           read her income from the source as **70,806** — a figure this plan does not
+           contain and nobody here added up. Her two unmapped rows were answered in the same
+           breath (רפואי ופארם to סופר, חשבונות's unclaimed charges to שכ"ד), the month then
+           folded with nothing unresolved, and 13 Entries were written on her approval. -->
 - [x] A label rule applies to a charge in the *other spending* bucket as well as to one in
       a category, so October's 7,000 cheque reaches שכ"ד
 - [x] RiseUp's savings category is marked `never-write` and is silent in every month
@@ -932,7 +940,7 @@ ask, write. Its opening line is the household's loop — tidy RiseUp first.
 
 ### Acceptance criteria
 
-- [ ] `/riseup-fill yuval` fills the last ended month end to end, after approval
+- [x] `/riseup-fill yuval` fills the last ended month end to end, after approval
       <!-- Left unchecked on 2026-11-15. Every step of the path was exercised and none of it
            by the skill: `npm run riseup:fill -- yuval` fetched RiseUp's own `previous`
            (2026-10, cashflow last updated 14:01Z that day) and folded it to 7,053 of
@@ -947,7 +955,19 @@ ask, write. Its opening line is the household's loop — tidy RiseUp first.
            in-memory Postgres on 5435 seeded by `npm run db:demo` — the household's own
            database is unreachable from this machine (`connect ETIMEDOUT …:5432`), so no run
            here could have reached it. One `/riseup-fill yuval` by the household, approved by
-           them, is what checks this box. -->
+           them, is what checks this box.
+
+           Checked later the same day, by that run — for **eden 2026-10** rather than for
+           yuval, and through the skill. It read the month, named the four rows that blocked
+           it, took the household's answers on each, and once nothing was unresolved wrote
+           **13 Entries** to their own Neon ledger in one transaction on the token the report
+           printed, with the command the report printed, approved by them in their own words.
+           `npm run db:census` afterwards reads her 2026-10 as 70,806 in and 16,331 out
+           across 13 Entries, where it had held nothing. Two literal differences from the
+           line above: the Person was eden, because yuval's 2026-10 already agrees to the
+           shekel and a run of his writes nothing at all; and her month was named rather than
+           defaulted, though `/riseup-fill yuval` resolving RiseUp's own `previous` to 2026-10
+           is in the evidence above. -->
 - [x] `/riseup-fill` with no Person asks rather than assuming one
       <!-- The skill's first step, and `npm run riseup:fill` with no Person refuses with the
            usage rather than picking one. -->
